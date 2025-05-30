@@ -1,0 +1,119 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Install all dependencies
+    silent: true
+    cmds:
+      - task: git
+      - task: ssh
+      - task: nix
+  git:
+    desc: Install Git
+    silent: true
+    cmds:
+      - |
+        echo "🔧 Installing Git..."
+        case "{{.UNAME_S}}" in
+          Darwin)
+            if ! command -v git >/dev/null 2>&1; then
+              if command -v brew >/dev/null 2>&1; then
+                brew install git;
+              else
+                echo "❌ Homebrew not found. Please install Homebrew first or install Git manually.";
+                exit 1;
+              fi
+            else
+              echo "✅ Git is already installed";
+            fi
+            ;;
+          Linux)
+            if ! command -v git >/dev/null 2>&1; then
+              if command -v apt-get >/dev/null 2>&1; then
+                sudo apt-get update && sudo apt-get install -y git;
+              else
+                echo "❌ Unsupported package manager. Please install Git manually.";
+                exit 1;
+              fi
+            else
+              echo "✅ Git is already installed";
+            fi
+            ;;
+          *)
+            echo "❌ Unsupported operating system: {{.UNAME_S}}"
+            exit 1
+            ;;
+        esac
+  ssh:
+    desc: Install SSH
+    silent: true
+    cmds:
+      - |
+        echo "🔧 Installing SSH..."
+        case "{{.UNAME_S}}" in
+          Darwin)
+            if ! command -v ssh >/dev/null 2>&1; then
+              echo "❌ SSH should be pre-installed on macOS. Please check your system.";
+              exit 1;
+            else
+              echo "✅ SSH is already available";
+            fi
+            ;;
+          Linux)
+            if ! command -v ssh >/dev/null 2>&1; then
+              if command -v apt-get >/dev/null 2>&1; then
+                sudo apt-get update && sudo apt-get install -y openssh-client;
+              else
+                echo "❌ Unsupported package manager. Please install SSH manually.";
+                exit 1;
+              fi
+            else
+              echo "✅ SSH is already installed";
+            fi
+            ;;
+          *)
+            echo "❌ Unsupported operating system: {{.UNAME_S}}"
+            exit 1
+            ;;
+        esac
+  nix:
+    desc: Install Nix
+    silent: true
+    cmds:
+      - |
+        echo "🔧 Installing Nix package manager..."
+        if ! command -v nix >/dev/null 2>&1; then
+          echo "📥 Downloading and installing Nix...";
+          curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | sh;
+          echo "";
+          echo "⚠️  Please restart your shell or run:";
+          echo "    source ~/.nix-profile/etc/profile.d/nix.sh";
+          echo "";
+        else
+          echo "✅ Nix is already installed";
+          nix --version;
+        fi
+  check-deps:
+    desc: Check if all dependencies are installed
+    silent: true
+    cmds:
+      - |
+        echo "🔍 Checking dependencies..."
+        echo -n "Git: "
+        if command -v git >/dev/null 2>&1; then
+          echo "✅ $(shell git --version)";
+        else
+          echo "❌ Not installed";
+        fi
+        echo -n "SSH: "
+        if command -v ssh >/dev/null 2>&1; then
+          echo "✅ $(shell ssh -V 2>&1 | head -n1)";
+        else
+          echo "❌ Not installed";
+        fi
+        echo -n "Nix: "
+        if command -v nix >/dev/null 2>&1; then
+          echo "✅ $(shell snix --version)";
+        else
+          echo "❌ Not installed";
+        fi

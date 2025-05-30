@@ -1,0 +1,17 @@
+version: '3'
+
+vars:
+  # Detect OS
+  UNAME_S:
+    sh: uname -s
+  UNAME_M:
+    sh: uname -m
+
+includes:
+  install: ./Taskfile.install.yml
+ 
+tasks:
+  default:
+    cmds:
+      - task --list-all
+    silent: true
