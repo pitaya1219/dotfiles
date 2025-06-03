@@ -6,7 +6,7 @@ tasks:
     silent: true
     cmds:
       - task: git
-      - task: ssh
+      - task: dropbear
       - task: nix
   git:
     desc: Install Git
@@ -44,31 +44,31 @@ tasks:
             exit 1
             ;;
         esac
-  ssh:
-    desc: Install SSH
+  dropbear:
+    desc: Install Dropbear (Light Weight SSH)
     silent: true
     cmds:
       - |
-        echo "🔧 Installing SSH..."
+        echo "🔧 Installing Dropbear..."
         case "{{.UNAME_S}}" in
           Darwin)
-            if ! command -v ssh >/dev/null 2>&1; then
-              echo "❌ SSH should be pre-installed on macOS. Please check your system.";
+            if ! command -v dropbear >/dev/null 2>&1; then
+              echo "❌ Dropbear should be pre-installed on macOS. Please check your system.";
               exit 1;
             else
-              echo "✅ SSH is already available";
+              echo "✅ Dropbear is already available";
             fi
             ;;
           Linux)
-            if ! command -v ssh >/dev/null 2>&1; then
+            if ! command -v dropbear >/dev/null 2>&1; then
               if command -v apt-get >/dev/null 2>&1; then
-                sudo apt-get update && sudo apt-get install -y openssh-client;
+                sudo apt-get update && sudo apt-get install -y dropbear;
               else
-                echo "❌ Unsupported package manager. Please install SSH manually.";
+                echo "❌ Unsupported package manager. Please install Dropbear manually.";
                 exit 1;
               fi
             else
-              echo "✅ SSH is already installed";
+              echo "✅ Dropbear is already installed";
             fi
             ;;
           *)
@@ -101,19 +101,20 @@ tasks:
         echo "🔍 Checking dependencies..."
         echo -n "Git: "
         if command -v git >/dev/null 2>&1; then
-          echo "✅ $(shell git --version)";
+          echo "✅ $(git --version)";
         else
           echo "❌ Not installed";
         fi
-        echo -n "SSH: "
-        if command -v ssh >/dev/null 2>&1; then
-          echo "✅ $(shell ssh -V 2>&1 | head -n1)";
+        echo -n "Dropbear: "
+        if command -v dropbear >/dev/null 2>&1; then
+          echo "✅ $(dropbear --version 2>&1 | head -n1)";
         else
           echo "❌ Not installed";
         fi
         echo -n "Nix: "
+        echo -n "Nix: "
         if command -v nix >/dev/null 2>&1; then
-          echo "✅ $(shell snix --version)";
+          echo "✅ $(nix --version)";
         else
           echo "❌ Not installed";
         fi
