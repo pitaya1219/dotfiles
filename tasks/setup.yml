@@ -6,5 +6,5 @@ includes:
 tasks:
   default:
     cmds:
-      - task --list-all
+      - task -t tasks/setup.yml --list
     silent: true
