@@ -1,7 +1,7 @@
 version: '3'
 
 includes:
-  nix: ./Taskfile.setup.nix.yml
+  nix: ./setup/nix.yml
 
 tasks:
   default:

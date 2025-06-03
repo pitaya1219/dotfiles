@@ -8,8 +8,8 @@ vars:
     sh: uname -m
 
 includes:
-  install: ./Taskfile.install.yml
-  setup: ./Taskfile.setup.yml
+  install: ./tasks/install.yml
+  setup: ./tasks/setup.yml
  
 tasks:
   default:
