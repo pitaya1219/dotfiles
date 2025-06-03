@@ -9,6 +9,7 @@ vars:
 
 includes:
   install: ./Taskfile.install.yml
+  setup: ./Taskfile.setup.yml
  
 tasks:
   default:

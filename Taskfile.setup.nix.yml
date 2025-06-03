@@ -1,0 +1,41 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Setup nix
+    silent: true
+    cmds:
+      - task: flake
+      - task: home-manager
+  flake:
+    desc: Setup flake
+    silent: true
+    vars:
+      NIX_DIR:
+        sh: printf "${HOME}/.config/nix"
+      NIX_CONF_PATH: "{{.NIX_DIR}}/nix.conf"
+    cmds:
+      - |
+        echo "❄️ Setup flake..."
+        if ! test -d {{.NIX_DIR}}; then
+          echo "{{.NIX_DIR}} not found."
+          echo "Create {{.NIX_DIR}}."
+          mkdir -p "{{.NIX_DIR}}"
+        fi
+        if ! test -f {{.NIX_CONF_PATH}}; then
+          echo "{{.NIX_CONF_PATH}} not found."
+          echo "Create {{.NIX_CONF_PATH}}."
+          touch "{{.NIX_CONF_PATH}}"
+        fi
+        if grep -q 'experimental-features = nix-command flakes' "{{.NIX_CONF_PATH}}"; then
+          echo "✅ Flakes already enabled";
+        else
+          echo 'experimental-features = nix-command flakes' >> "{{.NIX_CONF_PATH}}"
+        fi
+  home-manager:
+    desc: Setup nix home-manager
+    silent: true
+    cmds:
+      - |
+        echo "❄️ Setup home-manager..."
+        nix run home-manager/master -- init

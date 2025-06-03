@@ -1,0 +1,10 @@
+version: '3'
+
+includes:
+  nix: ./Taskfile.setup.nix.yml
+
+tasks:
+  default:
+    cmds:
+      - task --list-all
+    silent: true
