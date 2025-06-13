@@ -1,0 +1,13 @@
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - task --list-all
+    silent: true
+  clean:
+    desc: Clean up Nix store
+    silent: true
+    cmds:
+      - |
+        nix store gc
