@@ -38,4 +38,15 @@ tasks:
     cmds:
       - |
         echo "❄️ Setup home-manager..."
-        nix run home-manager/master -- init
+        select profile in $(
+          find profiles -name "*.nix" | xargs -I {} basename {} .nix
+        ); do
+          if [ -n "$profile" ]; then
+            echo "Using profile: $profile"
+            nix run home-manager/master -- switch --flake .#"${profile}"
+            break
+          else
+            echo "⚠️ Invalid selection. Please try again."
+            break
+          fi
+        done

@@ -10,6 +10,7 @@ vars:
 includes:
   install: ./tasks/install.yml
   setup: ./tasks/setup.yml
+  nix: ./tasks/nix.yml
  
 tasks:
   default:
