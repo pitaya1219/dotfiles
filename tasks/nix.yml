@@ -11,3 +11,13 @@ tasks:
     cmds:
       - |
         nix store gc
+  get_github_hash:*:*:*:
+    desk:
+    silent: true
+    vars:
+      OWNER: "{{index .MATCH 0}}"
+      REPO: "{{index .MATCH 1}}"
+      REVISION: "{{index .MATCH 2}}"
+    cmds:
+      - |
+        nix-prefetch-url --unpack https://github.com/{{.OWNER}}/{{.REPO}}/archive/{{.REVISION}}.tar.gz
