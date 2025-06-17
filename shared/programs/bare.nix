@@ -1,13 +1,8 @@
 { config, pkgs, lib, ... }:
 
 {
-  nixpkgs.config.allowUnfreePredicate = pkg:
-    builtins.elem (lib.getName pkg) [
-      "claude-code"
-      "copilot.vim"
-    ];
-
   home.packages = with pkgs; [
+    tree
     curl
     expect        # for using unbuffer
     sqlite

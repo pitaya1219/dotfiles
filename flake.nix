@@ -43,9 +43,6 @@
           home-manager.lib.homeManagerConfiguration {
             inherit pkgs;
             modules = [
-              # Base configuration shared across all profiles
-              ./shared/base.nix
-              
               # Profile-specific configuration
               ./profiles/${profile}.nix
               
