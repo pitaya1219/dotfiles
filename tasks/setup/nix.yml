@@ -32,8 +32,8 @@ tasks:
         else
           echo 'experimental-features = nix-command flakes' >> "{{.NIX_CONF_PATH}}"
         fi
-  home-manager:
-    desc: Setup nix home-manager
+  home:
+    desc: Setup nix home-manager and switch profile
     silent: true
     cmds:
       - |
