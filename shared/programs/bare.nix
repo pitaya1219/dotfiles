@@ -16,9 +16,4 @@
     claude-code
     ollama
   ];
-
-  # Set PATH installing tools via pipx instead
-  home.sessionVariables = {
-    PATH = "$HOME/.local/bin:$PATH";
-  };
 }
