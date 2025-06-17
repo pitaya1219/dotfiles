@@ -1,12 +1,9 @@
 { config, pkgs, ... }:
 
 {
-  imports = [
-    # ../shared/activations/ollama.nix
-  ];
+  imports = [];
 
   home.packages = with pkgs; [
     jq
-    ollama
   ];
 }

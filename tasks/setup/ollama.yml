@@ -1,0 +1,199 @@
+version: '3'
+
+tasks:
+  default:
+    desc: "Interactive Ollama model setup with selection"
+    silent: true
+    cmds:
+      - |
+        #!/usr/bin/env bash
+        
+        # Create ollama models directory if it doesn't exist
+        mkdir -p ~/.ollama/models
+
+        # Available models with descriptions
+        declare -A MODELS=(
+            ["qwen2.5-coder:14b"]="Qwen2.5-Coder 14B - Large coding model (high accuracy)"
+            ["qwen2.5-coder:14b-instruct-q3_K_M"]="Qwen2.5-Coder 14B Instruct Q3_K_M - Quantized version"
+            ["qwen2.5-coder:7b"]="Qwen2.5-Coder 7B - Medium coding model (balanced)"
+            ["qwen2.5-coder:7b-instruct-q6_K"]="Qwen2.5-Coder 7B Instruct Q6_K - Higher quality quantized"
+            ["qwen2.5-coder:3b"]="Qwen2.5-Coder 3B - Small coding model (fast)"
+            ["llava:7b-v1.5-q4_K_M"]="LLaVA 7B v1.5 - Vision + Language model"
+        )
+
+        # Colors for better UX
+        RED=$(tput setaf 1)
+        GREEN=$(tput setaf 2)
+        YELLOW=$(tput setaf 3)
+        BLUE=$(tput setaf 4)
+        NC=$(tput sgr0) # Reset
+
+        echo -e "${BLUE}🦙 Ollama Model Setup${NC}"
+        echo "======================"
+
+        # Function to check if model exists
+        model_exists() {
+            local model=$1
+            ollama list 2>/dev/null | grep -q "^$model"
+        }
+
+        # Function to check if ollama service is running
+        check_ollama_service() {
+            curl -s http://localhost:11434/api/version > /dev/null 2>&1
+        }
+
+        # Start ollama service if not running
+        if ! check_ollama_service; then
+            echo -e "${YELLOW}🚀 Starting ollama service...${NC}"
+            ollama serve > ~/.ollama/server.log 2>&1 &
+            
+            # Wait for service to be ready
+            echo -e "${YELLOW}⏳ Waiting for ollama to be ready...${NC}"
+            for i in {1..30}; do
+                if check_ollama_service; then
+                    echo -e "${GREEN}✅ Ollama service is ready!${NC}"
+                    break
+                fi
+                printf "   Waiting... (%d/30)\r" "$i"
+                sleep 1
+            done
+            
+            if ! check_ollama_service; then
+                echo -e "${RED}❌ Failed to start ollama service${NC}"
+                exit 1
+            fi
+        else
+            echo -e "${GREEN}✅ Ollama service is already running${NC}"
+        fi
+
+        echo ""
+        echo -e "${BLUE}📦 Available Models:${NC}"
+        echo "===================="
+
+        # Create arrays for menu
+        model_keys=()
+        model_descriptions=()
+        model_status=()
+
+        for model in "${!MODELS[@]}"; do
+            model_keys+=("$model")
+            model_descriptions+=("${MODELS[$model]}")
+            if model_exists "$model"; then
+                model_status+=("${GREEN}[INSTALLED]${NC}")
+            else
+                model_status+=("${RED}[NOT INSTALLED]${NC}")
+            fi
+        done
+
+        # Sort arrays by model name
+        IFS=$'\n' sorted_indices=($(
+            for i in "${!model_keys[@]}"; do
+                printf '%s\t%s\n' "$i" "${model_keys[$i]}"
+            done | sort -k2 | cut -f1
+        ))
+
+        # Display menu with current status
+        for i in "${!sorted_indices[@]}"; do
+            idx="${sorted_indices[$i]}"
+            printf "%d) %-35s %s\n" $((i+1)) "${model_keys[$idx]}" "${model_status[$idx]}"
+            printf "   %s\n\n" "${model_descriptions[$idx]}"
+        done
+
+        echo -e "${YELLOW}Select models to install (space-separated numbers, or 'a' for all, 'q' to quit):${NC}"
+        read -r selection
+
+        # Handle quit
+        if [[ "$selection" == "q" ]] || [[ "$selection" == "quit" ]]; then
+            echo "Setup cancelled."
+            exit 0
+        fi
+
+        # Prepare selected models array
+        selected_models=()
+
+        if [[ "$selection" == "a" ]] || [[ "$selection" == "all" ]]; then
+            # Select all models
+            for idx in "${sorted_indices[@]}"; do
+                selected_models+=("${model_keys[$idx]}")
+            done
+            echo -e "${BLUE}📋 Selected: All models${NC}"
+        else
+            # Parse user selection
+            for num in $selection; do
+                if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#sorted_indices[@]}" ]; then
+                    idx="${sorted_indices[$((num-1))]}"
+                    selected_models+=("${model_keys[$idx]}")
+                else
+                    echo -e "${RED}⚠️  Invalid selection: $num${NC}"
+                fi
+            done
+        fi
+
+        if [ ${#selected_models[@]} -eq 0 ]; then
+            echo -e "${YELLOW}No valid models selected. Exiting.${NC}"
+            exit 0
+        fi
+
+        echo ""
+        echo -e "${BLUE}📥 Installing selected models...${NC}"
+        echo "================================"
+
+        # Function to pull model with progress
+        pull_model() {
+            local model=$1
+            echo ""
+            echo -e "${BLUE}📦 Processing: $model${NC}"
+            
+            if model_exists "$model"; then
+                echo -e "${GREEN}✅ Model $model is already installed, skipping...${NC}"
+                return 0
+            fi
+            
+            echo -e "${YELLOW}📥 Pulling model: $model${NC}"
+            if ollama pull "$model"; then
+                echo -e "${GREEN}✅ Successfully installed: $model${NC}"
+            else
+                echo -e "${RED}❌ Failed to install: $model${NC}"
+                return 1
+            fi
+        }
+
+        # Install selected models
+        failed_models=()
+        successful_models=()
+
+        for model in "${selected_models[@]}"; do
+            if pull_model "$model"; then
+                successful_models+=("$model")
+            else
+                failed_models+=("$model")
+            fi
+        done
+
+        # Summary
+        echo ""
+        echo -e "${BLUE}📊 Installation Summary${NC}"
+        echo "======================="
+
+        if [ ${#successful_models[@]} -gt 0 ]; then
+            echo -e "${GREEN}✅ Successfully installed (${#successful_models[@]}):${NC}"
+            for model in "${successful_models[@]}"; do
+                echo "   • $model"
+            done
+        fi
+
+        if [ ${#failed_models[@]} -gt 0 ]; then
+            echo -e "${RED}❌ Failed to install (${#failed_models[@]}):${NC}"
+            for model in "${failed_models[@]}"; do
+                echo "   • $model"
+            done
+        fi
+
+        echo ""
+        echo -e "${GREEN}🎉 Ollama setup completed!${NC}"
+        echo ""
+        echo -e "${BLUE}💡 Available commands:${NC}"
+        echo "   ollama list              - Show installed models"
+        echo "   ollama run <model>       - Run a model interactively"
+        echo "   ollama ps               - Show running models"
+        echo "   ollama stop <model>     - Stop a running model"

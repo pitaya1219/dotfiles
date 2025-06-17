@@ -14,6 +14,7 @@
     git
     pipx          # for installing python made tool into global
     claude-code
+    ollama
   ];
 
   # Set PATH installing tools via pipx instead

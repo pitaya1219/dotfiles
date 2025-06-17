@@ -2,6 +2,7 @@ version: '3'
 
 includes:
   nix: ./setup/nix.yml
+  ollama: ./setup/ollama.yml
 
 tasks:
   default:
