@@ -10,6 +10,13 @@ let
       rev = "develop";
       sha256 = "0rc3cmba2bfrjcffpc1f2a9y2yx167a39l1lxpxpvapsilkxnb2d";
     }
+    {
+      name = "base2tone-nvim";
+      owner = "atelierbram";  
+      repo = "Base2Tone-nvim";
+      rev = "main";
+      sha256 = "1wn2dgwicqn8y0sgw2fsbs750xxwnxg68a6j18aj8yhhpq2dkhsx";
+    }
   ];
 
   # Profile-specific plugins
