@@ -19,13 +19,6 @@ let
     }
   ];
 
-  # Profile-specific plugins
-  profilePlugins = with pkgs.vimPlugins; {
-    r-shibuya = [
-      copilot-vim
-    ];
-    droid = [];
-  };
 
   # Build custom plugins using loop
   buildCustomPlugins = map (plugin: pkgs.vimUtils.buildVimPlugin {
@@ -58,7 +51,7 @@ in
     kanagawa-nvim
     kanagawa-paper-nvim
     iceberg-vim
-  ] ++ buildCustomPlugins ++ (profilePlugins.${config.home.username} or []);
+  ] ++ buildCustomPlugins;
 
 
   extraPackages = with pkgs; [

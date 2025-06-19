@@ -6,7 +6,7 @@ tasks:
     silent: true
     cmds:
       - task: flake
-      - task: home-manager
+      - task: home
   flake:
     desc: Setup flake
     silent: true
@@ -37,9 +37,9 @@ tasks:
     silent: true
     cmds:
       - |
-        echo "❄️ Setup home-manager..."
+        echo "❄️ Setup home..."
         select profile in $(
-          find profiles -name "*.nix" | xargs -I {} basename {} .nix
+          find profiles -depth 1 -name "*.nix" | xargs -I {} basename {} .nix
         ); do
           if [ -n "$profile" ]; then
             echo "Using profile: $profile"
