@@ -75,5 +75,9 @@ in
     nodePackages.eslint
     nodePackages.prettier
     
+    # Nix language server
+    nixd
+    nixpkgs-fmt
+
   ];
 }

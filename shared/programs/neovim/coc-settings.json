@@ -54,6 +54,11 @@
       "filetypes": ["terraform", "tf"],
       "initializationOptions": {},
       "settings": {}
+    },
+    "nix": {
+      "command": "nixd",
+      "filetypes": ["nix"],
+      "rootPatterns": ["flake.nix", "default.nix"]
     }
   },
   "elixir.pathToElixirLS": "~/.elixir-ls/release/language_server.sh",
