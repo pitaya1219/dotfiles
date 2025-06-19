@@ -8,7 +8,12 @@
     (import ../shared/programs/unfree.nix { additionalPackages = [ "copilot.vim" ]; })
   ];
 
-  home.packages = with pkgs; [
-    jq
-  ];
+  home = {
+    username = "r-shibuya";
+    homeDirectory = "/Users/r-shibuya";
+    stateVersion = "23.11";
+    packages = with pkgs; [
+      jq
+    ];
+  };
 }

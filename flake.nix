@@ -34,35 +34,16 @@
 
       # Helper functions
       helpers = {
-        # Determine home directory based on system
-        getHomeDirectory = system: profile: username:
-          if nixpkgs.legacyPackages.${system}.stdenv.isDarwin 
-          then "/Users/${username}"
-          else "/home/${username}";
-
         # Generate Home Manager configuration for a user
         generateHomeConfiguration = userConfig:
-          let
-            inherit (userConfig) system profile username;
+          home-manager.lib.homeManagerConfiguration {
             pkgs = import nixpkgs {
-              inherit system;
+              system = userConfig.system;
               overlays = [ neovim-nightly-overlay.overlays.default ];
             };
-          in
-          home-manager.lib.homeManagerConfiguration {
-            inherit pkgs;
             modules = [
               # Profile-specific configuration
-              ./profiles/${profile}.nix
-              
-              # User-specific settings
-              {
-                home = {
-                  username = username;
-                  homeDirectory = helpers.getHomeDirectory system profile username;
-                  stateVersion = "23.11";
-                };
-              }
+              ./profiles/${userConfig.profile}.nix
             ];
           };
       };
