@@ -1,1 +1,3 @@
-../../../shared/programs/neovim/coc-settings.json
+{
+  "explorer.width": 30
+}

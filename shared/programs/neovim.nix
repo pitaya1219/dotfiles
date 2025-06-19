@@ -27,11 +27,22 @@ let
     type == "regular" && lib.hasSuffix ".lua" name
   ) (builtins.readDir ./neovim/plugins));
   
-  # Profile-specific coc-settings path
+  # Merge coc-settings.json from shared and profile-specific sources
+  baseCocSettings = builtins.fromJSON (builtins.readFile ./neovim/coc-settings.json);
   profileCocSettingsPath = ../../profiles/${config.home.username}/neovim/coc-settings.json;
-  cocSettingsSource = if builtins.pathExists profileCocSettingsPath
-    then profileCocSettingsPath
-    else ./neovim/coc-settings.json;
+  profileCocSettings = if builtins.pathExists profileCocSettingsPath
+    then builtins.fromJSON (builtins.readFile profileCocSettingsPath)
+    else {};
+  
+  # Deep merge function for nested objects
+  deepMerge = a: b:
+    if builtins.isAttrs a && builtins.isAttrs b
+    then lib.recursiveUpdate a b
+    else b;
+  
+  # Merged coc settings
+  mergedCocSettings = deepMerge baseCocSettings profileCocSettings;
+  cocSettingsFile = pkgs.writeText "coc-settings.json" (builtins.toJSON mergedCocSettings);
 in
 {
   programs.neovim = {
@@ -55,6 +66,6 @@ in
     name = ".config/nvim/${name}";
     value.source = path;
   }) pluginFiles // {
-    ".config/nvim/coc-settings.json".source = cocSettingsSource;
+    ".config/nvim/coc-settings.json".source = cocSettingsFile;
   };
 }
