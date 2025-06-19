@@ -53,20 +53,27 @@ in
     iceberg-vim
   ] ++ buildCustomPlugins;
 
-
+  # These tools are added to $PATH only when Neovim is started
   extraPackages = with pkgs; [
-    # Required for coc.nvim
-    nodejs
     python3
     
+    # Python packages for neovim
+    (python3.withPackages (ps: with ps; [
+      msgpack
+      # Python packages for Neovim
+      pynvim
+      # Python packages for vim-ollama
+      httpx
+      requests
+      jinja2
+    ]))
+    
+
+    nodejs
     # Language servers and tools
     nodePackages.typescript-language-server
     nodePackages.eslint
     nodePackages.prettier
     
-    # Python tools
-    python3Packages.httpx
-    python3Packages.requests
-    python3Packages.jinja2
   ];
 }
