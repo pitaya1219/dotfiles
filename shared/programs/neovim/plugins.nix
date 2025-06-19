@@ -55,8 +55,8 @@ in
 
   # These tools are added to $PATH only when Neovim is started
   extraPackages = with pkgs; [
-    python3
-    
+    ripgrep
+
     # Python packages for neovim
     (python3.withPackages (ps: with ps; [
       msgpack
