@@ -27,3 +27,10 @@ vim.opt.guicursor = "n-v-c:block,i-ci-ve:ver25,r-cr:hor20,o:hor50,a:blinkwait700
 vim.cmd("filetype plugin indent on")
 
 vim.cmd("syntax enable")
+
+-- Set default colorscheme
+vim.cmd("colorscheme aquarium")
+
+if vim.env.TERM_PROGRAM == "tmux" then
+  vim.env.TERM = "tmux-256color"
+end

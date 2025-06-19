@@ -1,11 +1,11 @@
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, profileName, ... }:
 
 let
   # Base neovim plugins from shared configuration
   baseNeovimPlugins = import ./neovim/plugins.nix { inherit pkgs lib config; };
   
   # Profile-specific plugins - fallback to empty if not found
-  profilePluginsPath = ../../profiles/${config.home.username}/neovim/plugins.nix;
+  profilePluginsPath = ../../profiles/${profileName}/neovim/plugins.nix;
   profilePlugins = if builtins.pathExists profilePluginsPath
     then import profilePluginsPath { inherit pkgs lib config; }
     else { plugins = []; extraPackages = []; };
@@ -21,15 +21,26 @@ let
   
   # Get plugin lua files from plugins directory
   pluginFiles = lib.mapAttrs' (name: _: {
-    name = "plugins/${name}";
-    value = ./neovim/plugins/${name};
+    name = "plugin/${name}";
+    value = ./neovim/plugin/${name};
   }) (lib.filterAttrs (name: type: 
     type == "regular" && lib.hasSuffix ".lua" name
-  ) (builtins.readDir ./neovim/plugins));
+  ) (builtins.readDir ./neovim/plugin));
+  
+  # Get profile-specific after/plugin files
+  profileAfterPluginPath = ../../profiles/${profileName}/neovim/after/plugin;
+  profileAfterPluginFiles = if builtins.pathExists profileAfterPluginPath
+    then lib.mapAttrs' (name: _: {
+      name = "after/plugin/${name}";
+      value = profileAfterPluginPath + "/${name}";
+    }) (lib.filterAttrs (name: type: 
+      type == "regular" && lib.hasSuffix ".lua" name
+    ) (builtins.readDir profileAfterPluginPath))
+    else {};
   
   # Merge coc-settings.json from shared and profile-specific sources
   baseCocSettings = builtins.fromJSON (builtins.readFile ./neovim/coc-settings.json);
-  profileCocSettingsPath = ../../profiles/${config.home.username}/neovim/coc-settings.json;
+  profileCocSettingsPath = ../../profiles/${profileName}/neovim/coc-settings.json;
   profileCocSettings = if builtins.pathExists profileCocSettingsPath
     then builtins.fromJSON (builtins.readFile profileCocSettingsPath)
     else {};
@@ -65,7 +76,10 @@ in
   }) luaFiles // lib.mapAttrs' (name: path: {
     name = ".config/nvim/${name}";
     value.source = path;
-  }) pluginFiles // {
+  }) pluginFiles // lib.mapAttrs' (name: path: {
+    name = ".config/nvim/${name}";
+    value.source = path;
+  }) profileAfterPluginFiles // {
     ".config/nvim/coc-settings.json".source = cocSettingsFile;
   };
 }

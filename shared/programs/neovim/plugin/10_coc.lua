@@ -58,7 +58,7 @@ vim.keymap.set("n", "<leader>coclens", "<Plug>(coc-codelens-action)")
 vim.keymap.set("n", "<leader>cocuse", ":call CocActionAsync('jumpUsed')<cr>")
 vim.keymap.set("n", "<leader>cocren", ":call CocActionAsync('rename')<cr>")
 vim.keymap.set("n", "<leader>cocref", ":call CocActionAsync('jumpReference')<cr>")
-vim.keymap.set("n", "<space>coce", "<Cmd>CocCommand explorer<CR>")
+vim.keymap.set("n", "<leader>coce", "<Cmd>CocCommand explorer<CR>")
 vim.keymap.set("x", "<leader>cocform", "<Plug>(coc-format-selected)")
 vim.keymap.set("x", "<leader>cocact", "<Plug>(coc-codeaction-selected)")
 

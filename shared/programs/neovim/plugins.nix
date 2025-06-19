@@ -78,6 +78,6 @@ in
     # Nix language server
     nixd
     nixpkgs-fmt
-
+    
   ];
 }

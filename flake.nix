@@ -20,28 +20,30 @@
       
       # User configuration data
       users = {
-        r-shibuya = {
+        r-shibuya = rec {
           system = "aarch64-darwin";
           profile = "r-shibuya";
+          username = profile;
         };
-        droid = {
+        droid = rec {
           system = "aarch64-linux";
           profile = "droid";
+          username = profile;
         };
       };
 
       # Helper functions
       helpers = {
         # Determine home directory based on system
-        getHomeDirectory = system: profile:
+        getHomeDirectory = system: profile: username:
           if nixpkgs.legacyPackages.${system}.stdenv.isDarwin 
-          then "/Users/${profile}"
-          else "/home/${profile}";
+          then "/Users/${username}"
+          else "/home/${username}";
 
         # Generate Home Manager configuration for a user
         generateHomeConfiguration = userConfig:
           let
-            inherit (userConfig) system profile;
+            inherit (userConfig) system profile username;
             pkgs = import nixpkgs {
               inherit system;
               overlays = [ neovim-nightly-overlay.overlays.default ];
@@ -56,8 +58,8 @@
               # User-specific settings
               {
                 home = {
-                  username = profile;
-                  homeDirectory = helpers.getHomeDirectory system profile;
+                  username = username;
+                  homeDirectory = helpers.getHomeDirectory system profile username;
                   stateVersion = "23.11";
                 };
               }

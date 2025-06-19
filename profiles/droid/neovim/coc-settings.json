@@ -1,3 +1,4 @@
 {
-  "explorer.width": 30
+  "explorer.width": 30,
+  "explorer.position": "floating"
 }

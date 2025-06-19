@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 
 {
 
@@ -6,7 +6,7 @@
     ../shared/activations/aider.nix
     (import ../shared/programs/unfree.nix {})
     ../shared/programs/bare.nix
-    ../shared/programs/neovim.nix
+    (import ../shared/programs/neovim.nix { inherit config pkgs lib; profileName = "droid"; })
   ];
 
   home.packages = with pkgs; [
