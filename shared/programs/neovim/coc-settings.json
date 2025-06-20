@@ -32,6 +32,7 @@
     "value": "☆",
     "enumMember": " "
   },
+  "suggest.triggerAfterInsertEnter": false,
   "languageserver": {
     "nix": {
       "command": "nixd",
@@ -39,10 +40,22 @@
       "rootPatterns": ["flake.nix", "default.nix"]
     }
   },
+  "lua.enable": true,
+  "Lua.completion.enable": true,
+  "Lua.diagnostics.globals": [
+    "vim",
+    "describe",
+    "it",
+    "before_each",
+    "after_each",
+    "assert"
+  ],
   "explorer.focus": true,
   "explorer.file.reveal.auto": false,
   "explorer.toggle": false,
   "explorer.position": "left",
   "explorer.width": 40,
-  "explorer.icon.enableNerdfont": true
+  "explorer.icon.enableNerdfont": true,
+  "yaml.enable": true,
+  "yaml.hover": true
 }

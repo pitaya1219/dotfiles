@@ -11,6 +11,7 @@ vim.opt.foldmethod = "syntax"
 vim.opt.background = "dark"
 vim.opt.termguicolors = true
 vim.opt.number = true
+vim.opt.relativenumber = true
 vim.opt.wildmenu = true
 vim.opt.re = 0 -- fix problems: it disable syntax highlight when reload buffer
 vim.opt.cursorline = true
