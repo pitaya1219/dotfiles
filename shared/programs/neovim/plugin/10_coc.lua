@@ -19,7 +19,6 @@ vim.g.coc_snippet_next = '<tab>'
 
 if vim.fn.executable('command') == 1 then
   vim.g.coc_node_path = vim.fn.substitute(vim.fn.system('command -v node'), "\n", "", "")
-  vim.g.python3_host_prog = vim.fn.substitute(vim.fn.system('command -v python3'), "\n", "", "")
 end
 
 -- Helper function for coc

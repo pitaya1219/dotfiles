@@ -13,6 +13,7 @@
           ../shared/programs/bare.nix
           ../shared/programs/neovim.nix
           ../shared/programs/tmux.nix
+          ../shared/programs/starship.nix
           ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "lepetitprince")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
         ];
