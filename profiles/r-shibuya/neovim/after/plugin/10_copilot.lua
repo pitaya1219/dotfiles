@@ -16,3 +16,4 @@ vim.g.coc_global_extensions = vim.list_extend(existing_extensions, addtional_ext
 -- Keybindings for copilot.vim
 vim.keymap.set("n", "<leader>cop", ":Copilot<cr>")
 vim.keymap.set("v", "<leader>cop", ":Copilot<cr>")
+vim.keymap.set("i", "<c-i>",  "<Plug>(copilot-accept-word")
