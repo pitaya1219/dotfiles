@@ -1,0 +1,32 @@
+{
+  "languageserver": {
+    "kotlin": {
+      "command": "~/clone/dotfiles/.lsp/bin/kotlin-language-server",
+      "filetypes": ["kotlin"]
+    },
+    "haskell": {
+      "command": "haskell-language-server-wrapper",
+      "args": ["--lsp"],
+      "rootPatterns": [
+        "*.cabal",
+        "stack.yaml",
+        "cabal.project",
+        "package.yaml",
+        "hie.yaml"
+      ],
+      "filetypes": ["haskell", "lhaskell"]
+    },
+    "terraform": {
+      "command": "terraform-lsp",
+      "filetypes": ["terraform", "tf"],
+      "initializationOptions": {},
+      "settings": {}
+    },
+    "elixir.pathToElixirLS": "~/.elixir-ls/release/language_server.sh",
+    "python.venvPath": "./.venv",
+    "python.envFile": "./.env",
+    "python.formatting.provider": "ruff",
+    "python.linting.ruffEnabled": true,
+    "snippets.ultisnips.pythonPrompt": false
+  }
+}

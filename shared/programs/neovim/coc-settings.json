@@ -33,44 +33,16 @@
     "enumMember": " "
   },
   "languageserver": {
-    "kotlin": {
-      "command": "~/clone/dotfiles/.lsp/bin/kotlin-language-server",
-      "filetypes": ["kotlin"]
-    },
-    "haskell": {
-      "command": "haskell-language-server-wrapper",
-      "args": ["--lsp"],
-      "rootPatterns": [
-        "*.cabal",
-        "stack.yaml",
-        "cabal.project",
-        "package.yaml",
-        "hie.yaml"
-      ],
-      "filetypes": ["haskell", "lhaskell"]
-    },
-    "terraform": {
-      "command": "terraform-lsp",
-      "filetypes": ["terraform", "tf"],
-      "initializationOptions": {},
-      "settings": {}
-    },
     "nix": {
       "command": "nixd",
       "filetypes": ["nix"],
       "rootPatterns": ["flake.nix", "default.nix"]
     }
   },
-  "elixir.pathToElixirLS": "~/.elixir-ls/release/language_server.sh",
   "explorer.focus": true,
   "explorer.file.reveal.auto": false,
   "explorer.toggle": false,
   "explorer.position": "left",
   "explorer.width": 40,
-  "explorer.icon.enableNerdfont": true,
-  "python.venvPath": "./.venv",
-  "python.envFile": "./.env",
-  "python.formatting.provider": "ruff",
-  "python.linting.ruffEnabled": true,
-  "snippets.ultisnips.pythonPrompt": false
+  "explorer.icon.enableNerdfont": true
 }

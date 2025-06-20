@@ -2,27 +2,16 @@
 
 -- Global extensions
 vim.g.coc_global_extensions = {
-  'coc-eslint',
   'coc-git',
   'coc-highlight',
   'coc-json',
   'coc-markdownlint',
-  'coc-prettier',
   'coc-snippets',
   'coc-spell-checker',
-  'coc-tslint-plugin',
-  'coc-tsserver',
   'coc-yaml',
-  'coc-go',
   'coc-explorer',
-  'coc-cl',
-  '@yaegassy/coc-volar',
-  '@yaegassy/coc-ruff',
-  '@yaegassy/coc-mypy',
-  '@yaegassy/coc-tailwindcss3',
-  'coc-pyright',
-  'coc-elixir',
   'coc-vimlsp',
+  'coc-lua',
 }
 
 -- Coc configuration
