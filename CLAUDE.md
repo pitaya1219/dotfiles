@@ -2,152 +2,192 @@
 
 ## Repository Overview
 
-This is a multi-profile dotfiles configuration repository that uses Nix Home Manager for declarative system configuration management. The repository is designed to support multiple user profiles and platforms (macOS and Linux) with a modular architecture.
+This is a sophisticated multi-profile dotfiles configuration repository that uses Nix Home Manager for declarative system configuration management. The repository features automatic profile discovery, modular architecture, and cross-platform support for macOS and Linux environments.
 
 ## Architecture
 
 ### Core Components
 
 1. **Nix Flake Configuration** (`flake.nix`)
-   - Uses Nix Home Manager for declarative configuration
+   - Uses Home Manager with nixos-unstable channel
+   - Automatic profile discovery via custom library (`lib/profiles.nix`)
+   - Neovim nightly overlay integration
    - Supports multiple profiles and platforms
-   - Currently configured for:
-     - `r-shibuya` profile (aarch64-darwin/macOS)
-     - `droid` profile (aarch64-linux/Android Termux)
 
-2. **Task Runner** (`Taskfile.yml`)
-   - Uses Task (taskfile.dev) as build/setup tool
-   - Provides installation and setup automation
-   - Cross-platform OS detection (UNAME_S, UNAME_M)
+2. **Profile Discovery System** (`lib/profiles.nix`)
+   - Automatically discovers profiles from `profiles/*.nix`
+   - Handles platform-specific home directory detection
+   - Merges base configuration with profile-specific overrides
 
-3. **Modular Configuration Structure**
-   - `shared/base.nix`: Common packages and settings
-   - `profiles/`: User/device-specific configurations
-   - `tasks/`: Automation scripts for setup and maintenance
+3. **Task Runner** (`Taskfile.yml`)
+   - Cross-platform automation using Task (taskfile.dev)
+   - OS detection (UNAME_S, UNAME_M) for conditional logic
+   - Hierarchical task organization
 
 ### Directory Structure
 
 ```
 /Users/r-shibuya/dotfiles/
-├── flake.nix              # Main Nix flake configuration
-├── flake.lock             # Locked dependency versions
-├── Taskfile.yml           # Main task runner configuration
-├── shared/
-│   └── base.nix           # Shared configuration (git, vim, claude-code)
+├── flake.nix                    # Main Nix flake with auto-discovery
+├── flake.lock                   # Locked dependency versions
+├── Taskfile.yml                 # Main task runner configuration
+├── lib/
+│   └── profiles.nix             # Profile discovery utilities
 ├── profiles/
-│   ├── r-shibuya.nix      # macOS profile (includes jq)
-│   └── droid.nix          # Linux/Android profile (includes htop, tree)
+│   ├── r-shibuya.nix           # macOS profile
+│   ├── r-shibuya/              # Profile-specific overrides
+│   │   └── neovim/
+│   │       ├── after/plugin/    # Profile neovim plugins
+│   │       ├── coc-settings.json # CoC configuration
+│   │       └── plugins.nix      # Plugin definitions
+│   ├── droid.nix               # Linux/Android profile
+│   └── droid/                  # Profile overrides
+├── shared/
+│   ├── activations/
+│   │   └── aider.nix           # Automated aider-chat setup
+│   └── programs/
+│       ├── bare.nix            # Base packages
+│       ├── neovim.nix          # Advanced neovim config
+│       ├── neovim/             # Shared neovim files
+│       └── unfree.nix          # Unfree package management
 └── tasks/
-    ├── install.yml        # Dependency installation tasks
-    ├── setup.yml          # Setup orchestration
-    ├── nix.yml            # Nix-specific tasks
+    ├── install.yml             # Dependency installation
+    ├── setup.yml               # Setup orchestration
+    ├── nix.yml                 # Nix utilities
     └── setup/
-        └── nix.yml        # Nix setup implementation
+        ├── nix.yml             # Nix setup implementation
+        └── ollama.yml          # Interactive Ollama setup
 ```
 
-## Key Features
+## Profile Configurations
 
-### Multi-Profile Support
-- **r-shibuya profile**: macOS development environment
-  - User: r-shibuya (r-shibuya@tokyo-gas.co.jp)
-  - Additional packages: jq
-  - Target: `/Users/r-shibuya`
+### r-shibuya Profile (macOS Development)
+- **Platform**: aarch64-darwin (Apple Silicon)
+- **Home**: `/Users/r-shibuya`
+- **Packages**: jq (additional)
+- **Neovim**: copilot-vim integration
+- **Unfree**: copilot.vim allowed
 
-- **droid profile**: Linux/Android Termux environment
-  - User: pitaya1219 (runningryuya@gmail.com)
-  - Additional packages: htop, tree
-  - Target: `/home/pitaya1219`
+### droid Profile (Linux/Android Termux)
+- **Platform**: aarch64-linux (ARM64)
+- **Home**: `/home/droid`
+- **Packages**: jq (additional)
+- **Neovim**: Base configuration only
 
-### Package Management
-- **Base packages** (all profiles): git, vim, claude-code
-- **Profile-specific packages**: Customized per environment
-- **Unfree packages**: claude-code is explicitly allowed
+## Package Management
 
-### Automation Tasks
+### Base Packages (`shared/programs/bare.nix`)
+- Core tools: tree, curl, expect, sqlite, git, pipx
+- AI tools: claude-code, ollama
+- Development: Language servers (TypeScript, ESLint, Prettier, nixd)
 
-#### Installation Tasks (`task install`)
-- Git installation (brew on macOS, apt on Linux)
-- Dropbear SSH installation
+### Neovim Configuration
+- **Multi-layer system**: Base + profile-specific plugins
+- **Automatic merging**: Combines configurations seamlessly
+- **Language servers**: Full LSP integration
+- **Custom plugins**: GitHub-sourced with hash verification
+- **Nightly builds**: Via neovim-nightly-overlay
+
+### Unfree Package Management
+- Centralized allowlist system (`shared/programs/unfree.nix`)
+- Profile-specific additions supported
+- Currently allows: claude-code, copilot.vim
+
+## Automation System
+
+### Installation Tasks (`task install`)
+- Git installation (brew/apt based on OS)
+- Dropbear SSH setup
 - Nix package manager installation
 - Dependency verification
 
-#### Setup Tasks (`task setup:nix`)
-- Nix flakes configuration
-- Home Manager profile selection and deployment
-- Interactive profile selection during setup
+### Setup Tasks (`task setup`)
+- Interactive Nix configuration (`task setup:nix`)
+- Ollama model setup with rich UI (`task setup:ollama`)
+- Automatic profile detection and selection
 
-## Common Commands
+### Utility Tasks
+- Nix store cleanup (`task nix:clean`)
+- GitHub hash fetching (`task nix:github-hash`)
+- Dependency status checking
+
+## Key Commands
 
 ### Initial Setup
 ```bash
-# 1. Install Task runner
+# Install Task runner
 sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
 
-# 2. Install dependencies
+# Install dependencies
 task install
 
-# 3. Setup Nix configuration
+# Interactive setup with profile selection
 task setup:nix
 ```
 
-### Maintenance Commands
+### Maintenance
 ```bash
-# List all available tasks
+# List available tasks
 task
 
-# Check dependency status
+# Check dependencies
 task install:check-deps
 
-# Switch Home Manager configuration
-nix run home-manager/master -- switch --flake .#<profile-name>
+# Clean Nix store
+task nix:clean
+
+# Setup Ollama models
+task setup:ollama
+
+# Manual profile switch
+nix run home-manager/master -- switch --flake .#<profile>
 ```
 
-## Configuration Management
+## Advanced Features
 
-### Nix Home Manager
-- State version: 23.11
-- Uses nixos-unstable channel
-- Home Manager follows nixpkgs input
+### Automatic Profile Discovery
+- Profiles automatically loaded from `profiles/*.nix`
+- No manual flake.nix editing required for new profiles
 - Platform-specific home directory detection
 
-### Git Configuration
-- Automatically configured per profile
-- User name and email set from flake configuration
-- No additional git-specific modules currently
+### Layered Configuration
+- Base configuration in `shared/`
+- Profile-specific overrides in `profiles/<name>/`
+- Automatic merging of neovim configurations
 
-### Package Sources
-- Primary: nixpkgs (NixOS/nixpkgs/nixos-unstable)
-- Home Manager: nix-community/home-manager
-
-## Development Workflow
-
-1. **Profile Creation**: Add new `.nix` files to `profiles/` directory
-2. **Package Management**: Edit `shared/base.nix` for common packages, profile-specific files for unique needs
-3. **Task Automation**: Extend `tasks/` directory for new automation needs
-4. **Platform Support**: OS detection and conditional logic in task files
-
-## Current Status (Git)
-- Working branch: `work`
-- Modified files: `shared/base.nix`, `tasks/setup/nix.yml`
-- Untracked: `tasks/nix.yml`
-- Recent commits focus on README updates and task reorganization
+### Cross-Platform Support
+- OS detection in task automation
+- Platform-specific package installation
+- Conditional configuration based on system type
 
 ## Dependencies
 
 ### External Tools
-- Task runner (taskfile.dev)
 - Nix package manager
+- Task runner (taskfile.dev)
 - Git version control
-- Dropbear SSH (Linux environments)
+- Home Manager
 
 ### Nix Inputs
-- nixpkgs: NixOS package collection
-- home-manager: Declarative user environment management
+- nixpkgs: NixOS/nixpkgs (nixos-unstable)
+- home-manager: nix-community/home-manager
+- neovim-nightly-overlay: nix-community/neovim-nightly-overlay
 
-## Notes for Development
+### Development Tools
+- AI: Claude Code, GitHub Copilot, Ollama, aider-chat
+- Languages: TypeScript/ESLint/Prettier LSPs, nixd
+- Shell: ripgrep, tree, curl, jq
 
-- The repository uses a modular approach for easy maintenance
-- Cross-platform compatibility is built-in through OS detection
-- Profile switching is interactive during setup
-- All paths use absolute references in Nix configurations
-- Task files provide verbose output for troubleshooting
+## Git Status
+- Working branch: `work`
+- Status: Clean, ahead of origin by 7 commits
+- Recent focus: Profile management restructuring with automatic discovery
+
+## Notes
+
+- Repository uses automatic profile discovery for easy maintenance
+- Sophisticated neovim configuration with multi-layer plugin system
+- Cross-platform compatibility built into automation
+- All configurations use absolute paths for reliability
+- Unfree packages centrally managed with profile-specific additions
+- Interactive setup process with rich UI feedback
