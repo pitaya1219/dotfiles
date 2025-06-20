@@ -10,5 +10,7 @@
     pipx          # for installing python made tool into global
     claude-code
     ollama
+    nerd-fonts.daddy-time-mono
+    nerd-fonts.shure-tech-mono
   ];
 }
