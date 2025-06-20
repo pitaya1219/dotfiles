@@ -11,7 +11,8 @@
         imports = [
           ../shared/activations/aider.nix
           ../shared/programs/bare.nix
-          (import ../shared/programs/neovim.nix { inherit config pkgs lib; profileName = "r-shibuya"; })
+          ../shared/programs/neovim.nix
+          ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "r-shibuya")
           (import ../shared/programs/unfree.nix { additionalPackages = [ "copilot.vim" ]; })
         ];
 

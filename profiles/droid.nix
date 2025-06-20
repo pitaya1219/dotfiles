@@ -11,7 +11,8 @@
         imports = [
           ../shared/activations/aider.nix
           ../shared/programs/bare.nix
-          (import ../shared/programs/neovim.nix { inherit config pkgs lib; profileName = "droid"; })
+          ../shared/programs/neovim.nix
+          ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "droid")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
         ];
 
