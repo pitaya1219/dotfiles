@@ -12,7 +12,3 @@ local addtional_extensions = {
   'coc-pyright',
 }
 vim.g.coc_global_extensions = vim.list_extend(existing_extensions, addtional_extensions)
-
--- Keybindings for copilot.vim
-vim.keymap.set("n", "<leader>cop", ":Copilot<cr>")
-vim.keymap.set("v", "<leader>cop", ":Copilot<cr>")

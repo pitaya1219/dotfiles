@@ -1,3 +1,7 @@
 {
-  "explorer.width": 45
+  "explorer.width": 45,
+  "python.venvPath": "./.venv",
+  "python.formatting.provider": "ruff",
+  "python.linting.ruffEnabled": true,
+  "snippets.ultisnips.pythonPrompt": false
 }
