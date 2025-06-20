@@ -15,43 +15,22 @@
 
   outputs = { self, nixpkgs, home-manager, neovim-nightly-overlay }:
     let
-      # Supported systems
-      systems = [ "aarch64-darwin" "aarch64-linux" "x86_64-linux" "x86_64-darwin" ];
+      profileLib = import ./lib/profiles.nix { inherit (nixpkgs) lib; };
       
-      # User configuration data
-      users = {
-        r-shibuya = rec {
-          system = "aarch64-darwin";
-          profile = "r-shibuya";
-          username = profile;
-        };
-        droid = rec {
-          system = "aarch64-linux";
-          profile = "droid";
-          username = profile;
-        };
+      overlays = {
+        neovim-nightly = neovim-nightly-overlay.overlays.default;
       };
-
-      # Helper functions
-      helpers = {
-        # Generate Home Manager configuration for a user
-        generateHomeConfiguration = userConfig:
-          home-manager.lib.homeManagerConfiguration {
-            pkgs = import nixpkgs {
-              system = userConfig.system;
-              overlays = [ neovim-nightly-overlay.overlays.default ];
-            };
-            modules = [
-              # Profile-specific configuration
-              ./profiles/${userConfig.profile}.nix
-            ];
-          };
+      
+      # Load all profiles automatically
+      profiles = profileLib.loadProfiles {
+        profilesPath = ./profiles;
+        inherit nixpkgs home-manager overlays;
       };
-
-      # Generate all home configurations from user data
+      
+      # Generate home configurations from profiles  
       homeConfigurations = builtins.mapAttrs 
-        (name: userConfig: helpers.generateHomeConfiguration userConfig) 
-        users;
+        (name: profile: profile.mkHomeConfiguration) 
+        profiles;
 
     in
     {
