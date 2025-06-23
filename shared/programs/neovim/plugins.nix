@@ -17,6 +17,20 @@ let
       rev = "main";
       sha256 = "1wn2dgwicqn8y0sgw2fsbs750xxwnxg68a6j18aj8yhhpq2dkhsx";
     }
+    {
+      name = "evangelion";
+      owner = "xero";  
+      repo = "evangelion.nvim";
+      rev = "main";
+      sha256 = "04mj4mcrg850lfcc89vikibmmmscnssc74hfl16vjax51s0157jw";
+    }
+    {
+      name = "burgundy";
+      owner = "elliothatch";  
+      repo = "burgundy.vim";
+      rev = "master";
+      sha256 = "0ni0x8kx25mvgrlza9zvddn78bkv232cdr01cqr9nmp0jblsj86a";
+    }
   ];
 
 
