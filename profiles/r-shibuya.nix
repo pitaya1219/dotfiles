@@ -12,6 +12,7 @@
           ../shared/activations/aider.nix
           ../shared/programs/bare.nix
           ../shared/programs/neovim.nix
+          ../shared/programs/tmux.nix
           ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "r-shibuya")
           (import ../shared/programs/unfree.nix { additionalPackages = [ "copilot.vim" ]; })
         ];
@@ -23,6 +24,7 @@
           packages = with pkgs; [
             jq
           ];
+          file.".config/tmux/override.conf".source = ./r-shibuya/tmux/override.conf;
         };
       })
     ];

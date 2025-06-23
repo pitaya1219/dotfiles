@@ -12,6 +12,7 @@
           ../shared/activations/aider.nix
           ../shared/programs/bare.nix
           ../shared/programs/neovim.nix
+          ../shared/programs/tmux.nix
           ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "droid")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
         ];

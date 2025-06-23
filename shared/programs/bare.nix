@@ -10,5 +10,6 @@
     pipx          # for installing python made tool into global
     claude-code
     ollama
+    tmux
   ];
 }
