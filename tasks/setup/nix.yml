@@ -38,8 +38,9 @@ tasks:
     cmds:
       - |
         echo "❄️ Setup home..."
+        depth_opt=$(find --help 2>/dev/null | grep -q GNU && echo '-maxdepth 1' || echo '-depth 1')
         select profile in $(
-          find profiles -depth 1 -name "*.nix" | xargs -I {} basename {} .nix
+          find profiles ${depth_opt} -name "*.nix" | xargs -I {} basename {} .nix
         ); do
           if [ -n "$profile" ]; then
             echo "Using profile: $profile"
