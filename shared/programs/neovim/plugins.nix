@@ -5,31 +5,38 @@ let
   customPlugins = [
     {
       name = "aquarium-vim";
-      owner = "FrenzyExists";  
+      owner = "FrenzyExists";
       repo = "aquarium-vim";
       rev = "develop";
       sha256 = "0rc3cmba2bfrjcffpc1f2a9y2yx167a39l1lxpxpvapsilkxnb2d";
     }
     {
       name = "base2tone-nvim";
-      owner = "atelierbram";  
+      owner = "atelierbram";
       repo = "Base2Tone-nvim";
       rev = "main";
       sha256 = "1wn2dgwicqn8y0sgw2fsbs750xxwnxg68a6j18aj8yhhpq2dkhsx";
     }
     {
       name = "evangelion";
-      owner = "xero";  
+      owner = "xero";
       repo = "evangelion.nvim";
       rev = "main";
       sha256 = "04mj4mcrg850lfcc89vikibmmmscnssc74hfl16vjax51s0157jw";
     }
     {
       name = "burgundy";
-      owner = "elliothatch";  
+      owner = "elliothatch";
       repo = "burgundy.vim";
       rev = "master";
       sha256 = "0ni0x8kx25mvgrlza9zvddn78bkv232cdr01cqr9nmp0jblsj86a";
+    }
+    {
+      name = "nvim-colorizer";
+      owner = "norcalli";
+      repo = "nvim-colorizer.lua";
+      rev = "master";
+      sha256 = "0v1h9lj68kmx6052zg78v366iibxq78367h7avm97pvp5ksvqcw2";
     }
   ];
 
