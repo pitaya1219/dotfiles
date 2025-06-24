@@ -2,6 +2,7 @@
 
 {
   home.packages = with pkgs; [
+    gnused
     tree
     curl
     expect        # for using unbuffer
