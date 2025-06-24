@@ -20,6 +20,7 @@ vim.opt.expandtab = true
 vim.opt.tabstop = 2
 vim.opt.shiftwidth = 2
 vim.opt.incsearch = true
+vim.opt.clipboard:append({"unnamedplus"})
 vim.g.python3_host_prog = vim.env.HOME.."/.nix-profile/bin/nvim-python3"
 
 -- Neovim cursor configuration
