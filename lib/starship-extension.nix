@@ -4,13 +4,13 @@ rec {
   forProfile = profileName:
     let
       # Profile-specific starship.toml
-      profileStarshipPath = ../profiles/${profileName}/starship/starship.toml;
+      profileStarshipPath = ../profiles/${profileName}/starship/override.toml;
       profileStarshipConfig = if builtins.pathExists profileStarshipPath
         then builtins.readFile profileStarshipPath
         else "";
 
       # Base starship.toml from shared
-      sharedStarshipPath = ../shared/programs/starship/starship.toml;
+      sharedStarshipPath = ../shared/programs/starship/default.toml;
       baseStarshipConfig = if builtins.pathExists sharedStarshipPath
         then builtins.readFile sharedStarshipPath
         else "";
@@ -32,17 +32,14 @@ rec {
       # Merge starship settings
       mergedStarshipSettings = deepMerge baseStarshipSettings profileStarshipSettings;
 
-      # Convert back to TOML format
-      starshipConfigFile = pkgs.writeText "starship.toml" (lib.generators.toTOML {} mergedStarshipSettings);
+      # Convert back to TOML format using pkgs.formats.toml
+      tomlFormat = pkgs.formats.toml {};
+
+      starshipConfigFile = tomlFormat.generate "starship.toml" mergedStarshipSettings;
 
     in {
-      # Return the merged configuration file
-      configFile = starshipConfigFile;
-      
-      # Return the merged settings as attribute set
-      settings = mergedStarshipSettings;
-      
-      # Convenience function to get the config content as string
-      configContent = builtins.readFile starshipConfigFile;
+      home.file = {
+        ".config/starship.toml".source = lib.mkForce starshipConfigFile;
+      };
     };
 }

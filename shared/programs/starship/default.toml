@@ -18,13 +18,15 @@ symbol = ' '
 
 [status]
 disabled = false
-format = "$symbol"
-success_symbol = "[✔︎](bold green)"
-not_executable_symbol = "[✘](bold yellow)"
+format = "$symbol [$status]($style)"
+symbol = "[✘](bold dimmed red)"
+success_symbol = "[✔︎](bold dimmed green)"
+success_style = "bold dimmed green"
+failure_style = "bold dimmed red"
+not_executable_symbol = "[X](bold yellow)"
 not_found_symbol = "[](bold yellow)"
-sigint_symbol = "[✗](bold red)"
+sigint_symbol = "[x](bold red)"
 signal_symbol = "[⚡](bold yellow)"
-map_symbol = true
 
 [shlvl]
 disabled = false
@@ -32,13 +34,14 @@ style = "dimmed yellow"
 symbol="shlvl:"
 
 [character]
-format = "[▶︎](fg:#a3aed2)"
-success_symbol = "[▶︎](bold fg:#a3aed2)"
-error_symbol = "[▶︎](bold purple)"
-vimcmd_symbol = "[■](italic fg:#a3aed2)"
-vimcmd_replace_one_symbol = "◌"
-vimcmd_replace_symbol = "□"
-vimcmd_visual_symbol = "▼"
+format = "$symbol"
+success_symbol = "[▶︎](bold dimmed blue)"
+error_symbol = "[▶︎](bold red)"
+# following options are not supported in bash
+#vimcmd_symbol = "[■](italic fg:#a3aed2)"
+#vimcmd_replace_one_symbol = "◌"
+#vimcmd_replace_symbol = "□"
+#vimcmd_visual_symbol = "▼"
 
 [env_var.VIMSHELL]
 format = "[$env_value]($style)"
@@ -120,7 +123,7 @@ format = " [$symbol$branch(:$remote_branch)]($style)"
 symbol = "[](bold italic bright-blue)"
 style = "italic bright-blue"
 truncation_symbol = "⋯"
-truncation_length = 11
+truncation_length = 60
 ignore_branches = []
 only_attached = true
 

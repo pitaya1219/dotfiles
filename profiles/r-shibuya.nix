@@ -15,6 +15,7 @@
           ../shared/programs/tmux.nix
           ../shared/programs/starship.nix
           ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "r-shibuya")
+          ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "r-shibuya")
           (import ../shared/programs/unfree.nix { additionalPackages = [ "copilot.vim" ]; })
         ];
 
