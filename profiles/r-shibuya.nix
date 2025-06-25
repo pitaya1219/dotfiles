@@ -11,10 +11,12 @@
         imports = [
           ../shared/activations/aider.nix
           ../shared/programs/bare.nix
+          ../shared/programs/bash.nix
           ../shared/programs/neovim.nix
           ../shared/programs/tmux.nix
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
+          ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "r-shibuya")
           ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "r-shibuya")
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "r-shibuya")
           (import ../shared/programs/unfree.nix { additionalPackages = [ "copilot.vim" ]; })

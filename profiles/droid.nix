@@ -11,6 +11,7 @@
         imports = [
           ../shared/activations/aider.nix
           ../shared/programs/bare.nix
+          ../shared/programs/bash.nix
           ../shared/programs/neovim.nix
           ../shared/programs/tmux.nix
           ../shared/programs/starship.nix

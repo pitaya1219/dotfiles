@@ -10,6 +10,7 @@
       ({ config, pkgs, lib, ... }: {
         imports = [
           ../shared/activations/aider.nix
+          ../shared/programs/bash.nix
           ../shared/programs/bare.nix
           ../shared/programs/neovim.nix
           ../shared/programs/tmux.nix
