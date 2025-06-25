@@ -1,6 +1,6 @@
 {
-  path = "~/.nix-profile/bin:/opt/homebrew/bin:/opt/homebrew/sbin:$(brew --prefix openssl)/bin:/applications/xcode.app/contents/developer/usr/bin:$path";
-  requests_ca_bundle = "/library/application support/netskope/stagent/data/nscacert_combined.pem";
+  PATH = "~/.nix-profile/bin:/opt/homebrew/bin:/opt/homebrew/sbin:$(brew --prefix openssl)/bin:/applications/xcode.app/contents/developer/usr/bin:$PATH";
+  REQUESTS_CA_BUNDLE = "/library/application support/netskope/stagent/data/nscacert_combined.pem";
   AWS_CA_BUNDLE = "$REQUESTS_CA_BUNDLE";
   GIT_SSL_CAPATH = "$REQUESTS_CA_BUNDLE";
   NODE_EXTRA_CA_CERTS = "$REQUESTS_CA_BUNDLE";
