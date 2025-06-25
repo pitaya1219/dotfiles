@@ -34,7 +34,7 @@ style = "dimmed yellow"
 symbol="shlvl:"
 
 [character]
-format = "$symbol"
+format = "$symbol "
 success_symbol = "[▶︎](bold dimmed blue)"
 error_symbol = "[▶︎](bold red)"
 # following options are not supported in bash
