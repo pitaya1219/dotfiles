@@ -44,7 +44,7 @@ rec {
         })
 
         # Profile-specific environment (executed after shared)
-        (lib.mkIf (profileBashrcContent != "") {
+        (lib.mkIf (profileEnv != "") {
           sessionVariables = lib.mkAfter profileEnv;
         })
       ];

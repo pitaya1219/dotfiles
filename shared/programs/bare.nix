@@ -8,6 +8,7 @@
     expect        # for using unbuffer
     sqlite
     pipx          # for installing python made tool into global
+    poetry
     claude-code
     ollama
     tmux
