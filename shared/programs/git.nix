@@ -18,5 +18,7 @@
     # Python
     __pycache__/
     venv/
+    # Aider
+    .aider/
   '';
 }
