@@ -6,6 +6,9 @@
     extraConfig = ''
       # vim key-bind for bash
       set show-mode-in-prompt on
+      # same as `set -o vi` in bashrc 
+      set editing-mode vi
+
       $if term=linux
         set vi-ins-mode-string "\1\e[?0c\2"
         set vi-cmd-mode-string "\1\e[?8c\2"
@@ -25,6 +28,7 @@
       # these are for vi-insert mode
       "\e[A": history-search-backward
       "\e[B": history-search-forward
+      "jj": vi-movement-mode
       $endif
     '';
   };
