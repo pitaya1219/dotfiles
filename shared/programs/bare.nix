@@ -7,6 +7,7 @@
     curl
     expect        # for using unbuffer
     sqlite
+    duckdb
     pipx          # for installing python made tool into global
     poetry
     claude-code
