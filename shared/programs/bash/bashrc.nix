@@ -1,4 +1,9 @@
 ''
+# Source Nix daemon if available
+if [ -e ~/.nix-profile/etc/profile.d/nix-daemon.sh ]; then
+  . ~/.nix-profile/etc/profile.d/nix-daemon.sh
+fi
+
 # Enable programmable completion features
 if ! shopt -oq posix; then
   # Load main bash completion framework first (bash-completion@2)
