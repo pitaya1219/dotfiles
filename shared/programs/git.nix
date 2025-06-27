@@ -20,5 +20,6 @@
     venv/
     # Aider
     .aider/
+    .aider.*
   '';
 }
