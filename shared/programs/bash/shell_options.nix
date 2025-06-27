@@ -5,4 +5,6 @@
   "globstar"     # Enable ** recursive glob patterns (e.g., **/*.txt matches all .txt files recursively)
   "checkjobs"    # Display job status before exiting shell if jobs are running
   "cmdhist"      # Combine multi-line commands into a single history entry
+  "lithist"      # Save multi-line commands in history as separate lines
+  "histverify"   # Verify history expansion before executing commands
 ]
