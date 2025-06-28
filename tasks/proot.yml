@@ -89,7 +89,13 @@ tasks:
             useradd -m -s /bin/bash "$USER_NAME"
             usermod -aG sudo "$USER_NAME" 2>/dev/null || true
             echo "$USER_NAME:$USER_NAME" | chpasswd
-            echo "✅ User $USER_NAME created with home directory"
+            
+            # Add user to sudoers with NOPASSWD
+            echo "🔐 Adding $USER_NAME to sudoers"
+            echo "$USER_NAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/$USER_NAME
+            chmod 440 /etc/sudoers.d/$USER_NAME
+            
+            echo "✅ User $USER_NAME created with home directory and sudo access"
         else
             echo "👤 User $USER_NAME already exists"
         fi
