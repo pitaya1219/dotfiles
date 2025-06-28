@@ -76,7 +76,9 @@ tasks:
         USER_NAME="droid"
         TMP_DIR="/data/data/com.termux/files/tmp"
         SETUP_SCRIPT="$TMP_DIR/setup_user.sh"
-        mkdir $TMP_DIR/ 
+        if [ ! -d $TMP_DIR ]; then
+          mkdir $TMP_DIR/ 
+        fi
         
         # Create setup script for first-time user creation
         cat > "$SETUP_SCRIPT" << 'SCRIPT_EOF'
