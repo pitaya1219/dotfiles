@@ -74,7 +74,9 @@ tasks:
         
         # Setup user in proot environment if needed
         USER_NAME="droid"
-        SETUP_SCRIPT="/tmp/setup_user.sh"
+        TMP_DIR="/data/data/com.termux/files/tmp"
+        SETUP_SCRIPT="$TMP_DIR/setup_user.sh"
+        mkdir $TMP_DIR/ 
         
         # Create setup script for first-time user creation
         cat > "$SETUP_SCRIPT" << 'SCRIPT_EOF'
