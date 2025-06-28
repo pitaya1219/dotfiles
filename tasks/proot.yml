@@ -36,10 +36,10 @@ tasks:
         echo "🔍 Checking if $DISTRO is already installed...";
         
         # Check if distro is already installed
-        if proot-distro list --installed | grep -q "^$DISTRO$"; then
+        if proot-distro list | grep -q "^$DISTRO$"; then
           echo "✅ $DISTRO is already installed";
           echo "📋 Available installed distributions:";
-          proot-distro list --installed;
+          proot-distro list;
         else
           echo "📥 Installing $DISTRO distribution...";
           proot-distro install "$DISTRO";
@@ -67,7 +67,7 @@ tasks:
         echo "🔑 Logging into $DISTRO...";
         
         # Check if distro is installed
-        if ! proot-distro list --installed | grep -q "^$DISTRO$"; then
+        if ! proot-distro list | grep -q "^$DISTRO$"; then
           echo "❌ $DISTRO is not installed. Run 'task proot:install-distro DISTRO=$DISTRO' first.";
           exit 1;
         fi
@@ -92,7 +92,7 @@ tasks:
         fi
         
         echo "📋 Installed distributions:";
-        proot-distro list --installed || echo "No distributions installed";
+        proot-distro list || echo "No distributions installed";
         echo "";
         echo "📋 Available distributions:";
         proot-distro list
@@ -118,7 +118,7 @@ tasks:
         echo "🗑️  Removing $DISTRO distribution...";
         
         # Check if distro is installed
-        if ! proot-distro list --installed | grep -q "^$DISTRO$"; then
+        if ! proot-distro list | grep -q "^$DISTRO$"; then
           echo "❌ $DISTRO is not installed";
           exit 1;
         fi
@@ -155,7 +155,7 @@ tasks:
         echo "💾 Creating backup of $DISTRO...";
         
         # Check if distro is installed
-        if ! proot-distro list --installed | grep -q "^$DISTRO$"; then
+        if ! proot-distro list | grep -q "^$DISTRO$"; then
           echo "❌ $DISTRO is not installed";
           exit 1;
         fi
