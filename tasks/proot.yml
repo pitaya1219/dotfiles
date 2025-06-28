@@ -104,6 +104,12 @@ tasks:
             echo "👤 User $USER_NAME already exists"
             # Ensure user is in sudo group even if already exists
             usermod -aG sudo "$USER_NAME" 2>/dev/null || true
+            
+            # Set password only if user has no password set
+            if passwd -S "$USER_NAME" | grep -q "L\|NP"; then
+                echo "🔑 Setting password for $USER_NAME (no password set)"
+                echo "$USER_NAME:$USER_NAME" | chpasswd
+            fi
         fi
         
         # Add user to sudoers with NOPASSWD (always run this)
