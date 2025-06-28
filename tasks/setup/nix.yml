@@ -44,6 +44,11 @@ tasks:
         ); do
           if [ -n "$profile" ]; then
             echo "Using profile: $profile"
+            # Source Nix profile if it exists
+            if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
+              source ~/.nix-profile/etc/profile.d/nix.sh;
+            fi
+        
             nix run home-manager/master -- switch --flake .#"${profile}"
             break
           else

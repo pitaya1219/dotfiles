@@ -128,7 +128,6 @@ tasks:
           echo "❌ Not installed";
         fi
         echo -n "Nix: "
-        echo -n "Nix: "
         if command -v nix >/dev/null 2>&1; then
           echo "✅ $(nix --version)";
         else
