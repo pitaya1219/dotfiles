@@ -78,18 +78,18 @@ tasks:
         
         # Create setup script for first-time user creation
         cat > "$SETUP_SCRIPT" << 'SCRIPT_EOF'
-#!/bin/bash
-USER_NAME="droid"
-if ! id "$USER_NAME" &>/dev/null; then
-    echo "👤 Creating user: $USER_NAME"
-    useradd -m -s /bin/bash "$USER_NAME"
-    usermod -aG sudo "$USER_NAME" 2>/dev/null || true
-    echo "$USER_NAME:$USER_NAME" | chpasswd
-    echo "✅ User $USER_NAME created with home directory"
-else
-    echo "👤 User $USER_NAME already exists"
-fi
-SCRIPT_EOF
+        #!/bin/bash
+        USER_NAME="droid"
+        if ! id "$USER_NAME" &>/dev/null; then
+            echo "👤 Creating user: $USER_NAME"
+            useradd -m -s /bin/bash "$USER_NAME"
+            usermod -aG sudo "$USER_NAME" 2>/dev/null || true
+            echo "$USER_NAME:$USER_NAME" | chpasswd
+            echo "✅ User $USER_NAME created with home directory"
+        else
+            echo "👤 User $USER_NAME already exists"
+        fi
+        SCRIPT_EOF
         
         # Bind home directory and setup script to the proot environment
         echo "🔗 Binding home directory: $HOME"
