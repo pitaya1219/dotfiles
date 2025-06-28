@@ -72,7 +72,9 @@ tasks:
           exit 1;
         fi
         
-        proot-distro login "$DISTRO"
+        # Bind home directory to the proot environment
+        echo "🔗 Binding home directory: $HOME"
+        proot-distro login "$DISTRO" --bind "$HOME:/home/$(whoami)"
 
   list:
     desc: List available and installed distributions
