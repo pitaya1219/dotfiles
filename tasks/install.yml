@@ -7,6 +7,7 @@ tasks:
     cmds:
       - task: git
       - task: dropbear
+      - task: proot
       - task: nix
   git:
     desc: Install Git
@@ -92,6 +93,39 @@ tasks:
             exit 1
             ;;
         esac
+  proot:
+    desc: Install proot (for Termux environments)
+    silent: true
+    cmds:
+      - |
+        echo "🔧 Installing proot..."
+        case "{{.UNAME_S}}" in
+          Darwin)
+            echo "⚠️  proot is not needed on macOS";
+            ;;
+          Linux)
+            if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+              if ! command -v proot >/dev/null 2>&1; then
+                if command -v pkg >/dev/null 2>&1; then
+                  pkg update && pkg install -y proot;
+                elif command -v apt-get >/dev/null 2>&1; then
+                  apt-get update && apt-get install -y proot;
+                else
+                  echo "❌ No suitable package manager found for proot installation.";
+                  exit 1;
+                fi
+              else
+                echo "✅ proot is already installed";
+              fi
+            else
+              echo "⚠️  proot installation skipped (not in Termux environment)";
+            fi
+            ;;
+          *)
+            echo "❌ Unsupported operating system: {{.UNAME_S}}"
+            exit 1
+            ;;
+        esac
   nix:
     desc: Install Nix
     silent: true
@@ -126,6 +160,16 @@ tasks:
           echo "✅ $(dropbear --version 2>&1 | head -n1)";
         else
           echo "❌ Not installed";
+        fi
+        echo -n "proot: "
+        if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+          if command -v proot >/dev/null 2>&1; then
+            echo "✅ $(proot --version 2>&1 | head -n1)";
+          else
+            echo "❌ Not installed";
+          fi
+        else
+          echo "⚠️  Not needed (not in Termux)";
         fi
         echo -n "Nix: "
         if command -v nix >/dev/null 2>&1; then
