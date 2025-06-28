@@ -11,6 +11,7 @@ includes:
   install: ./tasks/install.yml
   setup: ./tasks/setup.yml
   nix: ./tasks/nix.yml
+  proot: ./tasks/proot.yml
  
 tasks:
   default:
