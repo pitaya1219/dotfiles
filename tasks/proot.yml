@@ -1,0 +1,246 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Install and manage proot Linux distributions
+    silent: true
+    cmds:
+      - task --list-all | grep "proot:"
+
+  install:
+    desc: Install a Linux distribution using proot-distro
+    silent: true
+    cmds:
+      - |
+        echo "🐧 Installing Linux distribution with proot-distro..."
+        
+        # Check if we're in Termux
+        if [ -z "$TERMUX_VERSION" ] && [ ! -d "/data/data/com.termux" ]; then
+          echo "❌ proot-distro is only available in Termux environments";
+          exit 1;
+        fi
+        
+        # Install proot-distro if not already installed
+        if ! command -v proot-distro >/dev/null 2>&1; then
+          echo "📦 Installing proot-distro...";
+          if command -v pkg >/dev/null 2>&1; then
+            pkg update && pkg install -y proot-distro;
+          else
+            echo "❌ pkg command not found. Please install proot-distro manually.";
+            exit 1;
+          fi
+        fi
+        
+        # Default to Ubuntu if no distro specified
+        DISTRO="${DISTRO:-ubuntu}"
+        echo "🔍 Checking if $DISTRO is already installed...";
+        
+        # Check if distro is already installed
+        if ls /data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ 2>/dev/null | grep -q "^$DISTRO$"; then
+          echo "✅ $DISTRO is already installed";
+          echo "📋 Available installed distributions:";
+          ls /data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ 2>/dev/null || echo "No distributions installed";
+        else
+          echo "📥 Installing $DISTRO distribution...";
+          proot-distro install "$DISTRO";
+          echo "✅ $DISTRO installation completed";
+        fi
+
+  login:
+    desc: Login to installed Linux distribution
+    silent: true
+    cmds:
+      - |
+        # Check if we're in Termux
+        if [ -z "$TERMUX_VERSION" ] && [ ! -d "/data/data/com.termux" ]; then
+          echo "❌ proot-distro is only available in Termux environments";
+          exit 1;
+        fi
+        
+        # Check if proot-distro is available
+        if ! command -v proot-distro >/dev/null 2>&1; then
+          echo "❌ proot-distro is not installed. Run 'task proot:install' first.";
+          exit 1;
+        fi
+        
+        DISTRO="${DISTRO:-ubuntu}"
+        echo "🔑 Logging into $DISTRO...";
+        
+        # Check if distro is installed
+        if ! ls /data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ 2>/dev/null | grep -q "^$DISTRO$"; then
+          echo "❌ $DISTRO is not installed. Run 'task proot:install DISTRO=$DISTRO' first.";
+          exit 1;
+        fi
+        
+        # Setup user in proot environment if needed
+        USER_NAME="droid"
+        TMP_DIR="/data/data/com.termux/files/tmp"
+        SETUP_SCRIPT="$TMP_DIR/setup_user.sh"
+        if [ ! -d $TMP_DIR ]; then
+          mkdir $TMP_DIR/ 
+        fi
+        
+        # Create setup script for first-time user creation
+        cat > "$SETUP_SCRIPT" << 'SCRIPT_EOF'
+        #!/bin/bash
+        USER_NAME="droid"
+        
+        # Install sudo if not present
+        if ! command -v sudo >/dev/null 2>&1; then
+            echo "📦 Installing sudo..."
+            apt update && apt install -y sudo
+        fi
+        
+        # Create sudoers.d directory if it doesn't exist
+        mkdir -p /etc/sudoers.d
+        
+        if ! id "$USER_NAME" &>/dev/null; then
+            echo "👤 Creating user: $USER_NAME"
+            useradd -m -s /bin/bash "$USER_NAME"
+            usermod -aG sudo "$USER_NAME" 2>/dev/null || true
+            echo "$USER_NAME:$USER_NAME" | chpasswd
+            echo "✅ User $USER_NAME created with home directory"
+        else
+            echo "👤 User $USER_NAME already exists"
+            # Ensure user is in sudo group even if already exists
+            usermod -aG sudo "$USER_NAME" 2>/dev/null || true
+            
+            # Set password only if user has no password set
+            if passwd -S "$USER_NAME" | grep -q "L\|NP"; then
+                echo "🔑 Setting password for $USER_NAME (no password set)"
+                echo "$USER_NAME:$USER_NAME" | chpasswd
+            fi
+        fi
+        
+        # Add user to sudoers with NOPASSWD (always run this)
+        echo "🔐 Adding $USER_NAME to sudoers"
+        echo "$USER_NAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$USER_NAME
+        chmod 440 /etc/sudoers.d/$USER_NAME
+        echo "✅ User $USER_NAME configured with sudo access"
+        SCRIPT_EOF
+        
+        # Bind home directory and setup script to the proot environment
+        echo "🔗 Binding home directory: $HOME"
+        echo "👤 Setting up user: $USER_NAME"
+        proot-distro login "$DISTRO" --bind "$HOME:/home/$USER_NAME" --bind "$SETUP_SCRIPT:/tmp/setup_user.sh" -- bash -c "bash /tmp/setup_user.sh && su - $USER_NAME"
+
+  list:
+    desc: List available and installed distributions
+    silent: true
+    cmds:
+      - |
+        # Check if we're in Termux
+        if [ -z "$TERMUX_VERSION" ] && [ ! -d "/data/data/com.termux" ]; then
+          echo "❌ proot-distro is only available in Termux environments";
+          exit 1;
+        fi
+        
+        # Check if proot-distro is available
+        if ! command -v proot-distro >/dev/null 2>&1; then
+          echo "❌ proot-distro is not installed. Run 'task proot:install-distro' first.";
+          exit 1;
+        fi
+        
+        echo "📋 Installed distributions:";
+        ls /data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ 2>/dev/null || echo "No distributions installed";
+        echo "";
+        echo "📋 Available distributions:";
+        proot-distro list
+
+  remove:
+    desc: Remove an installed Linux distribution
+    silent: true
+    cmds:
+      - |
+        # Check if we're in Termux
+        if [ -z "$TERMUX_VERSION" ] && [ ! -d "/data/data/com.termux" ]; then
+          echo "❌ proot-distro is only available in Termux environments";
+          exit 1;
+        fi
+        
+        # Check if proot-distro is available
+        if ! command -v proot-distro >/dev/null 2>&1; then
+          echo "❌ proot-distro is not installed. Run 'task proot:install-distro' first.";
+          exit 1;
+        fi
+        
+        DISTRO="${DISTRO:-ubuntu}"
+        echo "🗑️  Removing $DISTRO distribution...";
+        
+        # Check if distro is installed
+        if ! ls /data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ 2>/dev/null | grep -q "^$DISTRO$"; then
+          echo "❌ $DISTRO is not installed";
+          exit 1;
+        fi
+        
+        echo "⚠️  This will permanently remove the $DISTRO distribution.";
+        read -p "Are you sure? (y/N): " -r
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+          proot-distro remove "$DISTRO";
+          echo "✅ $DISTRO has been removed";
+        else
+          echo "❌ Operation cancelled";
+        fi
+
+  backup:
+    desc: Create a backup of installed distribution
+    silent: true
+    cmds:
+      - |
+        # Check if we're in Termux
+        if [ -z "$TERMUX_VERSION" ] && [ ! -d "/data/data/com.termux" ]; then
+          echo "❌ proot-distro is only available in Termux environments";
+          exit 1;
+        fi
+        
+        # Check if proot-distro is available
+        if ! command -v proot-distro >/dev/null 2>&1; then
+          echo "❌ proot-distro is not installed. Run 'task proot:install-distro' first.";
+          exit 1;
+        fi
+        
+        DISTRO="${DISTRO:-ubuntu}"
+        BACKUP_FILE="${BACKUP_FILE:-${DISTRO}-backup-$(date +%Y%m%d-%H%M%S).tar.xz}"
+        
+        echo "💾 Creating backup of $DISTRO...";
+        
+        # Check if distro is installed
+        if ! ls /data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ 2>/dev/null | grep -q "^$DISTRO$"; then
+          echo "❌ $DISTRO is not installed";
+          exit 1;
+        fi
+        
+        proot-distro backup --output "$BACKUP_FILE" "$DISTRO";
+        echo "✅ Backup created: $BACKUP_FILE"
+
+  restore:
+    desc: Restore distribution from backup
+    silent: true
+    cmds:
+      - |
+        # Check if we're in Termux
+        if [ -z "$TERMUX_VERSION" ] && [ ! -d "/data/data/com.termux" ]; then
+          echo "❌ proot-distro is only available in Termux environments";
+          exit 1;
+        fi
+        
+        # Check if proot-distro is available
+        if ! command -v proot-distro >/dev/null 2>&1; then
+          echo "❌ proot-distro is not installed. Run 'task proot:install-distro' first.";
+          exit 1;
+        fi
+        
+        if [ -z "$BACKUP_FILE" ]; then
+          echo "❌ Please specify BACKUP_FILE variable";
+          echo "Usage: task proot:restore BACKUP_FILE=backup.tar.xz";
+          exit 1;
+        fi
+        
+        if [ ! -f "$BACKUP_FILE" ]; then
+          echo "❌ Backup file not found: $BACKUP_FILE";
+          exit 1;
+        fi
+        
+        echo "🔄 Restoring distribution from $BACKUP_FILE...";
+        proot-distro restore "$BACKUP_FILE";
+        echo "✅ Distribution restored successfully"
