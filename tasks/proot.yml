@@ -7,7 +7,7 @@ tasks:
     cmds:
       - task --list-all | grep "proot:"
 
-  install-distro:
+  install:
     desc: Install a Linux distribution using proot-distro
     silent: true
     cmds:
@@ -59,7 +59,7 @@ tasks:
         
         # Check if proot-distro is available
         if ! command -v proot-distro >/dev/null 2>&1; then
-          echo "❌ proot-distro is not installed. Run 'task proot:install-distro' first.";
+          echo "❌ proot-distro is not installed. Run 'task proot:install' first.";
           exit 1;
         fi
         
@@ -68,7 +68,7 @@ tasks:
         
         # Check if distro is installed
         if ! ls /data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ 2>/dev/null | grep -q "^$DISTRO$"; then
-          echo "❌ $DISTRO is not installed. Run 'task proot:install-distro DISTRO=$DISTRO' first.";
+          echo "❌ $DISTRO is not installed. Run 'task proot:install DISTRO=$DISTRO' first.";
           exit 1;
         fi
         
