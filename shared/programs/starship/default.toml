@@ -58,7 +58,7 @@ style_user = "bright-yellow bold italic"
 style_root = "purple bold italic"
 format = "[$user]($style)"
 disabled = false
-show_always = false
+show_always = true
 
 [hostname]
 format = '[$hostname]($style)'
