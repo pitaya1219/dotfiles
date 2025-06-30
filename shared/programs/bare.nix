@@ -12,7 +12,6 @@
     poetry
     claude-code
     ollama
-    tmux
     nerd-fonts.daddy-time-mono
     nerd-fonts.shure-tech-mono
   ];
