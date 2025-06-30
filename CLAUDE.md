@@ -191,3 +191,11 @@ nix run home-manager/master -- switch --flake .#<profile>
 - All configurations use absolute paths for reliability
 - Unfree packages centrally managed with profile-specific additions
 - Interactive setup process with rich UI feedback
+
+## Git Commit Preferences
+
+- NEVER include Claude-related content in commit messages
+- Use simple, descriptive commit messages
+- Start commit messages with capital letter
+- End commit messages with period
+- Format: "Capitalize first word and end with period."
