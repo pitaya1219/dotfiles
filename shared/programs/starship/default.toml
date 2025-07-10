@@ -31,12 +31,12 @@ signal_symbol = "[⚡](bold yellow)"
 [shlvl]
 disabled = false
 style = "dimmed yellow"
-symbol="shlvl:"
+symbol="󰞲:"
 
 [character]
 format = "$symbol "
-success_symbol = "[▶︎](bold dimmed blue)"
-error_symbol = "[▶︎](bold red)"
+success_symbol = "[󰞷](bold dimmed blue)"
+error_symbol = "[󰞷](bold red)"
 # following options are not supported in bash
 #vimcmd_symbol = "[■](italic fg:#a3aed2)"
 #vimcmd_replace_one_symbol = "◌"
@@ -65,18 +65,18 @@ format = '[$hostname]($style)'
 
 
 [directory]
-home_symbol = "⌂"
+home_symbol = "󰟒"
 truncation_length = 10
-truncation_symbol = ".../"
-read_only = " "
+truncation_symbol = "/"
+read_only = ""
 use_os_path_sep = true
 style = "italic blue"
-format = '[$path]($style)[$read_only]($read_only_style)'
+format = '[󰙅$path]($style)[$read_only]($read_only_style)'
 repo_root_style = 'bold blue'
 repo_root_format = '[$before_root_path]($before_repo_root_style)[$repo_root]($repo_root_style)[$path]($style)[$read_only]($read_only_style)'
 
 [cmd_duration]
-format = "[$duration](italic dimmed green)"
+format = "[$duration](italic dimmed green)"
 min_time = 0
 show_milliseconds = true
 
@@ -120,7 +120,7 @@ style = "italic dimmed yellow"
 
 [git_branch]
 format = " [$symbol$branch(:$remote_branch)]($style)"
-symbol = "[](bold italic bright-blue)"
+symbol = "[](bold italic bright-blue)"
 style = "italic bright-blue"
 truncation_symbol = "⋯"
 truncation_length = 60
@@ -136,17 +136,17 @@ disabled = false
 
 [git_status]
 style = "bold italic bright-blue"
-format = "([⎪$ahead_behind$staged$modified$untracked$renamed$deleted$conflicted$stashed⎥]($style))"
-conflicted = "[󱚠](italic bright-magenta)"
-ahead = "[▴│[${count}](bold white)│](italic green)"
-behind = "[▿│[${count}](bold white)│](italic red)"
-diverged = "[◇ ▴┤[${ahead_count}](regular white)│▿┤[${behind_count}](regular white)│](italic bright-magenta)"
-untracked = "[◌◦](italic bright-yellow)"
-stashed = "[◃◈](italic white)"
-modified = "[●◦](italic yellow)"
-staged = "[▪┤[$count](bold white)│](italic bright-cyan)"
-renamed = "[◎◦](italic bright-blue)"
-deleted = "[✕](italic red)"
+format = "([$ahead_behind$staged$modified$untracked$renamed$deleted$conflicted$stashed]($style))"
+conflicted = "[󰞇](italic bright-magenta)"
+ahead = "[󱓊[${count}](bold white)](italic green)"
+behind = "[󱓋[${count}](bold white)](italic red)"
+diverged = "[󱡷[${ahead_count}](cian)[${behind_count}](magenta)](italic bright-magenta)"
+untracked = "[◌](italic bright-yellow)"
+stashed = "[◈](italic dark-yellow)"
+modified = "[󰲶](italic dimmed red)"
+staged = "[[$count](bold white)](italic bright-cyan)"
+renamed = "[󰑕](italic bright-blue)"
+deleted = "[󰆳](italic red)"
 
 [lua]
 format = " [lua](italic) [${symbol}${version}]($style)"

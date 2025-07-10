@@ -2,5 +2,5 @@
 # This will be merged with the base starship configuration
 [character]
 format = "$symbol"
-success_symbol = "[▶︎](bold dimmed fg:#9788ff)"
-error_symbol = "[▶︎](bold #5f0032)"
+success_symbol = "[󰞷](bold dimmed fg:#9788ff)"
+error_symbol = "[󰞷](bold #5f0032)"
