@@ -29,6 +29,8 @@
           stateVersion = "23.11";
           packages = with pkgs; [
             jq
+            docker
+            docker-credential-helpers
           ];
           file.".config/tmux/override.conf".source = ./r-shibuya/tmux/override.conf;
         };
