@@ -9,7 +9,7 @@ $shlvl $cmd_duration $status\
 $fill$fill$fill$fill$fill$fill$fill$fill$fill$fill\
 $memory_usage$fill\n\
 $directory
-$username@$hostname $localip\n\
+$username[@](dimmed white)$hostname $localip\n\
 $character
 """
 
@@ -54,13 +54,14 @@ symbol = "⋈┈"
 disabled = false
 
 [username]
-style_user = "bright-yellow bold italic"
+style_user = "dimmed yellow italic"
 style_root = "purple bold italic"
 format = "[$user]($style)"
 disabled = false
 show_always = true
 
 [hostname]
+style = "dimmed green"
 format = '[$hostname]($style)'
 
 
