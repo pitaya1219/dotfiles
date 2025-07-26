@@ -1,0 +1,10 @@
+{
+  "languageserver": {
+    "elixir.pathToElixirLS": "~/.elixir-ls/release/language_server.sh",
+    "python.venvPath": "./.venv",
+    "python.envFile": "./.env",
+    "python.formatting.provider": "ruff",
+    "python.linting.ruffEnabled": true,
+    "snippets.ultisnips.pythonPrompt": false
+  }
+}
