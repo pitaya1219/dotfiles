@@ -2,6 +2,232 @@ local msg = {
   no_unactive_buffer = 'There is no unactive buffer.',
 }
 
+local function get_buffer_list()
+  local buffers_output = vim.fn.execute('ls')
+  local lines = vim.split(buffers_output, '\n', { plain = true, trimempty = true })
+  local buffer_list = {}
+
+  for _, line in ipairs(lines) do
+    local buffer_num = line:match('^%s*(%d+)')
+    local name = line:match('"([^"]*)"') or '[No Name]'
+    if buffer_num then
+      table.insert(buffer_list, { num = buffer_num, name = name, line = line })
+    end
+  end
+
+  return buffer_list
+end
+
+local function create_preview_window()
+  local preview_buf = vim.api.nvim_create_buf(false, true)
+  local preview_win = vim.api.nvim_open_win(preview_buf, false, {
+    relative = 'editor',
+    width = vim.o.columns,
+    height = vim.o.lines - 2,
+    col = 0,
+    row = 0,
+    style = 'minimal',
+    zindex = 50
+  })
+  return preview_buf, preview_win
+end
+
+local function create_buffer_list_window(buffer_list)
+  local buf = vim.api.nvim_create_buf(false, true)
+  local width = math.floor(vim.o.columns * 0.4)
+  local height = math.min(#buffer_list + 2, 15)
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = 'editor',
+    width = width,
+    height = height,
+    col = (vim.o.columns - width) / 2,
+    row = (vim.o.lines - height) / 2,
+    style = 'minimal',
+    border = 'rounded',
+    title = ' Buffers ',
+    title_pos = 'center',
+    zindex = 100
+  })
+  return buf, win
+end
+
+local function manage_buffer()
+  local original_buf = vim.api.nvim_get_current_buf()
+  local buffer_list = get_buffer_list()
+
+  if #buffer_list == 0 then
+    return
+  end
+
+  local current_idx = 1
+  local preview_buf, preview_win = create_preview_window()
+  local buf, win = create_buffer_list_window(buffer_list)
+
+  local function update_preview(selected_buffer)
+    if selected_buffer and tonumber(selected_buffer.num) then
+      local target_buf = tonumber(selected_buffer.num)
+      if vim.api.nvim_buf_is_valid(target_buf) then
+        local lines = vim.api.nvim_buf_get_lines(target_buf, 0, -1, false)
+        vim.api.nvim_buf_set_lines(preview_buf, 0, -1, false, lines)
+        local filetype = vim.api.nvim_buf_get_option(target_buf, 'filetype')
+        vim.api.nvim_buf_set_option(preview_buf, 'filetype', filetype)
+      end
+    end
+  end
+
+  local function update_display()
+    local display_lines = {}
+    for i, buffer in ipairs(buffer_list) do
+      local prefix = i == current_idx and '> ' or '  '
+      local line = string.format('%s%s: %s', prefix, buffer.num, buffer.name)
+      table.insert(display_lines, line)
+    end
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, display_lines)
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_set_cursor(win, {current_idx, 0})
+    end
+    update_preview(buffer_list[current_idx])
+  end
+
+  local function close_window(restore_original)
+    if vim.api.nvim_win_is_valid(preview_win) then
+      vim.api.nvim_win_close(preview_win, true)
+    end
+    if vim.api.nvim_buf_is_valid(preview_buf) then
+      vim.api.nvim_buf_delete(preview_buf, { force = true })
+    end
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_close(win, true)
+    end
+    if vim.api.nvim_buf_is_valid(buf) then
+      vim.api.nvim_buf_delete(buf, { force = true })
+    end
+
+    -- Restore original buffer if requested, or create new buffer if original was deleted
+    if restore_original then
+      if original_buf and vim.api.nvim_buf_is_valid(original_buf) then
+        vim.cmd('buffer ' .. original_buf)
+      else
+        -- If original buffer was deleted, open the buffer under cursor if available
+        if #buffer_list > 0 then
+          local selected_buffer = buffer_list[current_idx]
+          vim.cmd('buffer ' .. selected_buffer.num)
+        else
+          vim.cmd('enew')
+        end
+      end
+    end
+  end
+
+  vim.keymap.set('n', 'j', function()
+    current_idx = math.min(current_idx + 1, #buffer_list)
+    update_display()
+  end, { buffer = buf })
+
+  vim.keymap.set('n', 'k', function()
+    current_idx = math.max(current_idx - 1, 1)
+    update_display()
+  end, { buffer = buf })
+
+  vim.keymap.set('n', 'g', function()
+    current_idx = 1
+    update_display()
+  end, { buffer = buf })
+
+  vim.keymap.set('n', 'G', function()
+    current_idx = #buffer_list
+    update_display()
+  end, { buffer = buf })
+
+  vim.keymap.set('n', '<CR>', function()
+    local selected_buffer = buffer_list[current_idx]
+    close_window(false)
+    vim.cmd('buffer ' .. selected_buffer.num)
+  end, { buffer = buf })
+
+  local function delete_buffer()
+    local selected_buffer = buffer_list[current_idx]
+    local target_buf = tonumber(selected_buffer.num)
+
+    if vim.api.nvim_buf_is_valid(target_buf) then
+      local modified = vim.api.nvim_buf_get_option(target_buf, 'modified')
+      if modified then
+        local choice = vim.fn.input('Save changes or discard? (s/d/N): ')
+        if choice:lower() == 's' then
+          vim.cmd('buffer ' .. target_buf)
+          vim.cmd('write')
+          vim.cmd('bdelete')
+        elseif choice:lower() == 'd' then
+          vim.cmd('bdelete! ' .. target_buf)
+        else
+          return
+        end
+      else
+        vim.cmd('bdelete ' .. target_buf)
+      end
+
+      if target_buf == original_buf then
+        original_buf = nil
+      end
+
+      table.remove(buffer_list, current_idx)
+      if #buffer_list == 0 then
+        close_window(true)
+        return
+      end
+      if current_idx > #buffer_list then
+        current_idx = #buffer_list
+      end
+      update_display()
+    end
+  end
+
+  local function setup_keymaps()
+    vim.keymap.set('n', 'j', function()
+      current_idx = math.min(current_idx + 1, #buffer_list)
+      update_display()
+    end, { buffer = buf })
+
+    vim.keymap.set('n', 'k', function()
+      current_idx = math.max(current_idx - 1, 1)
+      update_display()
+    end, { buffer = buf })
+
+    vim.keymap.set('n', 'g', function()
+      current_idx = 1
+      update_display()
+    end, { buffer = buf })
+
+    vim.keymap.set('n', 'G', function()
+      current_idx = #buffer_list
+      update_display()
+    end, { buffer = buf })
+
+    vim.keymap.set('n', '<CR>', function()
+      local selected_buffer = buffer_list[current_idx]
+      close_window(false)
+      vim.cmd('buffer ' .. selected_buffer.num)
+    end, { buffer = buf })
+
+    vim.keymap.set('n', 'd', delete_buffer, { buffer = buf })
+
+    vim.keymap.set('n', 't', function()
+      local selected_buffer = buffer_list[current_idx]
+      close_window(false)
+      vim.cmd('tabnew')
+      vim.cmd('buffer ' .. selected_buffer.num)
+    end, { buffer = buf })
+
+    vim.keymap.set('n', '<Esc>', function() close_window(true) end, { buffer = buf })
+    vim.keymap.set('n', 'q', function() close_window(true) end, { buffer = buf })
+  end
+
+  setup_keymaps()
+  update_display()
+end
+
+vim.keymap.set('n', '<leader>bufm', manage_buffer, { silent = true })
+
 
 vim.keymap.set('n', '<leader>bufc', function()
   -- generate list like following format:
