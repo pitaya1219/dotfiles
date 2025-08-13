@@ -54,6 +54,8 @@ end
 local function manage_buffer()
   local original_buf = vim.api.nvim_get_current_buf()
   local buffer_list = get_buffer_list()
+  local filtered_buffer_list = buffer_list
+  local search_query = ""
 
   if #buffer_list == 0 then
     return
@@ -75,18 +77,41 @@ local function manage_buffer()
     end
   end
 
+  local function filter_buffers(query)
+    if query == "" then
+      return buffer_list
+    end
+    local filtered = {}
+    for _, buffer in ipairs(buffer_list) do
+      if buffer.name:lower():find(query:lower(), 1, true) then
+        table.insert(filtered, buffer)
+      end
+    end
+    return filtered
+  end
+
   local function update_display()
     local display_lines = {}
-    for i, buffer in ipairs(buffer_list) do
+    
+    -- Add search query line if searching
+    if search_query ~= "" then
+      table.insert(display_lines, "Search: " .. search_query)
+      table.insert(display_lines, "")
+    end
+    
+    for i, buffer in ipairs(filtered_buffer_list) do
       local prefix = i == current_idx and '> ' or '  '
       local line = string.format('%s%s: %s', prefix, buffer.num, buffer.name)
       table.insert(display_lines, line)
     end
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, display_lines)
     if vim.api.nvim_win_is_valid(win) then
-      vim.api.nvim_win_set_cursor(win, {current_idx, 0})
+      local cursor_row = current_idx + (search_query ~= "" and 2 or 0)
+      vim.api.nvim_win_set_cursor(win, {cursor_row, 0})
     end
-    update_preview(buffer_list[current_idx])
+    if #filtered_buffer_list > 0 then
+      update_preview(filtered_buffer_list[current_idx])
+    end
   end
 
   local function close_window(restore_original)
@@ -120,7 +145,7 @@ local function manage_buffer()
   end
 
   vim.keymap.set('n', 'j', function()
-    current_idx = math.min(current_idx + 1, #buffer_list)
+    current_idx = math.min(current_idx + 1, #filtered_buffer_list)
     update_display()
   end, { buffer = buf })
 
@@ -135,18 +160,24 @@ local function manage_buffer()
   end, { buffer = buf })
 
   vim.keymap.set('n', 'G', function()
-    current_idx = #buffer_list
+    current_idx = #filtered_buffer_list
     update_display()
   end, { buffer = buf })
 
   vim.keymap.set('n', '<CR>', function()
-    local selected_buffer = buffer_list[current_idx]
-    close_window(false)
-    vim.cmd('buffer ' .. selected_buffer.num)
+    if #filtered_buffer_list > 0 then
+      local selected_buffer = filtered_buffer_list[current_idx]
+      close_window(false)
+      vim.cmd('buffer ' .. selected_buffer.num)
+    end
   end, { buffer = buf })
 
   local function delete_buffer()
-    local selected_buffer = buffer_list[current_idx]
+    if #filtered_buffer_list == 0 then
+      return
+    end
+    
+    local selected_buffer = filtered_buffer_list[current_idx]
     local target_buf = tonumber(selected_buffer.num)
 
     if vim.api.nvim_buf_is_valid(target_buf) then
@@ -170,21 +201,48 @@ local function manage_buffer()
         original_buf = nil
       end
 
-      table.remove(buffer_list, current_idx)
-      if #buffer_list == 0 then
+      -- Remove from original buffer_list
+      for i, buffer in ipairs(buffer_list) do
+        if buffer.num == selected_buffer.num then
+          table.remove(buffer_list, i)
+          break
+        end
+      end
+      
+      -- Update filtered list
+      filtered_buffer_list = filter_buffers(search_query)
+      if #filtered_buffer_list == 0 then
         close_window(true)
         return
       end
-      if current_idx > #buffer_list then
-        current_idx = #buffer_list
+      if current_idx > #filtered_buffer_list then
+        current_idx = #filtered_buffer_list
       end
       update_display()
     end
   end
 
+  local function start_search()
+    vim.api.nvim_echo({{'Search: ', 'Normal'}}, false, {})
+    local query = vim.fn.input('')
+    if query then
+      search_query = query
+      filtered_buffer_list = filter_buffers(search_query)
+      current_idx = 1
+      update_display()
+    end
+  end
+
+  local function clear_search()
+    search_query = ""
+    filtered_buffer_list = buffer_list
+    current_idx = 1
+    update_display()
+  end
+
   local function setup_keymaps()
     vim.keymap.set('n', 'j', function()
-      current_idx = math.min(current_idx + 1, #buffer_list)
+      current_idx = math.min(current_idx + 1, #filtered_buffer_list)
       update_display()
     end, { buffer = buf })
 
@@ -199,24 +257,31 @@ local function manage_buffer()
     end, { buffer = buf })
 
     vim.keymap.set('n', 'G', function()
-      current_idx = #buffer_list
+      current_idx = #filtered_buffer_list
       update_display()
     end, { buffer = buf })
 
     vim.keymap.set('n', '<CR>', function()
-      local selected_buffer = buffer_list[current_idx]
-      close_window(false)
-      vim.cmd('buffer ' .. selected_buffer.num)
+      if #filtered_buffer_list > 0 then
+        local selected_buffer = filtered_buffer_list[current_idx]
+        close_window(false)
+        vim.cmd('buffer ' .. selected_buffer.num)
+      end
     end, { buffer = buf })
 
     vim.keymap.set('n', 'd', delete_buffer, { buffer = buf })
 
     vim.keymap.set('n', 't', function()
-      local selected_buffer = buffer_list[current_idx]
-      close_window(false)
-      vim.cmd('tabnew')
-      vim.cmd('buffer ' .. selected_buffer.num)
+      if #filtered_buffer_list > 0 then
+        local selected_buffer = filtered_buffer_list[current_idx]
+        close_window(false)
+        vim.cmd('tabnew')
+        vim.cmd('buffer ' .. selected_buffer.num)
+      end
     end, { buffer = buf })
+
+    vim.keymap.set('n', '/', start_search, { buffer = buf })
+    vim.keymap.set('n', '<C-c>', clear_search, { buffer = buf })
 
     vim.keymap.set('n', '<Esc>', function() close_window(true) end, { buffer = buf })
     vim.keymap.set('n', 'q', function() close_window(true) end, { buffer = buf })
