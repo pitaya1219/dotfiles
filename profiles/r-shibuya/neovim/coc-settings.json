@@ -3,5 +3,9 @@
   "python.venvPath": "./.venv",
   "python.formatting.provider": "ruff",
   "python.linting.ruffEnabled": true,
-  "snippets.ultisnips.pythonPrompt": false
+  "snippets.ultisnips.pythonPrompt": false,
+  "elixir.pathToElixirLS": "~/.nix-profile/bin/elixir-ls",
+  "elixir.trace.server": "verbose",
+  "elixirLS.dialyzerEnabled": false,
+  "elixirLS.mixEnv": "dev"
 }

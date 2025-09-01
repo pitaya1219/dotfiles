@@ -7,6 +7,7 @@
     curl
     expect        # for using unbuffer
     zstd
+    nodejs
     sqlite
     duckdb
     pipx          # for installing python made tool into global

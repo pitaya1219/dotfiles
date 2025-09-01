@@ -28,6 +28,8 @@
           homeDirectory = "/Users/r-shibuya";
           stateVersion = "23.11";
           packages = with pkgs; [
+            elixir
+            elixir-ls
             jq
             docker
             docker-credential-helpers
