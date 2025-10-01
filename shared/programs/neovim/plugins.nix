@@ -68,6 +68,7 @@ in
     traces-vim
     
     # Color schemes
+    everforest
     nightfox-nvim
     kanagawa-nvim
     kanagawa-paper-nvim
