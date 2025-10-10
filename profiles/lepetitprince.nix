@@ -22,7 +22,7 @@
         ];
 
         home = {
-          username = "r-shibuya";
+          username = "lepetitprince";
           homeDirectory = "/home/lepetitprince";
           stateVersion = "23.11";
           packages = with pkgs; [];
