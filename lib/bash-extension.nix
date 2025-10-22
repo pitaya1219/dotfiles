@@ -1,6 +1,6 @@
 { lib, ... }:
 
-rec {
+{
   forProfile = profileName:
     let
       # Profile-specific split configuration files
