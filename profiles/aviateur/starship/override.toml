@@ -2,5 +2,12 @@
 # This will be merged with the base starship configuration
 [character]
 format = "$symbol "
-success_symbol = "[󰞷](bold dimmed fg:#3f0030)"
+success_symbol = "[󰞷](bold fg:#3f0030)"
 error_symbol = "[󰞷](bold #8f0032)"
+
+[username]
+style_user = "fg:#3f0030"
+style_root = "purple bold italic"
+format = "[$user]($style)"
+disabled = false
+show_always = true
