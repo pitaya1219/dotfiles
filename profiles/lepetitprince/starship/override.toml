@@ -1,0 +1,13 @@
+# Profile-specific starship configuration for r-shibuya
+# This will be merged with the base starship configuration
+[character]
+format = "$symbol "
+success_symbol = "[󰞷](bold dimmed fg:#cc5500)"
+error_symbol = "[󰞷](bold #5f0032)"
+
+[username]
+style_user = "dimmed fg:#cc5500"
+style_root = "purple bold italic"
+format = "[$user]($style)"
+disabled = false
+show_always = true

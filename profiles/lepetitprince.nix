@@ -18,6 +18,7 @@
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
           ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "lepetitprince")
+          ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "lepetitprince")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
         ];
 
