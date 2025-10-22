@@ -11,6 +11,14 @@ tasks:
     cmds:
       - |
         nix store gc
+  upgrade:
+    desc: Update Nix flake inputs and rebuild
+    cmds:
+      - |
+        echo "Updating flake inputs..."
+        nix flake update
+        echo "Rebuilding configuration..."
+        nix run home-manager/master -- switch --flake .#{{.USER}}
   get_github_hash:*:*:*:
     desk:
     silent: true
