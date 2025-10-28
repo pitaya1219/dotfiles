@@ -31,6 +31,7 @@
             elixir
             elixir-ls
             jq
+            xlsx2csv
             docker
             docker-credential-helpers
           ];
