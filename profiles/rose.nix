@@ -9,6 +9,7 @@
     modules = [
       ({ config, pkgs, lib, ... }: {
         imports = [
+          ../shared/activations/rootless-docker.nix
           ../shared/programs/bash.nix
           ../shared/programs/bare.nix
           ../shared/programs/git.nix
