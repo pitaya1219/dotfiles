@@ -69,6 +69,7 @@ in
     
     # Color schemes
     everforest
+    miasma-nvim
     nightfox-nvim
     kanagawa-nvim
     kanagawa-paper-nvim
