@@ -10,6 +10,7 @@
     nodejs
     sqlite
     duckdb
+    ripgrep
     pipx          # for installing python made tool into global
     poetry
     claude-code
