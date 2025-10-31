@@ -29,6 +29,7 @@
           packages = with pkgs; [
             jq
             android-tools
+            cloudflared
           ];
         };
       })
