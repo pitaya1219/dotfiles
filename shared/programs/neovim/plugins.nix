@@ -38,6 +38,13 @@ let
       rev = "master";
       sha256 = "0v1h9lj68kmx6052zg78v366iibxq78367h7avm97pvp5ksvqcw2";
     }
+    {
+      name = "spaceduck";
+      owner = "spaceduck-theme";
+      repo = "nvim";
+      rev = "master";
+      sha256 = "1n3jbbpqr4k6fa4hdj1q372rkacn9v7isx9bvafdbhrqvx8j66g7";
+    }
   ];
 
 
