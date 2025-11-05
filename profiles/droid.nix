@@ -9,7 +9,7 @@
     modules = [
       ({ config, pkgs, lib, ... }: {
         imports = [
-          ../shared/activations/aider.nix
+          ../shared/activations/huggingface_hub.nix
           ../shared/programs/bare.nix
           ../shared/programs/bash.nix
           ../shared/programs/git.nix
@@ -30,6 +30,7 @@
             jq
             android-tools
             cloudflared
+            llama-cpp
           ];
         };
       })
