@@ -9,7 +9,6 @@
     modules = [
       ({ config, pkgs, lib, ... }: {
         imports = [
-          ../shared/activations/huggingface_hub.nix
           ../shared/programs/bare.nix
           ../shared/programs/bash.nix
           ../shared/programs/git.nix
@@ -17,6 +16,7 @@
           ../shared/programs/tmux.nix
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
+          ../shared/activations/huggingface_hub.nix
           ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "droid")
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "droid")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
