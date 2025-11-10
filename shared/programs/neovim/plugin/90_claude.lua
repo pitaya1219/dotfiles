@@ -146,4 +146,31 @@ vim.api.nvim_create_user_command('ClaudeCodeTerminal', function(opts)
   ClaudeCode.open_in_terminal(work_dir)
 end, { nargs = '?' })
 vim.keymap.set('n', '<leader>claude', function() ClaudeCode.toggle() end, { desc = 'Toggle Claude Code' })
-vim.keymap.set('n', '<leader>claudet', function() ClaudeCode.open_in_terminal() end, { desc = 'Open Claude Code in terminal' })
+vim.keymap.set('n', '<leader>clauden', function() ClaudeCode.open_in_terminal() end, { desc = 'Open Claude Code in terminal' })
+vim.keymap.set('n', '<leader>claudet', function()
+  -- Find tab with ClaudeCode terminal
+  local tab_count = vim.fn.tabpagenr('$')
+  local claude_tab = nil
+
+  for i = 1, tab_count do
+    local tab_buffers = vim.fn.tabpagebuflist(i)
+    for _, buf in ipairs(tab_buffers) do
+      if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_option(buf, 'buftype') == 'terminal' then
+        local buf_name = vim.api.nvim_buf_get_name(buf)
+        if buf_name:match('claude') then
+          claude_tab = i
+          break
+        end
+      end
+    end
+    if claude_tab then
+      break
+    end
+  end
+
+  if claude_tab then
+    vim.cmd('tabn ' .. claude_tab)
+  else
+    vim.api.nvim_echo({{'No running ClaudeCode terminal found.', 'WarningMsg'}}, false, {})
+  end
+end, { desc = 'Go to tab with Claude Code terminal' })
