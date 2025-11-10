@@ -276,3 +276,29 @@ local function manage_tabs()
 end
 
 vim.keymap.set('n', '<leader>tabm', manage_tabs, { silent = true })
+
+-- Move to tab with running terminal
+vim.keymap.set('n', '<leader>tabt', function()
+  -- Find terminal buffer and its tab
+  local tab_count = vim.fn.tabpagenr('$')
+  local terminal_tab = nil
+
+  for i = 1, tab_count do
+    local tab_buffers = vim.fn.tabpagebuflist(i)
+    for _, buf in ipairs(tab_buffers) do
+      if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_option(buf, 'buftype') == 'terminal' then
+        terminal_tab = i
+        break
+      end
+    end
+    if terminal_tab then
+      break
+    end
+  end
+
+  if terminal_tab then
+    vim.cmd('tabn ' .. terminal_tab)
+  else
+    vim.api.nvim_echo({{'No running terminal found.', 'WarningMsg'}}, false, {})
+  end
+end, { silent = true, desc = 'Move to tab with running terminal' })
