@@ -18,6 +18,7 @@
           ../shared/programs/readline.nix
           ../shared/activations/huggingface_hub.nix
           ./droid/ssh/config.nix
+          ./droid/rclone/config.nix
           ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "droid")
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "droid")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
@@ -29,6 +30,7 @@
           stateVersion = "23.11";
           packages = with pkgs; [
             jq
+            rclone
             android-tools
             cloudflared
             llama-cpp
