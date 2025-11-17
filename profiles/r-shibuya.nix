@@ -17,6 +17,7 @@
           ../shared/programs/tmux.nix
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
+          ./r-shibuya/ssh/config.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "r-shibuya")
           ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "r-shibuya")
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "r-shibuya")
@@ -34,6 +35,7 @@
             xlsx2csv
             docker
             docker-credential-helpers
+            cloudflared
           ];
           file.".config/tmux/override.conf".source = ./r-shibuya/tmux/override.conf;
         };
