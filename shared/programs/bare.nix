@@ -11,6 +11,8 @@
     sqlite
     duckdb
     ripgrep
+    age
+    passage
     pipx          # for installing python made tool into global
     poetry
     claude-code
