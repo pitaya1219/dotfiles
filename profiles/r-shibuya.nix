@@ -18,6 +18,7 @@
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
           ./r-shibuya/ssh/config.nix
+          ./r-shibuya/rclone/config.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "r-shibuya")
           ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "r-shibuya")
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "r-shibuya")
@@ -36,6 +37,7 @@
             docker
             docker-credential-helpers
             cloudflared
+            rclone
           ];
           file.".config/tmux/override.conf".source = ./r-shibuya/tmux/override.conf;
         };
