@@ -17,6 +17,7 @@
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
           ../shared/activations/huggingface_hub.nix
+          ./droid/ssh/config.nix
           ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "droid")
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "droid")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
