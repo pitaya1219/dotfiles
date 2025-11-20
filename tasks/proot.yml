@@ -84,11 +84,21 @@ tasks:
         cat > "$SETUP_SCRIPT" << 'SCRIPT_EOF'
         #!/bin/bash
         USER_NAME="droid"
-        
+
         # Install sudo if not present
         if ! command -v sudo >/dev/null 2>&1; then
             echo "📦 Installing sudo..."
             apt update && apt install -y sudo
+        fi
+
+        # Add termux-api support to user's bashrc
+        if ! grep -q "termux-api PATH" /home/$USER_NAME/.bashrc 2>/dev/null; then
+            echo "📱 Adding termux-api support..."
+            mkdir -p /home/$USER_NAME
+            echo "" >> /home/$USER_NAME/.bashrc
+            echo "# Enable termux-api commands in proot" >> /home/$USER_NAME/.bashrc
+            echo 'export PATH="/system/bin:$PATH"' >> /home/$USER_NAME/.bashrc
+            echo "✅ termux-api commands enabled"
         fi
         
         # Create sudoers.d directory if it doesn't exist
