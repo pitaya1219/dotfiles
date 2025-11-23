@@ -8,6 +8,7 @@ tasks:
       - task: git
       - task: dropbear
       - task: proot
+      - task: termux-packages
       - task: nix
   git:
     desc: Install Git
@@ -119,6 +120,61 @@ tasks:
               fi
             else
               echo "⚠️  proot installation skipped (not in Termux environment)";
+            fi
+            ;;
+          *)
+            echo "❌ Unsupported operating system: {{.UNAME_S}}"
+            exit 1
+            ;;
+        esac
+  termux-packages:
+    desc: Install termux-api and termux-services (for Termux environments)
+    silent: true
+    cmds:
+      - |
+        echo "🔧 Installing termux-api and termux-services..."
+        case "{{.UNAME_S}}" in
+          Darwin)
+            echo "⚠️  termux-api and termux-services are not needed on macOS";
+            ;;
+          Linux)
+            if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+              INSTALLED=0
+              if ! command -v termux-battery-status >/dev/null 2>&1; then
+                if command -v pkg >/dev/null 2>&1; then
+                  pkg update && pkg install -y termux-api;
+                  INSTALLED=1
+                elif command -v apt-get >/dev/null 2>&1; then
+                  apt-get update && apt-get install -y termux-api;
+                  INSTALLED=1
+                else
+                  echo "❌ No suitable package manager found for termux-api installation.";
+                  exit 1;
+                fi
+              else
+                echo "✅ termux-api is already installed";
+              fi
+              if ! command -v sv >/dev/null 2>&1 && ! [ -d "$PREFIX/var/service" ]; then
+                if command -v pkg >/dev/null 2>&1; then
+                  pkg update && pkg install -y termux-services;
+                  INSTALLED=1
+                elif command -v apt-get >/dev/null 2>&1; then
+                  apt-get update && apt-get install -y termux-services;
+                  INSTALLED=1
+                else
+                  echo "❌ No suitable package manager found for termux-services installation.";
+                  exit 1;
+                fi
+              else
+                echo "✅ termux-services is already installed";
+              fi
+              if [ $INSTALLED -eq 1 ]; then
+                echo "";
+                echo "⚠️  Please restart Termux to activate termux-services.";
+                echo "";
+              fi
+            else
+              echo "⚠️  termux-api and termux-services installation skipped (not in Termux environment)";
             fi
             ;;
           *)
