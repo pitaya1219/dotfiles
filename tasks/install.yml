@@ -8,7 +8,7 @@ tasks:
       - task: git
       - task: dropbear
       - task: proot
-      - task: termux-packages
+      - task: bare-termux
       - task: nix
   git:
     desc: Install Git
@@ -199,6 +199,14 @@ tasks:
           echo "✅ Nix is already installed";
           nix --version;
         fi
+  bare-termux:
+    desc: Install rclone and passage for bare Termux (without proot)
+    silent: true
+    cmds:
+      - task: rclone
+      - task: passage
+      - task: rclone-secure
+      - task: termux-packages
   rclone-secure:
     desc: Setup rclone-secure wrapper for bare Termux
     silent: true
@@ -226,6 +234,68 @@ tasks:
         echo "✅ Installed: $PREFIX/bin/rclone-secure (profile: $profile_name)"
         echo ""
         echo "Next: Configure passage secrets and test with 'rclone-secure listremotes'"
+  rclone:
+    desc: Install rclone (for bare Termux)
+    silent: true
+    cmds:
+      - |
+        echo "🔧 Installing rclone..."
+        case "{{.UNAME_S}}" in
+          Linux)
+            if ! command -v rclone >/dev/null 2>&1; then
+              if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+                if command -v pkg >/dev/null 2>&1; then
+                  pkg update && pkg install -y rclone;
+                elif command -v apt-get >/dev/null 2>&1; then
+                  apt-get update && apt-get install -y rclone;
+                else
+                  echo "❌ No suitable package manager found.";
+                  exit 1;
+                fi
+              else
+                echo "❌ This task is for Termux environments only.";
+                exit 1;
+              fi
+            else
+              echo "✅ rclone is already installed";
+            fi
+            ;;
+          *)
+            echo "❌ Unsupported operating system: {{.UNAME_S}}"
+            exit 1
+            ;;
+        esac
+  passage:
+    desc: Install passage (for bare Termux)
+    silent: true
+    cmds:
+      - |
+        echo "🔧 Installing passage..."
+        case "{{.UNAME_S}}" in
+          Linux)
+            if ! command -v passage >/dev/null 2>&1; then
+              if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+                if command -v pkg >/dev/null 2>&1; then
+                  pkg update && pkg install -y passage;
+                elif command -v apt-get >/dev/null 2>&1; then
+                  apt-get update && apt-get install -y passage;
+                else
+                  echo "❌ No suitable package manager found.";
+                  exit 1;
+                fi
+              else
+                echo "❌ This task is for Termux environments only.";
+                exit 1;
+              fi
+            else
+              echo "✅ passage is already installed";
+            fi
+            ;;
+          *)
+            echo "❌ Unsupported operating system: {{.UNAME_S}}"
+            exit 1
+            ;;
+        esac
   check-deps:
     desc: Check if all dependencies are installed
     silent: true
@@ -259,6 +329,38 @@ tasks:
           echo "✅ $(nix --version)";
         else
           echo "❌ Not installed";
+        fi
+        echo -n "rclone: "
+        if command -v rclone >/dev/null 2>&1; then
+          echo "✅ $(rclone --version 2>&1 | head -n1)";
+        else
+          echo "❌ Not installed";
+        fi
+        echo -n "passage: "
+        if command -v passage >/dev/null 2>&1; then
+          echo "✅ Installed";
+        else
+          echo "❌ Not installed";
+        fi
+        echo -n "termux-api: "
+        if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+          if command -v termux-battery-status >/dev/null 2>&1; then
+            echo "✅ Installed";
+          else
+            echo "❌ Not installed";
+          fi
+        else
+          echo "⚠️  Not needed (not in Termux)";
+        fi
+        echo -n "termux-services: "
+        if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+          if command -v sv >/dev/null 2>&1 || [ -d "$PREFIX/var/service" ]; then
+            echo "✅ Installed";
+          else
+            echo "❌ Not installed";
+          fi
+        else
+          echo "⚠️  Not needed (not in Termux)";
         fi
         echo -n "rclone-secure: "
         if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
