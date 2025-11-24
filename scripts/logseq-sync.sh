@@ -59,6 +59,7 @@ check_prerequisites() {
 # Sync function
 sync_logseq() {
     local direction="${1:-bidirectional}"
+    shift || true  # Remove direction from arguments
 
     echo "$(timestamp) - Starting sync ($direction)" >> "$LOG_FILE"
 
@@ -189,7 +190,12 @@ main() {
     fi
 
     check_prerequisites
-    sync_logseq "${1:-bidirectional}"
+
+    if [[ $# -eq 0 ]]; then
+        sync_logseq "bidirectional"
+    else
+        sync_logseq "$@"
+    fi
 }
 
 main "$@"

@@ -23,9 +23,9 @@ tasks:
       - "{{.LOGSEQ_SYNC_CMD}} --help"
 
   logseq:
-    desc: Sync logseq folder with cloud (bidirectional)
+    desc: Sync logseq folder with cloud (default bidirectional)
     cmds:
-      - "{{.LOGSEQ_SYNC_CMD}} {{.CLI_ARGS | default \"bidirectional\"}}"
+      - '{{.LOGSEQ_SYNC_CMD}} {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}bidirectional{{end}}'
 
   logseq:setup:
     desc: Setup automatic logseq sync scheduling
