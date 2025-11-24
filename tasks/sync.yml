@@ -4,7 +4,7 @@ vars:
   LOGSEQ_SYNC_CMD:
     sh: |
       if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
-        echo "RCLONE_BIN=/data/data/com.termux/files/usr/bin/rclone-secure bash <(sed '1s|^#!/usr/bin/env bash\$|#!/data/data/com.termux/files/usr/bin/bash|' ./scripts/logseq-sync.sh)"
+        echo "RCLONE_BIN=/data/data/com.termux/files/usr/bin/rclone-secure NOTIFY_SCRIPT=./scripts/notify.sh bash <(sed '1s|^#!/usr/bin/env bash\$|#!/data/data/com.termux/files/usr/bin/bash|' ./scripts/logseq-sync.sh)"
       else
         echo "bash ./scripts/logseq-sync.sh"
       fi

@@ -11,6 +11,12 @@ LOGSEQ_REMOTE="${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}"
 RCLONE_BIN="${RCLONE_BIN:-$HOME/.local/bin/rclone-secure}"
 LOG_FILE="${LOG_FILE:-$HOME/.local/share/logseq-sync.log}"
 
+# Scripts
+if [[ -z "${NOTIFY_SCRIPT:-}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    NOTIFY_SCRIPT="$SCRIPT_DIR/notify.sh"
+fi
+
 # Color output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -103,7 +109,19 @@ sync_logseq() {
                 echo "     Apply the sync:"
                 echo "     $RCLONE_BIN bisync \"$LOGSEQ_LOCAL\" \"$LOGSEQ_REMOTE\" --resync"
                 echo ""
-                exit 1
+
+                # Send notification about initialization required
+                if [[ -n "$NOTIFY_SCRIPT" ]] && [[ -x "$NOTIFY_SCRIPT" ]]; then
+                    local notify_msg="Init required. Options:
+1. task sync:logseq -- up
+2. task sync:logseq -- down
+3. --resync (check dry-run first!)
+Log: ${LOG_FILE:-~/.local/share/logseq-sync.log}"
+                    "$NOTIFY_SCRIPT" "Logseq Sync: Init Required" "$notify_msg" "high" || true
+                fi
+
+                    exit 1
+                fi
             fi
 
             "$RCLONE_BIN" bisync "$LOGSEQ_LOCAL" "$LOGSEQ_REMOTE" \
@@ -123,12 +141,18 @@ sync_logseq() {
             ;;
     esac
 
-    if [[ $? -eq 0 ]]; then
+    if [[ $sync_status -eq 0 ]]; then
         log_info "Sync completed successfully"
         echo "$(timestamp) - Sync completed" >> "$LOG_FILE"
     else
         log_error "Sync failed"
         echo "$(timestamp) - Sync failed" >> "$LOG_FILE"
+
+        # Send notification about failure
+        if [[ -n "$NOTIFY_SCRIPT" ]] && [[ -x "$NOTIFY_SCRIPT" ]]; then
+            "$NOTIFY_SCRIPT" "Logseq Sync Failed" "Failed to sync with cloud. Check log: ${LOG_FILE:-~/.local/share/logseq-sync.log}" "high" || true
+        fi
+
         exit 1
     fi
 }

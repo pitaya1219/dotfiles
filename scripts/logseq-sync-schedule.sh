@@ -112,25 +112,33 @@ setup_termux() {
 
     # Get the dotfiles directory (assume schedule script is in dotfiles/scripts/)
     local DOTFILES_SCRIPT="${DOTFILES_DIR:-\$HOME/dotfiles}/scripts/logseq-sync.sh"
+    local DOTFILES_NOTIFY="${DOTFILES_DIR:-\$HOME/dotfiles}/scripts/notify.sh"
+    local NOTIFY_WRAPPER_PATH="$PREFIX/bin/logseq-notify"
 
-    # Create run script with environment variables
-    # Use the same wrapping approach as the task - fix shebang and execute
-    cat > "$SERVICE_DIR/run" <<EOF
+    cat > "$SERVICE_DIR/run" <<RUNEOF
 #!/data/data/com.termux/files/usr/bin/bash
 exec 2>&1
 
-# Set environment variables for the service
 export LOGSEQ_LOCAL="${LOGSEQ_LOCAL:-\$HOME/storage/shared/logseq}"
 export LOGSEQ_REMOTE="${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}"
 export RCLONE_BIN="/data/data/com.termux/files/usr/bin/rclone-secure"
 
+# Create notify wrapper
+NOTIFY_WRAPPER="$NOTIFY_WRAPPER_PATH"
+sed '1s|^#!/usr/bin/env bash\$|#!/data/data/com.termux/files/usr/bin/bash|' $DOTFILES_NOTIFY > \$NOTIFY_WRAPPER
+chmod +x \$NOTIFY_WRAPPER
+export NOTIFY_SCRIPT="\$NOTIFY_WRAPPER"
+
 while true; do
     echo "Starting Logseq sync..."
-    RCLONE_BIN=/data/data/com.termux/files/usr/bin/rclone-secure bash <(sed '1s|^#!/usr/bin/env bash\\\$|#!/data/data/com.termux/files/usr/bin/bash|' $DOTFILES_SCRIPT) bidirectional
-    echo "Sync completed. Sleeping for $SYNC_INTERVAL seconds..."
+    if bash <(sed '1s|^#!/usr/bin/env bash\$|#!/data/data/com.termux/files/usr/bin/bash|' $DOTFILES_SCRIPT) bidirectional; then
+        echo "Sync completed successfully. Sleeping for $SYNC_INTERVAL seconds..."
+    else
+        echo "Sync failed (exit \$?). Sleeping for $SYNC_INTERVAL seconds before retry..."
+    fi
     sleep $SYNC_INTERVAL
 done
-EOF
+RUNEOF
     chmod +x "$SERVICE_DIR/run"
 
     # Create log directory
