@@ -139,7 +139,7 @@ sync_logseq() {
                 # Expand tilde and resolve to absolute path for listing filename
                 LOCAL_EXPANDED="${LOGSEQ_LOCAL/#\~/$HOME}"
                 LOCAL_ABSOLUTE="$(cd "$LOCAL_EXPANDED" && pwd)"
-                LISTING_PREFIX="$(echo "$LOCAL_ABSOLUTE" | sed 's|/|_|g')..$(echo "$LOGSEQ_REMOTE" | sed 's|:|_|g; s|/|_|g')"
+                LISTING_PREFIX="$(echo "$LOCAL_ABSOLUTE" | sed 's|/|_|g' | sed 's|^_||')..$(echo "$LOGSEQ_REMOTE" | sed 's|:|_|g; s|/|_|g')"
 
                 if [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path1.lst" ]] || [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path2.lst" ]]; then
                 log_error "First sync detected. Bisync requires initialization with --resync flag."
