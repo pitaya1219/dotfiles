@@ -81,6 +81,18 @@ sync_logseq() {
             ;;
         bidirectional|bi)
             log_info "Syncing bidirectional (cloud ↔ local)..."
+
+            # Check if bisync listings exist, if not, run with --resync
+            BISYNC_CACHE="$HOME/.cache/rclone/bisync"
+            LISTING_PREFIX="$(echo "$LOGSEQ_LOCAL" | sed 's|/|_|g')..$(echo "$LOGSEQ_REMOTE" | sed 's|:|_|g; s|/|_|g')"
+
+            if [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path1.lst" ]] || [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path2.lst" ]]; then
+                log_warn "First sync detected, initializing with --resync..."
+                RESYNC_FLAG="--resync"
+            else
+                RESYNC_FLAG=""
+            fi
+
             "$RCLONE_BIN" bisync "$LOGSEQ_LOCAL" "$LOGSEQ_REMOTE" \
                 --exclude '.git/**' \
                 --exclude 'node_modules/**' \
@@ -90,7 +102,8 @@ sync_logseq() {
                 --recover \
                 --create-empty-src-dirs \
                 --log-file="$LOG_FILE" \
-                --log-level INFO
+                --log-level INFO \
+                $RESYNC_FLAG
             ;;
         *)
             log_error "Invalid direction: $direction. Use: up, down, or bidirectional"
