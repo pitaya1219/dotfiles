@@ -82,15 +82,28 @@ sync_logseq() {
         bidirectional|bi)
             log_info "Syncing bidirectional (cloud ↔ local)..."
 
-            # Check if bisync listings exist, if not, run with --resync
+            # Check if bisync listings exist, if not, notify user
             BISYNC_CACHE="$HOME/.cache/rclone/bisync"
-            LISTING_PREFIX="$(echo "$LOGSEQ_LOCAL" | sed 's|/|_|g')..$(echo "$LOGSEQ_REMOTE" | sed 's|:|_|g; s|/|_|g')"
+            # Expand tilde and resolve to absolute path for listing filename
+            LOCAL_EXPANDED="${LOGSEQ_LOCAL/#\~/$HOME}"
+            LOCAL_ABSOLUTE="$(cd "$LOCAL_EXPANDED" && pwd)"
+            LISTING_PREFIX="$(echo "$LOCAL_ABSOLUTE" | sed 's|/|_|g')..$(echo "$LOGSEQ_REMOTE" | sed 's|:|_|g; s|/|_|g')"
 
             if [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path1.lst" ]] || [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path2.lst" ]]; then
-                log_warn "First sync detected, initializing with --resync..."
-                RESYNC_FLAG="--resync"
-            else
-                RESYNC_FLAG=""
+                log_error "First sync detected. Bisync requires initialization with --resync flag."
+                echo ""
+                echo "Run one of the following commands to initialize:"
+                echo "  1. Upload local to cloud:  $0 up"
+                echo "  2. Download cloud to local: $0 down"
+                echo "  3. Force resync (WARNING: may overwrite conflicts):"
+                echo ""
+                echo "     Preview changes first (dry-run):"
+                echo "     $RCLONE_BIN bisync \"$LOGSEQ_LOCAL\" \"$LOGSEQ_REMOTE\" --resync --dry-run"
+                echo ""
+                echo "     Apply the sync:"
+                echo "     $RCLONE_BIN bisync \"$LOGSEQ_LOCAL\" \"$LOGSEQ_REMOTE\" --resync"
+                echo ""
+                exit 1
             fi
 
             "$RCLONE_BIN" bisync "$LOGSEQ_LOCAL" "$LOGSEQ_REMOTE" \
@@ -102,8 +115,7 @@ sync_logseq() {
                 --recover \
                 --create-empty-src-dirs \
                 --log-file="$LOG_FILE" \
-                --log-level INFO \
-                $RESYNC_FLAG
+                --log-level INFO
             ;;
         *)
             log_error "Invalid direction: $direction. Use: up, down, or bidirectional"

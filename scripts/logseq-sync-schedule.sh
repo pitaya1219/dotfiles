@@ -63,6 +63,13 @@ setup_macos() {
         <string>$SYNC_SCRIPT</string>
         <string>bidirectional</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>LOGSEQ_LOCAL</key>
+        <string>${LOGSEQ_LOCAL:-$HOME/logseq}</string>
+        <key>LOGSEQ_REMOTE</key>
+        <string>${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}</string>
+    </dict>
     <key>StartInterval</key>
     <integer>1800</integer>
     <key>RunAtLoad</key>
@@ -95,26 +102,39 @@ setup_termux() {
     fi
 
     # Detect service directory based on sv location
-    local SV_PATH="$(dirname "$(dirname "$(which sv)")")"
+    local SV_PATH="$(dirname "$(dirname "$(command -v sv)")")"
     local SVDIR="${SVDIR:-$SV_PATH/var/service}"
     local SERVICE_DIR="$SVDIR/logseq-sync"
     mkdir -p "$SERVICE_DIR"
 
-    # Create run script
+    # Get sync interval (default 30 minutes = 1800 seconds)
+    local SYNC_INTERVAL="${LOGSEQ_SYNC_INTERVAL:-1800}"
+
+    # Get the dotfiles directory (assume schedule script is in dotfiles/scripts/)
+    local DOTFILES_SCRIPT="${DOTFILES_DIR:-\$HOME/dotfiles}/scripts/logseq-sync.sh"
+
+    # Create run script with environment variables
+    # Use the same wrapping approach as the task - fix shebang and execute
     cat > "$SERVICE_DIR/run" <<EOF
 #!/data/data/com.termux/files/usr/bin/bash
 exec 2>&1
+
+# Set environment variables for the service
+export LOGSEQ_LOCAL="${LOGSEQ_LOCAL:-\$HOME/storage/shared/logseq}"
+export LOGSEQ_REMOTE="${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}"
+export RCLONE_BIN="/data/data/com.termux/files/usr/bin/rclone-secure"
+
 while true; do
     echo "Starting Logseq sync..."
-    $SYNC_SCRIPT bidirectional
-    echo "Sync completed. Sleeping for 30 minutes..."
-    sleep 1800
+    RCLONE_BIN=/data/data/com.termux/files/usr/bin/rclone-secure bash <(sed '1s|^#!/usr/bin/env bash\\\$|#!/data/data/com.termux/files/usr/bin/bash|' $DOTFILES_SCRIPT) bidirectional
+    echo "Sync completed. Sleeping for $SYNC_INTERVAL seconds..."
+    sleep $SYNC_INTERVAL
 done
 EOF
     chmod +x "$SERVICE_DIR/run"
 
     # Create log directory
-    mkdir -p "$SERVICE_DIR/log"
+    mkdir -p "$SERVICE_DIR/log/main"
     cat > "$SERVICE_DIR/log/run" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 exec svlogd -tt ./main
@@ -124,10 +144,37 @@ EOF
     # Start service (with SVDIR set)
     export SVDIR
     rm -f "$SERVICE_DIR/down"
-    sv up logseq-sync
 
-    log_info "Termux service enabled (every 30 minutes)"
-    sv status logseq-sync
+    # Need to restart runsvdir to pick up new service
+    log_info "Restarting service daemon..."
+    sv-enable logseq-sync
+
+    # Give it a moment to initialize
+    sleep 2
+
+    local INTERVAL_MIN=$((SYNC_INTERVAL / 60))
+    log_info "Termux service enabled (every $INTERVAL_MIN minutes)"
+    sv status logseq-sync 2>/dev/null || log_warn "Service starting up..."
+
+    # Setup Termux:Boot script to start on device boot
+    local BOOT_DIR="$HOME/.termux/boot"
+    mkdir -p "$BOOT_DIR"
+
+    cat > "$BOOT_DIR/logseq-sync.sh" <<'BOOTEOF'
+#!/data/data/com.termux/files/usr/bin/bash
+termux-wake-lock
+sv-enable logseq-sync
+BOOTEOF
+    chmod +x "$BOOT_DIR/logseq-sync.sh"
+
+    echo ""
+    log_info "Termux:Boot script created at $BOOT_DIR/logseq-sync.sh"
+    echo ""
+    log_warn "To keep service running after closing Termux:"
+    echo "   1. Install Termux:Boot app from F-Droid"
+    echo "   2. Open Termux:Boot once to enable it"
+    echo "   3. Disable battery optimization for Termux in Android settings"
+    echo "   4. Reboot device or run: termux-wake-lock && sv-enable logseq-sync"
 }
 
 # Setup systemd timer (Ubuntu/WSL2)
@@ -146,6 +193,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+Environment="LOGSEQ_LOCAL=${LOGSEQ_LOCAL:-$HOME/logseq}"
+Environment="LOGSEQ_REMOTE=${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}"
 ExecStart=$SYNC_SCRIPT bidirectional
 StandardOutput=journal
 StandardError=journal
@@ -209,11 +258,23 @@ remove_scheduling() {
         termux)
             log_info "Removing Termux service..."
             if command -v sv &>/dev/null; then
-                local SV_PATH="$(dirname "$(dirname "$(which sv)")")"
+                local SV_PATH="$(dirname "$(dirname "$(command -v sv)")")"
                 local SVDIR="${SVDIR:-$SV_PATH/var/service}"
                 export SVDIR
                 sv down logseq-sync 2>/dev/null || true
                 rm -rf "$SVDIR/logseq-sync"
+            fi
+
+            # Remove Termux:Boot script
+            local BOOT_SCRIPT="$HOME/.termux/boot/logseq-sync.sh"
+            if [[ -f "$BOOT_SCRIPT" ]]; then
+                rm -f "$BOOT_SCRIPT"
+                log_info "Removed Termux:Boot script"
+            fi
+
+            # Release wakelock if held
+            if command -v termux-wake-unlock &>/dev/null; then
+                termux-wake-unlock 2>/dev/null || true
             fi
             ;;
         ubuntu|wsl2)
@@ -252,7 +313,7 @@ show_status() {
             ;;
         termux)
             if command -v sv &>/dev/null; then
-                local SV_PATH="$(dirname "$(dirname "$(which sv)")")"
+                local SV_PATH="$(dirname "$(dirname "$(command -v sv)")")"
                 local SVDIR="${SVDIR:-$SV_PATH/var/service}"
                 export SVDIR
                 log_info "Termux services:"
