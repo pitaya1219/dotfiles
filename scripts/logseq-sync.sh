@@ -63,40 +63,85 @@ sync_logseq() {
 
     echo "$(timestamp) - Starting sync ($direction)" >> "$LOG_FILE"
 
+    # Check if --dry-run is present to show console output
+    local has_dryrun=false
+    for arg in "$@"; do
+        [[ "$arg" == "--dry-run" ]] && has_dryrun=true && break
+    done
+
+    local sync_status=0
+
     case "$direction" in
         up|upload)
             log_info "Syncing local → cloud..."
-            "$RCLONE_BIN" sync "$LOGSEQ_LOCAL" "$LOGSEQ_REMOTE" \
-                --exclude '.git/**' \
-                --exclude 'node_modules/**' \
-                --exclude '.DS_Store' \
-                --exclude 'logseq/.recycle/**' \
-                --progress \
-                --log-file="$LOG_FILE" \
-                --log-level INFO
+            set +e
+            if $has_dryrun; then
+                "$RCLONE_BIN" sync "$LOGSEQ_LOCAL" "$LOGSEQ_REMOTE" \
+                    --exclude '.git/**' \
+                    --exclude 'node_modules/**' \
+                    --exclude '.DS_Store' \
+                    --exclude 'logseq/.recycle/**' \
+                    --progress \
+                    "$@" 2>&1 | tee -a "$LOG_FILE"
+                sync_status=${PIPESTATUS[0]}
+            else
+                "$RCLONE_BIN" sync "$LOGSEQ_LOCAL" "$LOGSEQ_REMOTE" \
+                    --exclude '.git/**' \
+                    --exclude 'node_modules/**' \
+                    --exclude '.DS_Store' \
+                    --exclude 'logseq/.recycle/**' \
+                    --progress \
+                    --log-file="$LOG_FILE" \
+                    --log-level INFO \
+                    "$@"
+                sync_status=$?
+            fi
+            set -e
             ;;
         down|download)
             log_info "Syncing cloud → local..."
-            "$RCLONE_BIN" sync "$LOGSEQ_REMOTE" "$LOGSEQ_LOCAL" \
-                --exclude '.git/**' \
-                --exclude 'node_modules/**' \
-                --exclude '.DS_Store' \
-                --exclude 'logseq/.recycle/**' \
-                --progress \
-                --log-file="$LOG_FILE" \
-                --log-level INFO
+            set +e
+            if $has_dryrun; then
+                "$RCLONE_BIN" sync "$LOGSEQ_REMOTE" "$LOGSEQ_LOCAL" \
+                    --exclude '.git/**' \
+                    --exclude 'node_modules/**' \
+                    --exclude '.DS_Store' \
+                    --exclude 'logseq/.recycle/**' \
+                    --progress \
+                    "$@" 2>&1 | tee -a "$LOG_FILE"
+                sync_status=${PIPESTATUS[0]}
+            else
+                "$RCLONE_BIN" sync "$LOGSEQ_REMOTE" "$LOGSEQ_LOCAL" \
+                    --exclude '.git/**' \
+                    --exclude 'node_modules/**' \
+                    --exclude '.DS_Store' \
+                    --exclude 'logseq/.recycle/**' \
+                    --progress \
+                    --log-file="$LOG_FILE" \
+                    --log-level INFO \
+                    "$@"
+                sync_status=$?
+            fi
+            set -e
             ;;
         bidirectional|bi)
             log_info "Syncing bidirectional (cloud ↔ local)..."
 
-            # Check if bisync listings exist, if not, notify user
-            BISYNC_CACHE="$HOME/.cache/rclone/bisync"
-            # Expand tilde and resolve to absolute path for listing filename
-            LOCAL_EXPANDED="${LOGSEQ_LOCAL/#\~/$HOME}"
-            LOCAL_ABSOLUTE="$(cd "$LOCAL_EXPANDED" && pwd)"
-            LISTING_PREFIX="$(echo "$LOCAL_ABSOLUTE" | sed 's|/|_|g')..$(echo "$LOGSEQ_REMOTE" | sed 's|:|_|g; s|/|_|g')"
+            # Check if --resync is in arguments, skip listing check if present
+            local has_resync=false
+            for arg in "$@"; do
+                [[ "$arg" == "--resync" ]] && has_resync=true && break
+            done
 
-            if [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path1.lst" ]] || [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path2.lst" ]]; then
+            if ! $has_resync; then
+                # Check if bisync listings exist, if not, notify user
+                BISYNC_CACHE="$HOME/.cache/rclone/bisync"
+                # Expand tilde and resolve to absolute path for listing filename
+                LOCAL_EXPANDED="${LOGSEQ_LOCAL/#\~/$HOME}"
+                LOCAL_ABSOLUTE="$(cd "$LOCAL_EXPANDED" && pwd)"
+                LISTING_PREFIX="$(echo "$LOCAL_ABSOLUTE" | sed 's|/|_|g')..$(echo "$LOGSEQ_REMOTE" | sed 's|:|_|g; s|/|_|g')"
+
+                if [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path1.lst" ]] || [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path2.lst" ]]; then
                 log_error "First sync detected. Bisync requires initialization with --resync flag."
                 echo ""
                 echo "Run one of the following commands to initialize:"
@@ -125,16 +170,33 @@ Log: ${LOG_FILE:-~/.local/share/logseq-sync.log}"
                 fi
             fi
 
-            "$RCLONE_BIN" bisync "$LOGSEQ_LOCAL" "$LOGSEQ_REMOTE" \
-                --exclude '.git/**' \
-                --exclude 'node_modules/**' \
-                --exclude '.DS_Store' \
-                --exclude 'logseq/.recycle/**' \
-                --resilient \
-                --recover \
-                --create-empty-src-dirs \
-                --log-file="$LOG_FILE" \
-                --log-level INFO
+            set +e
+            if $has_dryrun; then
+                "$RCLONE_BIN" bisync "$LOGSEQ_LOCAL" "$LOGSEQ_REMOTE" \
+                    --exclude '.git/**' \
+                    --exclude 'node_modules/**' \
+                    --exclude '.DS_Store' \
+                    --exclude 'logseq/.recycle/**' \
+                    --resilient \
+                    --recover \
+                    --create-empty-src-dirs \
+                    "$@" 2>&1 | tee -a "$LOG_FILE"
+                sync_status=${PIPESTATUS[0]}
+            else
+                "$RCLONE_BIN" bisync "$LOGSEQ_LOCAL" "$LOGSEQ_REMOTE" \
+                    --exclude '.git/**' \
+                    --exclude 'node_modules/**' \
+                    --exclude '.DS_Store' \
+                    --exclude 'logseq/.recycle/**' \
+                    --resilient \
+                    --recover \
+                    --create-empty-src-dirs \
+                    --log-file="$LOG_FILE" \
+                    --log-level INFO \
+                    "$@"
+                sync_status=$?
+            fi
+            set -e
             ;;
         *)
             log_error "Invalid direction: $direction. Use: up, down, or bidirectional"
