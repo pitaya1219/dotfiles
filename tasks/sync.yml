@@ -1,27 +1,43 @@
 version: '3'
 
+vars:
+  LOGSEQ_SYNC_CMD:
+    sh: |
+      if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+        echo "RCLONE_BIN=/data/data/com.termux/files/usr/bin/rclone-secure bash <(sed '1s|^#!/usr/bin/env bash\$|#!/data/data/com.termux/files/usr/bin/bash|' ./scripts/logseq-sync.sh)"
+      else
+        echo "bash ./scripts/logseq-sync.sh"
+      fi
+  LOGSEQ_SCHEDULE_CMD:
+    sh: |
+      if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+        echo "bash <(sed '1s|^#!/usr/bin/env bash\$|#!/data/data/com.termux/files/usr/bin/bash|' ./scripts/logseq-sync-schedule.sh)"
+      else
+        echo "bash ./scripts/logseq-sync-schedule.sh"
+      fi
+
 tasks:
   default:
     desc: Show logseq sync help
     cmds:
-      - ./scripts/logseq-sync.sh --help
+      - "{{.LOGSEQ_SYNC_CMD}} --help"
 
   logseq:
     desc: Sync logseq folder with cloud (bidirectional)
     cmds:
-      - ./scripts/logseq-sync.sh {{.CLI_ARGS | default "bidirectional"}}
+      - "{{.LOGSEQ_SYNC_CMD}} {{.CLI_ARGS | default \"bidirectional\"}}"
 
   logseq:setup:
     desc: Setup automatic logseq sync scheduling
     cmds:
-      - ./scripts/logseq-sync-schedule.sh setup
+      - "{{.LOGSEQ_SCHEDULE_CMD}} setup"
 
   logseq:status:
     desc: Show logseq sync scheduling status
     cmds:
-      - ./scripts/logseq-sync-schedule.sh status
+      - "{{.LOGSEQ_SCHEDULE_CMD}} status"
 
   logseq:remove:
     desc: Remove logseq sync scheduling
     cmds:
-      - ./scripts/logseq-sync-schedule.sh remove
+      - "{{.LOGSEQ_SCHEDULE_CMD}} remove"
