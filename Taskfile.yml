@@ -13,6 +13,7 @@ includes:
   setup: ./tasks/setup.yml
   nix: ./tasks/nix.yml
   proot: ./tasks/proot.yml
+  sync: ./tasks/sync.yml
  
 tasks:
   default:

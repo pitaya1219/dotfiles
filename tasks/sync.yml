@@ -1,0 +1,27 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Show logseq sync help
+    cmds:
+      - ./scripts/logseq-sync.sh --help
+
+  logseq:
+    desc: Sync logseq folder with cloud (bidirectional)
+    cmds:
+      - ./scripts/logseq-sync.sh {{.CLI_ARGS | default "bidirectional"}}
+
+  logseq:setup:
+    desc: Setup automatic logseq sync scheduling
+    cmds:
+      - ./scripts/logseq-sync-schedule.sh setup
+
+  logseq:status:
+    desc: Show logseq sync scheduling status
+    cmds:
+      - ./scripts/logseq-sync-schedule.sh status
+
+  logseq:remove:
+    desc: Remove logseq sync scheduling
+    cmds:
+      - ./scripts/logseq-sync-schedule.sh remove
