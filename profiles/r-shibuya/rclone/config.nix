@@ -2,42 +2,14 @@
 
 let
   profileName = config.home.username;
+  rcloneBin = "${pkgs.rclone}/bin/rclone";
 
-  # Wrapper script that creates config at runtime with secrets from passage
-  rcloneWrapper = ''
-    #!/usr/bin/env bash
-
-    # Create temporary config with secrets from passage
-    TEMP_CONFIG=$(mktemp)
-    trap "rm -f $TEMP_CONFIG" EXIT
-
-    # Get secrets from passage
-    TOKEN="$(passage show rclone/pcloud/${profileName}/token)"
-    PASSWORD="$(passage show rclone/crypt/${profileName}/password)"
-    PASSWORD2="$(passage show rclone/crypt/${profileName}/password2)"
-
-    # Obscure passwords
-    OBSCURED_PASS="$(${pkgs.rclone}/bin/rclone obscure "$PASSWORD")"
-    OBSCURED_PASS2="$(${pkgs.rclone}/bin/rclone obscure "$PASSWORD2")"
-
-    # Generate config with secrets
-    cat > "$TEMP_CONFIG" <<EOF
-    [pcloud]
-    type = pcloud
-    hostname = eapi.pcloud.com
-    token = $TOKEN
-
-    [pcloud-crypt]
-    type = crypt
-    remote = pcloud:
-    password = $OBSCURED_PASS
-    password2 = $OBSCURED_PASS2
-    filename_encryption = standard
-    directory_name_encryption = true
-    EOF
-
-    exec ${pkgs.rclone}/bin/rclone --config "$TEMP_CONFIG" "$@"
-  '';
+  # Read script template and substitute variables
+  scriptTemplate = builtins.readFile ../../../scripts/rclone-secure.sh.template;
+  rcloneWrapper = builtins.replaceStrings
+    ["__PROFILE_NAME__" "__RCLONE_BIN__"]
+    [profileName rcloneBin]
+    scriptTemplate;
 in
 {
   # Wrapper script with secrets from passage

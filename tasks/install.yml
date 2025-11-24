@@ -199,6 +199,33 @@ tasks:
           echo "✅ Nix is already installed";
           nix --version;
         fi
+  rclone-secure:
+    desc: Setup rclone-secure wrapper for bare Termux
+    silent: true
+    cmds:
+      - |
+        echo "☁️  Setting up rclone-secure..."
+
+        # Check dependencies
+        if ! command -v rclone &> /dev/null || ! command -v passage &> /dev/null; then
+            echo "❌ Missing dependencies. Run: task install:bare-termux"
+            exit 1
+        fi
+
+        # Get profile name
+        read -p "Enter profile name (default: ${USER}): " profile_name
+        profile_name=${profile_name:-${USER}}
+
+        # Create bin directory and install script (use $PREFIX for Termux)
+        mkdir -p $PREFIX/bin
+        sed -e "s|__PROFILE_NAME__|$profile_name|g" \
+            -e "s|__RCLONE_BIN__|$(command -v rclone)|g" \
+            "{{.ROOT_DIR}}/scripts/rclone-secure.sh.template" > $PREFIX/bin/rclone-secure
+        chmod +x $PREFIX/bin/rclone-secure
+
+        echo "✅ Installed: $PREFIX/bin/rclone-secure (profile: $profile_name)"
+        echo ""
+        echo "Next: Configure passage secrets and test with 'rclone-secure listremotes'"
   check-deps:
     desc: Check if all dependencies are installed
     silent: true
@@ -232,4 +259,14 @@ tasks:
           echo "✅ $(nix --version)";
         else
           echo "❌ Not installed";
+        fi
+        echo -n "rclone-secure: "
+        if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+          if command -v rclone-secure >/dev/null 2>&1; then
+            echo "✅ Installed";
+          else
+            echo "❌ Not installed";
+          fi
+        else
+          echo "⚠️  Not needed (not in Termux)";
         fi
