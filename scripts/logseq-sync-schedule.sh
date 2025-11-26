@@ -117,7 +117,7 @@ setup_termux() {
     # Get the dotfiles directory (assume schedule script is in dotfiles/scripts/)
     local DOTFILES_SCRIPT="${DOTFILES_DIR:-\$HOME/dotfiles}/scripts/logseq-sync.sh"
     local DOTFILES_NOTIFY="${DOTFILES_DIR:-\$HOME/dotfiles}/scripts/notify.sh"
-    local NOTIFY_WRAPPER_PATH="$PREFIX/bin/logseq-notify"
+    local NOTIFY_WRAPPER_PATH="${PREFIX:-/data/data/com.termux/files/usr}/bin/logseq-notify"
 
     cat > "$SERVICE_DIR/run" <<RUNEOF
 #!/data/data/com.termux/files/usr/bin/bash
@@ -159,14 +159,20 @@ EOF
 
     # Need to restart runsvdir to pick up new service
     log_info "Restarting service daemon..."
-    sv-enable logseq-sync
+    sv-enable logseq-sync 2>&1 | grep -v "unable to open supervise/ok" || true
 
     # Give it a moment to initialize
-    sleep 2
+    sleep 3
 
     local INTERVAL_MIN=$((SYNC_INTERVAL / 60))
     log_info "Termux service enabled (every $INTERVAL_MIN minutes)"
-    sv status logseq-sync 2>/dev/null || log_warn "Service starting up..."
+
+    # Check status, ignore if not ready yet
+    if sv status logseq-sync 2>/dev/null; then
+        log_info "Service is running"
+    else
+        log_warn "Service will start shortly. Check with: sv status logseq-sync"
+    fi
 
     # Setup Termux:Boot script to start on device boot
     local BOOT_DIR="$HOME/.termux/boot"
