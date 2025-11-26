@@ -13,5 +13,5 @@ rec {
   NODE_OPTIONS = "--openssl-legacy-provider";
   LOGSEQ_REMOTE = "pcloud-crypt:app/logseq";
   LOGSEQ_LOCAL = "\${HOME}/personal/app/logseq";
-  LOGSEQ_SYNC_INTERVAL = 300;
+  LOGSEQ_SYNC_INTERVAL = 600;
 }
