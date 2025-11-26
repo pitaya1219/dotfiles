@@ -102,15 +102,39 @@ create_conflict_page() {
         echo "Please review and manually merge the content below."
         echo ""
 
+        # Add diff first if both versions exist
+        if [[ -f "$base_file" ]] && [[ ${#conflict_files[@]} -gt 0 ]] && [[ -f "${conflict_files[0]}" ]]; then
+            echo "## Diff Summary"
+            echo ""
+            echo "**Legend:** \`❌\` removed line (Conflict only) | \`✅\` added line (Current only) | \`  \` unchanged"
+            echo ""
+            echo '```'
+            diff -u "${conflict_files[0]}" "$base_file" | tail -n +4 | sed 's/^-/❌ /' | sed 's/^+/✅ /' | sed 's/^@/📍/' || true
+            echo ""
+            echo '```'
+            echo ""
+        fi
+
         # Add each conflict version
         local version=1
+
+        # First, show the original file if it exists (the "winner")
+        if [[ -f "$base_file" ]]; then
+            echo "## Version $version (Current/Newer)"
+            echo "- collapsed:: true"
+            # Indent each line to make it a child block
+            sed 's/^/\t/' "$base_file"
+            echo ""
+            version=$((version + 1))
+        fi
+
+        # Then show conflict files (the "losers")
         for conflict_file in "${conflict_files[@]}"; do
             if [[ -f "$conflict_file" ]]; then
-                echo "## Version $version"
-                echo ""
-                echo "\`\`\`"
-                cat "$conflict_file"
-                echo "\`\`\`"
+                echo "## Version $version (Conflict/Older)"
+                echo "- collapsed:: true"
+                # Indent each line to make it a child block
+                sed 's/^/\t/' "$conflict_file"
                 echo ""
                 version=$((version + 1))
             fi
@@ -176,8 +200,33 @@ restore_conflicts() {
         # Split conflict files by |
         IFS='|' read -ra conflict_array <<< "${conflict_groups[$base_file]}"
 
-        # Create conflict page with all versions
-        create_conflict_page "$base_file" "${conflict_array[@]}"
+        # Check if there's actual difference before creating conflict page
+        local has_diff=false
+        if [[ -f "$base_file" ]] && [[ -f "${conflict_array[0]}" ]]; then
+            if ! diff -q "$base_file" "${conflict_array[0]}" > /dev/null 2>&1; then
+                has_diff=true
+            fi
+        elif [[ ! -f "$base_file" ]] || [[ ! -f "${conflict_array[0]}" ]]; then
+            # One file missing means there's a real conflict
+            has_diff=true
+        fi
+
+        if $has_diff; then
+            # Create conflict page with all versions
+            create_conflict_page "$base_file" "${conflict_array[@]}"
+
+            # Clean up conflict files after creating conflict page
+            log_info "Removing conflict files for: $(basename "$base_file")"
+            for cf in "${conflict_array[@]}"; do
+                [[ -f "$cf" ]] && rm -f "$cf"
+            done
+        else
+            log_info "No actual difference found, skipping conflict page for: $(basename "$base_file")"
+            # Clean up identical conflict files
+            for cf in "${conflict_array[@]}"; do
+                [[ -f "$cf" ]] && rm -f "$cf"
+            done
+        fi
 
         # If original file doesn't exist, use the largest conflict file
         if [[ ! -f "$base_file" ]]; then
