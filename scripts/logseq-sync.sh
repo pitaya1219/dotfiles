@@ -142,6 +142,12 @@ restore_conflicts() {
     echo "$conflicts"
     echo ""
 
+    # Send notification about conflicts
+    if [[ -n "$NOTIFY_SCRIPT" ]] && [[ -x "$NOTIFY_SCRIPT" ]]; then
+        local conflict_count=$(echo "$conflicts" | wc -l | tr -d ' ')
+        "$NOTIFY_SCRIPT" "Logseq Sync: Conflicts Detected" "Found $conflict_count conflict file(s). Check pages with #conflict tag in Logseq." "high" || true
+    fi
+
     # Group conflicts by base file
     declare -A conflict_groups
 
