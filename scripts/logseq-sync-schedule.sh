@@ -65,13 +65,17 @@ setup_macos() {
     </array>
     <key>EnvironmentVariables</key>
     <dict>
+        <key>PATH</key>
+        <string>${HOME}/.nix-profile/bin:${PATH}</string>
         <key>LOGSEQ_LOCAL</key>
         <string>${LOGSEQ_LOCAL:-$HOME/logseq}</string>
         <key>LOGSEQ_REMOTE</key>
         <string>${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}</string>
+        <key>RCLONE_BIN</key>
+        <string>${HOME}/.local/bin/rclone-secure</string>
     </dict>
     <key>StartInterval</key>
-    <integer>1800</integer>
+    <integer>${LOGSEQ_SYNC_INTERVAL}</integer>
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>
@@ -86,7 +90,7 @@ EOF
     launchctl unload "$PLIST_FILE" 2>/dev/null || true
     launchctl load "$PLIST_FILE"
 
-    log_info "macOS launchd agent loaded (every 30 minutes)"
+    log_info "macOS launchd agent loaded (every $((LOGSEQ_SYNC_INTERVAL / 60)) minutes)"
 }
 
 # Setup Termux scheduling
