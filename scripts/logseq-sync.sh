@@ -157,7 +157,9 @@ restore_conflicts() {
         fi
 
         # Get base filename (remove .conflict-* suffix)
-        local base_file="${conflict_file%%.conflict*}.md"
+        local base_file="${conflict_file%%.conflict*}"
+        # Add .md extension if not already present
+        [[ "$base_file" != *.md ]] && base_file="${base_file}.md"
 
         # Add to group
         if [[ -z "${conflict_groups[$base_file]:-}" ]]; then
