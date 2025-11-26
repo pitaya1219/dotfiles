@@ -14,6 +14,7 @@ includes:
   nix: ./tasks/nix.yml
   proot: ./tasks/proot.yml
   sync: ./tasks/sync.yml
+  boot: ./tasks/boot.yml
  
 tasks:
   default:

@@ -1,0 +1,31 @@
+version: '3'
+
+tasks:
+  setup:
+    desc: Setup bare Termux boot scripts (Automate launch + logseq-sync service)
+    cmds:
+      - task: logseq-sync
+    preconditions:
+      - sh: '[[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]'
+        msg: "This task is only for Termux/Android"
+
+  logseq-sync:
+    desc: Setup logseq-sync service registration
+    cmds:
+      - task: :sync:logseq:setup
+
+  info:
+    desc: Show information about Termux boot setup
+    cmds:
+      - |
+        echo "Termux Boot Setup Instructions:"
+        echo ""
+        echo "Required steps:"
+        echo "  1. Install Termux:Boot from F-Droid"
+        echo "  2. Open Termux:Boot app once to enable it"
+        echo "  3. Disable battery optimization for Termux:Boot in Android settings"
+        echo "  4. Run: task boot:setup"
+        echo "  5. Reboot device to test"
+        echo ""
+        echo "Current boot scripts:"
+        ls -lh "$HOME/.termux/boot/" 2>/dev/null || echo "  (none installed yet)"
