@@ -26,6 +26,32 @@ in
     fi
   '';
 
+  home.activation.overrideConfigure = lib.hm.dag.entryAfter ["installRootlessDocker"] ''
+    cat > ~/.config/systemd/user/docker.service.d/override.conf <<EOF
+[Service]
+Environment="PATH=/home/rose/.nix-profile/bin:/home/rose/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+EOF
+  '';
+
+  home.activation.configureIpv6 = lib.hm.dag.entryAfter ["installRootlessDocker"] ''
+    mkdir -p ~/.config/systemd/user/docker.service.d
+    cat > ~/.config/systemd/user/docker.service.d/pasta.conf <<EOF
+[Service]
+Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_NET=pasta"
+Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_FLAGS=--ipv6"
+Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=implicit"
+EOF
+    mkdir -p ~/.config/docker
+    cat > ~/.config/docker/daemon.json <<EOF
+{
+  "ipv6": true,
+  "fixed-cidr-v6": "fd00::/64",
+  "ip6tables": true
+}
+EOF
+
+  '';
+
   home.activation.installDockerCompose = lib.hm.dag.entryAfter ["installRootlessDocker"] ''
     export PATH="${path}:$HOME/.local/bin:$PATH"
     if ! docker compose &>/dev/null; then

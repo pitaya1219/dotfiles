@@ -26,7 +26,9 @@
           username = "rose";
           homeDirectory = "/home/rose";
           stateVersion = "23.11";
-          packages = with pkgs; [];
+          packages = with pkgs; [
+            passt
+          ];
         };
       })
     ];
