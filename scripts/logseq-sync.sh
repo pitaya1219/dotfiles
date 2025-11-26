@@ -10,6 +10,7 @@ LOGSEQ_LOCAL="${LOGSEQ_LOCAL:-$HOME/logseq}"
 LOGSEQ_REMOTE="${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}"
 RCLONE_BIN="${RCLONE_BIN:-$HOME/.local/bin/rclone-secure}"
 LOG_FILE="${LOG_FILE:-$HOME/.local/share/logseq-sync.log}"
+BACKUP_DIR="${BACKUP_DIR:-$HOME/.local/share/logseq-backups}"
 
 # Scripts
 if [[ -z "${NOTIFY_SCRIPT:-}" ]]; then
@@ -40,6 +41,159 @@ timestamp() {
     date '+%Y-%m-%d %H:%M:%S'
 }
 
+# Check if Logseq is running
+check_logseq_running() {
+    if pgrep -f "Logseq" > /dev/null 2>&1; then
+        log_warn "Logseq is currently running!"
+        echo ""
+        read -p "Continue sync anyway? This may cause conflicts. [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "Sync cancelled. Please close Logseq and try again."
+            exit 0
+        fi
+    fi
+}
+
+# Create backup before sync
+create_backup() {
+    local backup_date=$(date '+%Y%m%d_%H%M%S')
+    local backup_path="$BACKUP_DIR/$backup_date"
+
+    mkdir -p "$backup_path"
+
+    log_info "Creating backup: $backup_path"
+
+    # Backup journals directory (most likely to have conflicts)
+    if [[ -d "$LOGSEQ_LOCAL/journals" ]]; then
+        cp -r "$LOGSEQ_LOCAL/journals" "$backup_path/" 2>/dev/null || true
+    fi
+
+    # Keep only last 5 backups
+    cd "$BACKUP_DIR"
+    ls -t | tail -n +6 | xargs rm -rf 2>/dev/null || true
+}
+
+# Create conflict page in Logseq
+create_conflict_page() {
+    local base_file="$1"
+    shift
+    local conflict_files=("$@")
+
+    # Get basename without extension (e.g., 2025_11_26)
+    local basename=$(basename "$base_file" .md)
+    local date_str=$(echo "$basename" | tr '_' '-')
+
+    # Create pages directory if it doesn't exist
+    mkdir -p "$LOGSEQ_LOCAL/pages"
+
+    # Create conflict page
+    local conflict_page="$LOGSEQ_LOCAL/pages/conflict-${date_str}.md"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
+    # Start building the conflict page
+    {
+        echo "tags:: #conflict"
+        echo "created:: $timestamp"
+        echo ""
+        echo "# Conflict detected: [[${basename}]]"
+        echo ""
+        echo "Multiple versions of this journal page were found during sync."
+        echo "Please review and manually merge the content below."
+        echo ""
+
+        # Add each conflict version
+        local version=1
+        for conflict_file in "${conflict_files[@]}"; do
+            if [[ -f "$conflict_file" ]]; then
+                echo "## Version $version"
+                echo ""
+                echo "\`\`\`"
+                cat "$conflict_file"
+                echo "\`\`\`"
+                echo ""
+                version=$((version + 1))
+            fi
+        done
+
+        echo "---"
+        echo "**Note:** After merging, update [[${basename}]] and delete this conflict page."
+    } > "$conflict_page"
+
+    log_info "Created conflict page: pages/conflict-${date_str}.md"
+}
+
+# Restore from conflict files
+restore_conflicts() {
+    local journals_dir="$LOGSEQ_LOCAL/journals"
+
+    if [[ ! -d "$journals_dir" ]]; then
+        return
+    fi
+
+    # Find conflict files
+    local conflicts=$(find "$journals_dir" -name "*.conflict*" 2>/dev/null || true)
+
+    if [[ -z "$conflicts" ]]; then
+        return
+    fi
+
+    log_warn "Found conflict files:"
+    echo "$conflicts"
+    echo ""
+
+    # Group conflicts by base file
+    declare -A conflict_groups
+
+    while IFS= read -r conflict_file; do
+        if [[ -z "$conflict_file" ]]; then
+            continue
+        fi
+
+        # Get base filename (remove .conflict-* suffix)
+        local base_file="${conflict_file%%.conflict*}.md"
+
+        # Add to group
+        if [[ -z "${conflict_groups[$base_file]:-}" ]]; then
+            conflict_groups[$base_file]="$conflict_file"
+        else
+            conflict_groups[$base_file]="${conflict_groups[$base_file]}|$conflict_file"
+        fi
+    done <<< "$conflicts"
+
+    # Process each group of conflicts
+    for base_file in "${!conflict_groups[@]}"; do
+        log_warn "Processing conflicts for: $(basename "$base_file")"
+
+        # Split conflict files by |
+        IFS='|' read -ra conflict_array <<< "${conflict_groups[$base_file]}"
+
+        # Create conflict page with all versions
+        create_conflict_page "$base_file" "${conflict_array[@]}"
+
+        # If original file doesn't exist, use the largest conflict file
+        if [[ ! -f "$base_file" ]]; then
+            local largest=""
+            local max_size=0
+
+            for cf in "${conflict_array[@]}"; do
+                if [[ -f "$cf" ]]; then
+                    local size=$(stat -f%z "$cf" 2>/dev/null || stat -c%s "$cf" 2>/dev/null || echo "0")
+                    if [[ $size -gt $max_size ]]; then
+                        max_size=$size
+                        largest="$cf"
+                    fi
+                fi
+            done
+
+            if [[ -n "$largest" ]]; then
+                log_info "Restoring from largest conflict: $(basename "$largest")"
+                cp "$largest" "$base_file"
+            fi
+        fi
+    done
+}
+
 # Validate prerequisites
 check_prerequisites() {
     if [[ ! -x "$RCLONE_BIN" ]]; then
@@ -52,18 +206,27 @@ check_prerequisites() {
         exit 1
     fi
 
-    # Create log directory if it doesn't exist
+    # Create directories
     mkdir -p "$(dirname "$LOG_FILE")"
+    mkdir -p "$BACKUP_DIR"
 }
 
 # Sync function
 sync_logseq() {
     local direction="${1:-bidirectional}"
-    shift || true  # Remove direction from arguments
+    shift || true
 
     echo "$(timestamp) - Starting sync ($direction)" >> "$LOG_FILE"
 
-    # Check if --dry-run is present to show console output
+    # Check for running Logseq
+    # check_logseq_running
+
+    # Create backup before bidirectional sync
+    if [[ "$direction" == "bidirectional" ]] || [[ "$direction" == "bi" ]]; then
+        create_backup
+    fi
+
+    # Check if --dry-run is present
     local has_dryrun=false
     for arg in "$@"; do
         [[ "$arg" == "--dry-run" ]] && has_dryrun=true && break
@@ -127,44 +290,42 @@ sync_logseq() {
         bidirectional|bi)
             log_info "Syncing bidirectional (cloud ↔ local)..."
 
-            # Check if --resync is in arguments, skip listing check if present
+            # Check if --resync is in arguments
             local has_resync=false
             for arg in "$@"; do
                 [[ "$arg" == "--resync" ]] && has_resync=true && break
             done
 
             if ! $has_resync; then
-                # Check if bisync listings exist, if not, notify user
+                # Check if bisync listings exist
                 BISYNC_CACHE="$HOME/.cache/rclone/bisync"
-                # Expand tilde and resolve to absolute path for listing filename
                 LOCAL_EXPANDED="${LOGSEQ_LOCAL/#\~/$HOME}"
                 LOCAL_ABSOLUTE="$(cd "$LOCAL_EXPANDED" && pwd)"
                 LISTING_PREFIX="$(echo "$LOCAL_ABSOLUTE" | sed 's|/|_|g' | sed 's|^_||')..$(echo "$LOGSEQ_REMOTE" | sed 's|:|_|g; s|/|_|g')"
 
                 if [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path1.lst" ]] || [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path2.lst" ]]; then
-                log_error "First sync detected. Bisync requires initialization with --resync flag."
-                echo ""
-                echo "Run one of the following commands to initialize:"
-                echo "  1. Upload local to cloud:  $0 up"
-                echo "  2. Download cloud to local: $0 down"
-                echo "  3. Force resync (WARNING: may overwrite conflicts):"
-                echo ""
-                echo "     Preview changes first (dry-run):"
-                echo "     $RCLONE_BIN bisync \"$LOGSEQ_LOCAL\" \"$LOGSEQ_REMOTE\" --resync --dry-run"
-                echo ""
-                echo "     Apply the sync:"
-                echo "     $RCLONE_BIN bisync \"$LOGSEQ_LOCAL\" \"$LOGSEQ_REMOTE\" --resync"
-                echo ""
+                    log_error "First sync detected. Bisync requires initialization with --resync flag."
+                    echo ""
+                    echo "Run one of the following commands to initialize:"
+                    echo "  1. Upload local to cloud:  $0 up"
+                    echo "  2. Download cloud to local: $0 down"
+                    echo "  3. Force resync (WARNING: may overwrite conflicts):"
+                    echo ""
+                    echo "     Preview changes first (dry-run):"
+                    echo "     $RCLONE_BIN bisync \"$LOGSEQ_LOCAL\" \"$LOGSEQ_REMOTE\" --resync --dry-run"
+                    echo ""
+                    echo "     Apply the sync:"
+                    echo "     $RCLONE_BIN bisync \"$LOGSEQ_LOCAL\" \"$LOGSEQ_REMOTE\" --resync"
+                    echo ""
 
-                # Send notification about initialization required
-                if [[ -n "$NOTIFY_SCRIPT" ]] && [[ -x "$NOTIFY_SCRIPT" ]]; then
-                    local notify_msg="Init required. Options:
+                    if [[ -n "$NOTIFY_SCRIPT" ]] && [[ -x "$NOTIFY_SCRIPT" ]]; then
+                        local notify_msg="Init required. Options:
 1. task sync:logseq -- up
 2. task sync:logseq -- down
 3. --resync (check dry-run first!)
 Log: ${LOG_FILE:-~/.local/share/logseq-sync.log}"
-                    "$NOTIFY_SCRIPT" "Logseq Sync: Init Required" "$notify_msg" "high" || true
-                fi
+                        "$NOTIFY_SCRIPT" "Logseq Sync: Init Required" "$notify_msg" "high" || true
+                    fi
 
                     exit 1
                 fi
@@ -180,6 +341,9 @@ Log: ${LOG_FILE:-~/.local/share/logseq-sync.log}"
                     --resilient \
                     --recover \
                     --create-empty-src-dirs \
+                    --conflict-resolve newer \
+                    --conflict-loser pathname \
+                    --conflict-suffix "conflict-{DateOnly}-" \
                     "$@" 2>&1 | tee -a "$LOG_FILE"
                 sync_status=${PIPESTATUS[0]}
             else
@@ -191,12 +355,18 @@ Log: ${LOG_FILE:-~/.local/share/logseq-sync.log}"
                     --resilient \
                     --recover \
                     --create-empty-src-dirs \
+                    --conflict-resolve newer \
+                    --conflict-loser pathname \
+                    --conflict-suffix "conflict-{DateOnly}-" \
                     --log-file="$LOG_FILE" \
                     --log-level INFO \
                     "$@"
                 sync_status=$?
             fi
             set -e
+
+            # Check for and handle conflicts
+            restore_conflicts
             ;;
         *)
             log_error "Invalid direction: $direction. Use: up, down, or bidirectional"
@@ -211,7 +381,6 @@ Log: ${LOG_FILE:-~/.local/share/logseq-sync.log}"
         log_error "Sync failed"
         echo "$(timestamp) - Sync failed" >> "$LOG_FILE"
 
-        # Send notification about failure
         if [[ -n "$NOTIFY_SCRIPT" ]] && [[ -x "$NOTIFY_SCRIPT" ]]; then
             "$NOTIFY_SCRIPT" "Logseq Sync Failed" "Failed to sync with cloud. Check log: ${LOG_FILE:-~/.local/share/logseq-sync.log}" "high" || true
         fi
@@ -235,11 +404,17 @@ Environment Variables:
   LOGSEQ_REMOTE   Remote path (default: pcloud-crypt:/logseq)
   RCLONE_BIN      Path to rclone-secure (default: ~/.local/bin/rclone-secure)
   LOG_FILE        Log file path (default: ~/.local/share/logseq-sync.log)
+  BACKUP_DIR      Backup directory (default: ~/.local/share/logseq-backups)
 
 Examples:
   $0              # Bidirectional sync
   $0 up           # Upload local → cloud
   $0 down         # Download cloud → local
+
+Backups:
+  Automatic backups are created before bidirectional syncs
+  Location: $BACKUP_DIR
+  Last 5 backups are kept
 
 EOF
 }
