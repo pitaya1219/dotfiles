@@ -249,14 +249,18 @@ EOF
 setup_cron() {
     log_info "Setting up cron job..."
 
+    # Calculate interval in minutes
+    local SYNC_INTERVAL="${LOGSEQ_SYNC_INTERVAL:-1800}"
+    local INTERVAL_MIN=$((SYNC_INTERVAL / 60))
+
     # Add cron entry if not exists
-    local CRON_ENTRY="*/30 * * * * $SYNC_SCRIPT bidirectional >/dev/null 2>&1"
+    local CRON_ENTRY="*/$INTERVAL_MIN * * * * LOGSEQ_LOCAL=${LOGSEQ_LOCAL:-$HOME/logseq} LOGSEQ_REMOTE=${LOGSEQ_REMOTE:-pcloud-crypt:/logseq} $SYNC_SCRIPT bidirectional >/dev/null 2>&1"
 
     if crontab -l 2>/dev/null | grep -F "$SYNC_SCRIPT" &>/dev/null; then
         log_warn "Cron entry already exists"
     else
         (crontab -l 2>/dev/null; echo "$CRON_ENTRY") | crontab -
-        log_info "Cron job added (every 30 minutes)"
+        log_info "Cron job added (every $INTERVAL_MIN minutes)"
     fi
 }
 
@@ -392,7 +396,7 @@ main() {
                     setup_termux
                     ;;
                 ubuntu|wsl2)
-                    if command -v systemctl &>/dev/null; then
+                    if command -v systemctl &>/dev/null && systemctl --user status &>/dev/null; then
                         setup_systemd
                     else
                         setup_cron
