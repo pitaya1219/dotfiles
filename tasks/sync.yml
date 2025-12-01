@@ -41,3 +41,19 @@ tasks:
     desc: Remove logseq sync scheduling
     cmds:
       - "{{.LOGSEQ_SCHEDULE_CMD}} remove"
+
+  logseq:shortcut:
+    desc: Install termux-shortcut for logseq sync
+    preconditions:
+      - sh: '[ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]'
+        msg: "This task only runs in Termux environment"
+    cmds:
+      - mkdir -p ~/.shortcuts
+      - |
+        cat > ~/.shortcuts/logseq-sync <<'EOF'
+        #!/data/data/com.termux/files/usr/bin/bash
+        export LOGSEQ_LOCAL='{{.LOGSEQ_LOCAL}}'
+        export LOGSEQ_REMOTE='{{.LOGSEQ_REMOTE}}'
+        cd $HOME/dotfiles && task sync:logseq
+        EOF
+      - chmod +x ~/.shortcuts/logseq-sync
