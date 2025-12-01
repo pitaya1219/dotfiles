@@ -228,6 +228,7 @@ tasks:
         mkdir -p $PREFIX/bin
         sed -e "s|__PROFILE_NAME__|$profile_name|g" \
             -e "s|__RCLONE_BIN__|$(command -v rclone)|g" \
+            -e '1s|^#!/usr/bin/env bash$|#!/data/data/com.termux/files/usr/bin/bash|' \
             "{{.ROOT_DIR}}/scripts/rclone-secure.sh.template" > $PREFIX/bin/rclone-secure
         chmod +x $PREFIX/bin/rclone-secure
 
