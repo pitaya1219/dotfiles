@@ -12,6 +12,7 @@
           ../shared/activations/rootless-docker.nix
           ../shared/programs/bash.nix
           ../shared/programs/bare.nix
+          ../shared/programs/claude-code.nix
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix
           ../shared/programs/tmux.nix
