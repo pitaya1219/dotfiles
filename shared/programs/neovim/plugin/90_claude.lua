@@ -6,9 +6,9 @@ ClaudeCode.buf = nil
 
 -- Common function to create claude command
 local function get_claude_cmd(work_dir)
-  local cmd = 'claude'
+  local cmd = 'eval "$(direnv export bash)" && claude'
   if work_dir then
-    cmd = 'cd ' .. vim.fn.shellescape(work_dir) .. ' && claude'
+    cmd = 'cd ' .. vim.fn.shellescape(work_dir) ..  ' && ' .. cmd
   end
   return cmd
 end
