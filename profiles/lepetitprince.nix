@@ -13,6 +13,7 @@
           ../shared/programs/bash.nix
           ../shared/programs/bare.nix
           ../shared/programs/claude-code.nix
+          ../shared/programs/direnv.nix
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix
           ../shared/programs/tmux.nix
@@ -30,6 +31,7 @@
           homeDirectory = "/home/lepetitprince";
           stateVersion = "23.11";
           packages = with pkgs; [
+            gitea-mcp-server
             cloudflared
             rclone
           ];

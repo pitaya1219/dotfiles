@@ -13,6 +13,7 @@
     ripgrep
     age
     passage
+    direnv
     pipx          # for installing python made tool into global
     poetry
     claude-code
