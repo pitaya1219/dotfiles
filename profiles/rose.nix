@@ -29,6 +29,8 @@
           homeDirectory = "/home/rose";
           stateVersion = "23.11";
           packages = with pkgs; [
+            tea
+            gitea-mcp-server
             passt
           ];
         };
