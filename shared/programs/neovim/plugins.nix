@@ -22,7 +22,7 @@ let
       owner = "xero";
       repo = "evangelion.nvim";
       rev = "main";
-      sha256 = "sha256-jw0aSrvgR0r9AKw+WUaFFKBnUpeLocTdeRcJ2AQCVl4=";
+      sha256 = "0afa1alxf8my6k564sqmzykwk8aqb6n37wa5w3aqdlxs6y2hrsnm";
     }
     {
       name = "burgundy";
