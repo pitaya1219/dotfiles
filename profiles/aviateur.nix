@@ -9,6 +9,7 @@
     modules = [
       ({ config, pkgs, lib, ... }: {
         imports = [
+          ../shared/activations/proton-pass.nix
           ../shared/programs/bash.nix
           ../shared/programs/bare.nix
           ../shared/programs/claude-code.nix

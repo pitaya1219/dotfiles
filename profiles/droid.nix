@@ -18,6 +18,7 @@
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
           ../shared/activations/huggingface_hub.nix
+          ../shared/activations/proton-pass.nix
           ./droid/ssh/config.nix
           ./droid/rclone/config.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "droid")

@@ -10,6 +10,7 @@
       ({ config, pkgs, lib, ... }: {
         imports = [
           ../shared/activations/aider.nix
+          ../shared/activations/proton-pass.nix
           ../shared/programs/bare.nix
           ../shared/programs/bash.nix
           ../shared/programs/claude-code.nix
