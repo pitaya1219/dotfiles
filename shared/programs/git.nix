@@ -3,6 +3,11 @@
 {
   programs.git = {
     enable = true;
+    extraConfig = {
+      credential = {
+        helper = "${config.home.homeDirectory}/.config/git/git-credential-protonpass.sh";
+      };
+    };
   };
 
   home.file.".config/git/ignore".text = ''
@@ -22,4 +27,10 @@
     .aider/
     .aider.*
   '';
+
+  # Install git credential helper script
+  home.file.".config/git/git-credential-protonpass.sh" = {
+    source = ./git/git-credential-protonpass.sh;
+    executable = true;
+  };
 }
