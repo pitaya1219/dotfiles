@@ -207,6 +207,34 @@ function ClaudeCode.open_in_new_tab(work_dir)
   vim.cmd('startinsert')
 end
 
+-- Find existing Claude Code tab and switch to it
+function ClaudeCode.find_tab()
+  local tab_count = vim.fn.tabpagenr('$')
+  local claude_tab = nil
+
+  for i = 1, tab_count do
+    local tab_buffers = vim.fn.tabpagebuflist(i)
+    for _, buf in ipairs(tab_buffers) do
+      if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_option(buf, 'buftype') == 'terminal' then
+        local buf_name = vim.api.nvim_buf_get_name(buf)
+        if buf_name:match('claude') then
+          claude_tab = i
+          break
+        end
+      end
+    end
+    if claude_tab then
+      break
+    end
+  end
+
+  if claude_tab then
+    vim.cmd('tabn ' .. claude_tab)
+  else
+    vim.api.nvim_echo({{'No running ClaudeCode terminal found.', 'WarningMsg'}}, false, {})
+  end
+end
+
 -- Command and keymap
 vim.api.nvim_create_user_command('ClaudeCode', function(opts)
   local work_dir = opts.args ~= '' and opts.args or nil
@@ -223,3 +251,4 @@ end, { nargs = '?' })
 vim.keymap.set('n', '<leader>claude', function() ClaudeCode.toggle() end, { desc = 'Toggle Claude Code' })
 vim.keymap.set('n', '<leader>clauden', function() ClaudeCode.open_in_terminal() end, { desc = 'Open Claude Code in terminal' })
 vim.keymap.set('n', '<leader>claudet', function() ClaudeCode.open_in_new_tab() end, { desc = 'Open Claude Code in new tab' })
+vim.keymap.set('n', '<leader>findc', function() ClaudeCode.find_tab() end, { desc = 'Find Claude Code tab' })
