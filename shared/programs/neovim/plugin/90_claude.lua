@@ -6,7 +6,29 @@ ClaudeCode.buf = nil
 
 -- Common function to create claude command
 local function get_claude_cmd(work_dir)
-  local cmd = 'eval "$(direnv export bash)" && claude'
+  -- Ask user for permission mode
+  local choice = vim.fn.confirm(
+    'Select permission mode for Claude Code:',
+    "&Default\n&Bypass Permissions\nDon't As&k\n&Accept Edits\n&Cancel",
+    1  -- Default to "Default"
+  )
+
+  -- Cancel option (choice == 5 or 0)
+  if choice == 5 or choice == 0 then
+    return nil
+  end
+
+  local permission_mode = ''
+  if choice == 2 then
+    permission_mode = ' --permission-mode bypassPermissions'
+  elseif choice == 3 then
+    permission_mode = ' --permission-mode dontAsk'
+  elseif choice == 4 then
+    permission_mode = ' --permission-mode acceptEdits'
+  end
+
+  local cmd = 'eval "$(direnv export bash)" && claude' .. permission_mode
+
   if work_dir then
     cmd = 'cd ' .. vim.fn.shellescape(work_dir) ..  ' && ' .. cmd
   end
@@ -82,6 +104,16 @@ function ClaudeCode.toggle(work_dir)
   -- Start claude if not already running
   if vim.bo[ClaudeCode.buf].buftype ~= 'terminal' then
     local cmd = get_claude_cmd(work_dir)
+
+    -- If user cancelled, close the window and return
+    if not cmd then
+      if ClaudeCode.win and vim.api.nvim_win_is_valid(ClaudeCode.win) then
+        vim.api.nvim_win_close(ClaudeCode.win, true)
+        ClaudeCode.win = nil
+      end
+      return
+    end
+
     vim.fn.termopen(cmd, {
       on_exit = function()
         -- Restore ambiwidth setting
@@ -113,26 +145,32 @@ end
 function ClaudeCode.open_in_terminal(work_dir)
   -- Save current ambiwidth setting
   local saved_ambiwidth = save_ambiwidth()
-  
+
   local cmd = get_claude_cmd(work_dir)
+
+  -- If user cancelled, return without opening terminal
+  if not cmd then
+    return
+  end
+
   vim.cmd('enew')
   local buf = vim.api.nvim_get_current_buf()
-  
+
   -- Apply settings after buffer creation but before terminal starts
   vim.schedule(function()
     apply_cell_settings()
   end)
-  
+
   vim.fn.termopen(cmd, {
     on_exit = function()
       -- Restore ambiwidth setting when terminal exits
       vim.opt.ambiwidth = saved_ambiwidth
     end
   })
-  
+
   -- Set buffer-local autocmd to maintain settings while in this terminal
   setup_cell_autocmds(buf, saved_ambiwidth)
-  
+
   vim.cmd('startinsert')
 end
 
