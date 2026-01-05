@@ -32,11 +32,12 @@
           homeDirectory = "/home/droid";
           stateVersion = "23.11";
           packages = with pkgs; [
-            jq
-            rclone
             android-tools
             cloudflared
+            jq
             llama-cpp
+            opencode
+            rclone
           ];
         };
       })

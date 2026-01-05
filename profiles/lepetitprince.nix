@@ -35,6 +35,7 @@
           packages = with pkgs; [
             gitea-mcp-server
             cloudflared
+            opencode
             rclone
             passt
           ];

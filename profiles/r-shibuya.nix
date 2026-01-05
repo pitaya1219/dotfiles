@@ -32,14 +32,15 @@
           homeDirectory = "/Users/r-shibuya";
           stateVersion = "23.11";
           packages = with pkgs; [
+            cloudflared
+            docker
+            docker-credential-helpers
             elixir
             elixir-ls
             jq
-            xlsx2csv
-            docker
-            docker-credential-helpers
-            cloudflared
+            opencode
             rclone
+            xlsx2csv
           ];
           file.".config/tmux/override.conf".source = ./r-shibuya/tmux/override.conf;
         };
