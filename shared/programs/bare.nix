@@ -17,6 +17,7 @@
     pipx          # for installing python made tool into global
     poetry
     claude-code
+    opencode
     ollama
     openssh
     nerd-fonts.daddy-time-mono

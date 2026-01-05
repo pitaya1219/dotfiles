@@ -9,11 +9,11 @@
     modules = [
       ({ config, pkgs, lib, ... }: {
         imports = [
-          ../shared/activations/aider.nix
           ../shared/activations/proton-pass.nix
           ../shared/programs/bare.nix
           ../shared/programs/bash.nix
           ../shared/programs/claude-code.nix
+          ../shared/programs/opencode.nix
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix
           ../shared/programs/tmux.nix
@@ -38,7 +38,6 @@
             elixir
             elixir-ls
             jq
-            opencode
             rclone
             xlsx2csv
           ];

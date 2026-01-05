@@ -15,6 +15,7 @@
           ../shared/programs/bash.nix
           ../shared/programs/bare.nix
           ../shared/programs/claude-code.nix
+          ../shared/programs/opencode.nix
           ../shared/programs/direnv.nix
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix
@@ -32,7 +33,6 @@
           stateVersion = "23.11";
           packages = with pkgs; [
             gitea-mcp-server
-            opencode
             passt
             tea
           ];

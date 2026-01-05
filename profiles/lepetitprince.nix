@@ -9,12 +9,12 @@
     modules = [
       ({ config, pkgs, lib, ... }: {
         imports = [
-          ../shared/activations/aider.nix
           ../shared/activations/rootless-docker.nix
           ../shared/activations/proton-pass.nix
           ../shared/programs/bash.nix
           ../shared/programs/bare.nix
           ../shared/programs/claude-code.nix
+          ../shared/programs/opencode.nix
           ../shared/programs/direnv.nix
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix
@@ -35,7 +35,6 @@
           packages = with pkgs; [
             gitea-mcp-server
             cloudflared
-            opencode
             rclone
             passt
           ];
