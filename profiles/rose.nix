@@ -9,6 +9,7 @@
     modules = [
       ({ config, pkgs, lib, ... }: {
         imports = [
+          ../shared/activations/huggingface_hub.nix
           ../shared/activations/rootless-docker.nix
           ../shared/activations/proton-pass.nix
           ../shared/programs/bash.nix
