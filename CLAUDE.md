@@ -195,7 +195,7 @@ nix run home-manager/master -- switch --flake .#<profile>
 ## Git Commit Preferences
 
 - NEVER include Claude-related content in commit messages
-- Use simple, descriptive commit messages
-- Start commit messages with capital letter
-- End commit messages with period
-- Format: "Capitalize first word and end with period."
+- Use Conventional Commits format with prefix
+- Prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:`, `style:`
+- Format: `prefix: Description ending with period.`
+- Example: `feat: Add rootless Docker configuration.`
