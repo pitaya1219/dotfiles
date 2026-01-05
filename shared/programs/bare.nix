@@ -20,6 +20,7 @@
     opencode
     ollama
     openssh
+    jq            # for JSON parsing in scripts
     nerd-fonts.daddy-time-mono
     nerd-fonts.shure-tech-mono
   ];
