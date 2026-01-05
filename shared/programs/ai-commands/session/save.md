@@ -4,7 +4,7 @@ description: Save current session summary as markdown
 
 Create a comprehensive summary of the current session and save it as a markdown file.
 
-Output path: $ARGUMENTS (if empty, use `.ai-sessions/YYYY-MM-DD-HHmmss.md`)
+Output path: $ARGUMENTS (if empty, use `.ai/sessions/YYYY-MM-DD-HHmmss-${summary}.md`)
 
 The summary should include:
 

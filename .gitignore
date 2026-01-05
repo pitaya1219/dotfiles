@@ -6,3 +6,5 @@
 .claude/*
 !.claude/*.example
 .mcp.json
+# Open Code local
+.ai/sessions/*
