@@ -1,0 +1,13 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "gitea": {
+      "type": "local",
+      "command": ["gitea-mcp", "-host", "{env:GITEA_HOST}", "-token", "{env:GITEA_AI_BOT_TOKEN}"],
+      "enabled": true,
+      "environment": {
+        "GITEA_USER": "ai-bot"
+      }
+    }
+  }
+}

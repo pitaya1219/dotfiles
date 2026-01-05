@@ -1,0 +1,8 @@
+# Gitea Configuration
+export GITEA_HOST="https://git.example.com"
+
+# Claude Code uses claude-bot user
+export GITEA_CLAUDE_BOT_TOKEN="your-claude-bot-token-here"
+
+# OpenCode uses ai-bot user
+export GITEA_AI_BOT_TOKEN="your-ai-bot-token-here"
