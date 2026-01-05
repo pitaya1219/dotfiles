@@ -1,11 +1,10 @@
 ---
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*)
 description: Analyze changes and create commits in logical groups
 ---
 
 Analyze the current git changes and create commits ONLY for work completed in this session.
 
-IMPORTANT: Only commit changes that were explicitly worked on during this Claude Code session. Exclude any unrelated changes that may exist in the working directory.
+IMPORTANT: Only commit changes that were explicitly worked on during this session. Exclude any unrelated changes that may exist in the working directory.
 
 Steps:
 1. Run `git status` and `git diff` to see all changes
@@ -21,9 +20,11 @@ Steps:
    - File relationships and dependencies
 6. For each commit, stage only relevant session files and write a clear message
 
-Commit message guidelines (from CLAUDE.md):
+Commit message guidelines:
+- Use Conventional Commits format: `<type>: <description>.`
+- Prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:`, `style:`
 - Start with a capital letter
 - End with a period
 - Be descriptive and concise
-- NEVER include Claude-related content in messages
+- NEVER include AI tool names (Claude, OpenCode, etc.) in commit messages
 - Focus on what changed and why

@@ -1,12 +1,10 @@
 ---
-allowed-tools: Write(*), Bash(git status:*), Bash(git branch:*), Bash(git log:*), Bash(git diff:*)
-argument-hint: [output-path]
 description: Save current session summary as markdown
 ---
 
-Create a comprehensive summary of the current Claude Code session and save it as a markdown file.
+Create a comprehensive summary of the current session and save it as a markdown file.
 
-Output path: $ARGUMENTS (if empty, use `.claude/sessions/YYYY-MM-DD-HHmmss.md`)
+Output path: $ARGUMENTS (if empty, use `.ai-sessions/YYYY-MM-DD-HHmmss.md`)
 
 The summary should include:
 

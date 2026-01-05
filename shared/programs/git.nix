@@ -23,9 +23,10 @@
     # Python
     __pycache__/
     venv/
-    # Aider
+    # AI tools
     .aider/
     .aider.*
+    .ai-sessions/
   '';
 
   # Install git credential helper script

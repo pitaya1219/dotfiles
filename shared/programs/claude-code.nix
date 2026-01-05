@@ -1,8 +1,9 @@
 { config, pkgs, lib, ... }:
 
 {
+  # Use shared AI commands directory
   home.file.".claude/commands" = {
-    source = ./claude-code/commands;
+    source = ./ai-commands;
     recursive = true;
   };
 
@@ -14,8 +15,11 @@
           "-host"
           "\${GITEA_HOST}"
           "-token"
-          "\${GITEA_ACCESS_TOKEN}"
+          "\${GITEA_CLAUDE_BOT_TOKEN}"
         ];
+        env = {
+          GITEA_USER = "claude-bot";
+        };
       };
     };
   };

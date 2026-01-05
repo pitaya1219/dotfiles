@@ -1,6 +1,4 @@
 ---
-allowed-tools: Bash(git *), Read(*), Write(*), Edit(*), Glob(*), Grep(*), TodoWrite(*), mcp__gitea__create_pull_request(*), mcp__gitea__add_issue_labels(*), AskUserQuestion(*)
-argument-hint: [requirement or --file <path>]
 description: Create a pull request by implementing changes from scratch
 ---
 
@@ -8,11 +6,11 @@ Create a pull request by implementing requested changes from scratch, including 
 
 ## Argument Handling
 
-The user's argument is provided after `ARGUMENTS:` in the command invocation.
+The user's argument is provided as $ARGUMENTS.
 
 **Parse the argument as follows:**
 - If argument starts with `--file`: Read requirement from the specified file path
-- If argument is empty: Ask user what they want to implement using AskUserQuestion tool
+- If argument is empty: Ask user what they want to implement
 - Otherwise: The argument IS the requirement - implement it directly
 
 **CRITICAL**: Start implementing immediately based on the argument. Do NOT output example text or ask unnecessary questions.
@@ -48,7 +46,7 @@ The user's argument is provided after `ARGUMENTS:` in the command invocation.
 
 ### Phase 2: Implementation
 
-1. Use TodoWrite to plan implementation steps
+1. Plan implementation steps using todo/task tracking
 2. Implement the changes following project conventions
 3. Verify changes for completeness
 
@@ -56,7 +54,7 @@ The user's argument is provided after `ARGUMENTS:` in the command invocation.
 
 **Commit Guidelines:**
 - Use conventional commit format: `<type>: <description>.`
-- NEVER include AI or Claude references in commit messages
+- NEVER include AI tool names in commit messages
 - End with period
 
 ```bash
@@ -67,7 +65,7 @@ git push -u origin {branch-name}
 
 ### Phase 4: Create PR
 
-Use `mcp__gitea__create_pull_request` with:
+Use Gitea MCP tools or appropriate platform tools with:
 - `owner`: Extracted from git remote
 - `repo`: Extracted from git remote
 - `title`: Conventional commit style title
