@@ -25,3 +25,22 @@ task install
 ```bash
 task setup:nix
 ```
+
+## Environment Variables
+
+### Gitea MCP Configuration
+
+The Gitea MCP server requires the following environment variables:
+
+```bash
+# Gitea host URL
+export GITEA_HOST="https://git.example.com"
+
+# Claude Code uses claude-bot user
+export GITEA_CLAUDE_BOT_TOKEN="your-claude-bot-token"
+
+# OpenCode uses ai-bot user
+export GITEA_AI_BOT_TOKEN="your-ai-bot-token"
+```
+
+**Note**: Each AI tool uses a different Gitea user token for proper attribution of automated changes.
