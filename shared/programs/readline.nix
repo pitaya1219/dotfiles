@@ -24,11 +24,15 @@
       "\e[B": history-search-forward
       j:history-search-forward
       k:history-search-backward
+      # Ctrl+G for LLM completion (also bound via bash bind -x)
+      "\C-g": ""
       set keymap vi-insert
       # these are for vi-insert mode
       "\e[A": history-search-backward
       "\e[B": history-search-forward
       "jj": vi-movement-mode
+      # Ctrl+G for LLM completion (also bound via bash bind -x)
+      "\C-g": ""
       $endif
     '';
   };

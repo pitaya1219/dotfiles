@@ -1,4 +1,22 @@
 ''
+# LLM Completion
+${builtins.readFile ./llm-complete.sh}
+
+# LLM keybindings (vi-command mode with : prefix, like vim's command mode)
+bind -m vi-command -x '"::": _llm_complete_wrapper'  # Command completion / pipe completion
+bind -m vi-command -x '":e": _llm_error_fix'         # Fix last failed command
+bind -m vi-command -x '":x": _llm_explain'           # Explain command
+bind -m vi-command -x '":c": _llm_cheatsheet'        # Cheatsheet
+bind -m vi-command -x '":p": _llm_preview'           # Preview execution
+bind -m vi-command -x '":h": _llm_history_search'    # History search (natural language)
+
+# Save exit status - supports both starship and vanilla bash
+_llm_capture_exit() { _LLM_LAST_EXIT=''${1:-$?}; }
+# Starship hook (starship passes exit code as $1)
+starship_precmd_user_func="_llm_capture_exit"
+# Fallback for non-starship environments
+PROMPT_COMMAND='_llm_capture_exit;'"''${PROMPT_COMMAND:-}"
+
 # Source Nix daemon if available
 if [ -e ~/.nix-profile/etc/profile.d/nix-daemon.sh ]; then
   . ~/.nix-profile/etc/profile.d/nix-daemon.sh
