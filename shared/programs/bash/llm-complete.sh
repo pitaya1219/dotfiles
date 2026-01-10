@@ -429,6 +429,86 @@ $preview_info"
     fi
 }
 
+# Status/Help display (:? in vi-command mode)
+_llm_status() {
+    echo ""
+    echo -e "\033[1;36m═══ LLM Bash Completion Status ═══\033[0m"
+    echo ""
+
+    # Configuration
+    echo -e "\033[1;33m📋 Configuration:\033[0m"
+    echo "  LLM_COMPLETE_URL     = ${LLM_COMPLETE_URL:-\033[31m(not set)\033[0m}"
+    echo "  LLM_COMPLETE_MODEL   = ${LLM_COMPLETE_MODEL:-\033[31m(not set)\033[0m}"
+    echo "  LLM_COMPLETE_TIMEOUT = ${LLM_COMPLETE_TIMEOUT:-5}s"
+    echo "  LLM_DEBUG            = ${LLM_DEBUG:-0}"
+    [[ "$LLM_DEBUG" == "1" ]] && echo "  LLM_DEBUG_LOG        = $LLM_DEBUG_LOG"
+    echo ""
+
+    # Auth config
+    echo -e "\033[1;33m🔐 Authentication:\033[0m"
+    echo "  LLM_TOKEN_URL        = ${LLM_TOKEN_URL:-\033[31m(not set)\033[0m}"
+    echo "  LLM_CLIENT_ID_PATH   = $LLM_CLIENT_ID_PATH"
+    echo "  LLM_CLIENT_SECRET_PATH = $LLM_CLIENT_SECRET_PATH"
+    echo ""
+
+    # Token cache status
+    echo -e "\033[1;33m🎫 Token Cache:\033[0m"
+    local cache_file="${LLM_TOKEN_CACHE:-$HOME/.cache/llm-complete-token}"
+    if [[ -f "$cache_file" ]]; then
+        local cached=$(cat "$cache_file" 2>/dev/null)
+        local expires=$(echo "$cached" | cut -d'|' -f2)
+        local now=$(date +%s)
+        if [[ -n "$expires" && "$now" -lt "$expires" ]]; then
+            local remaining=$((expires - now))
+            echo -e "  Status: \033[32m✓ Valid\033[0m (expires in ${remaining}s)"
+        else
+            echo -e "  Status: \033[31m✗ Expired\033[0m"
+        fi
+    else
+        echo -e "  Status: \033[33m○ No cached token\033[0m"
+    fi
+    echo ""
+
+    # Passage credentials check
+    echo -e "\033[1;33m🔑 Credentials (passage):\033[0m"
+    if command -v passage &>/dev/null; then
+        if passage show "$LLM_CLIENT_ID_PATH" &>/dev/null; then
+            echo -e "  Client ID:     \033[32m✓ Found\033[0m"
+        else
+            echo -e "  Client ID:     \033[31m✗ Not found\033[0m at $LLM_CLIENT_ID_PATH"
+        fi
+        if passage show "$LLM_CLIENT_SECRET_PATH" &>/dev/null; then
+            echo -e "  Client Secret: \033[32m✓ Found\033[0m"
+        else
+            echo -e "  Client Secret: \033[31m✗ Not found\033[0m at $LLM_CLIENT_SECRET_PATH"
+        fi
+    else
+        echo -e "  \033[31m✗ passage command not found\033[0m"
+    fi
+    echo ""
+
+    # Keybindings
+    echo -e "\033[1;33m⌨️  Keybindings (vi-command mode):\033[0m"
+    echo "  ::  Command completion / pipe completion"
+    echo "  :e  Fix last failed command"
+    echo "  :x  Explain command"
+    echo "  :c  Cheatsheet"
+    echo "  :p  Preview execution"
+    echo "  :h  History search (natural language)"
+    echo "  :?  This status screen"
+    echo ""
+
+    # Connection test
+    echo -e "\033[1;33m🌐 Connection Test:\033[0m"
+    local test_url="${LLM_COMPLETE_URL}/health"
+    if curl -s --max-time 3 "$test_url" &>/dev/null; then
+        echo -e "  API Health: \033[32m✓ Reachable\033[0m"
+    else
+        echo -e "  API Health: \033[31m✗ Unreachable\033[0m ($test_url)"
+    fi
+    echo ""
+}
+
 # Natural language history search (Ctrl+R replacement)
 _llm_history_search() {
     local query="$READLINE_LINE"

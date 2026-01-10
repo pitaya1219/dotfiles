@@ -9,6 +9,7 @@ bind -m vi-command -x '":x": _llm_explain'           # Explain command
 bind -m vi-command -x '":c": _llm_cheatsheet'        # Cheatsheet
 bind -m vi-command -x '":p": _llm_preview'           # Preview execution
 bind -m vi-command -x '":h": _llm_history_search'    # History search (natural language)
+bind -m vi-command -x '":?": _llm_status'            # Status/help
 
 # Save exit status - supports both starship and vanilla bash
 _llm_capture_exit() { _LLM_LAST_EXIT=''${1:-$?}; }
