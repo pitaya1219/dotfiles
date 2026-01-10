@@ -15,7 +15,6 @@
           ../shared/programs/bash.nix
           ../shared/programs/bare.nix
           ../shared/programs/rust.nix
-          ../shared/programs/shellm.nix
           ../shared/programs/claude-code.nix
           ../shared/programs/opencode.nix
           ../shared/programs/direnv.nix
