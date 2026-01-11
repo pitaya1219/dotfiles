@@ -8,8 +8,8 @@ fi
 
 # Load OAuth2 credentials from passage (if available)
 if command -v passage &> /dev/null; then
-    export SHELLM_CLIENT_ID=$(passage show shellm/client_id 2>/dev/null)
-    export SHELLM_CLIENT_SECRET=$(passage show shellm/client_secret 2>/dev/null)
+    export SHELLM_CLIENT_ID=$(passage show shellm/client/id 2>/dev/null)
+    export SHELLM_CLIENT_SECRET=$(passage show shellm/client/secret 2>/dev/null)
 fi
 
 # Command completion (::)
