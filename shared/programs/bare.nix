@@ -33,6 +33,7 @@ in
     sqlite
     duckdb
     ripgrep
+    fzf
     age
     passage
     direnv
