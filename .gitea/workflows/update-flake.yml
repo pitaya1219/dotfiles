@@ -11,36 +11,51 @@ jobs:
     container:
       image: nixos/nix:latest
     steps:
+      - name: Install git
+        run: |
+          nix-env -iA nixpkgs.git nixpkgs.curl
+
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Configure Nix
         run: |
           mkdir -p ~/.config/nix
           echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
 
+      - name: Configure git
+        run: |
+          git config user.name "gitea-actions[bot]"
+          git config user.email "gitea-actions[bot]@noreply.git.pitaya.f5.si"
+
       - name: Update flake inputs
         run: nix flake update
 
-      - name: Check for changes
-        id: changes
+      - name: Check for changes and create PR
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
         run: |
           if git diff --quiet flake.lock; then
-            echo "changed=false" >> $GITHUB_OUTPUT
-          else
-            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "No changes to flake.lock"
+            exit 0
           fi
 
-      - name: Create Pull Request
-        if: steps.changes.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: 'chore: Update flake.lock.'
-          title: 'chore: Update flake.lock'
-          body: |
-            Automated flake.lock update.
+          BRANCH="chore/auto-update-flake"
+          git checkout -B "$BRANCH"
+          git add flake.lock
+          git commit -m "chore: Update flake.lock."
+          git push -f origin "$BRANCH"
 
-            This PR updates the Nix flake inputs to their latest versions.
-          branch: chore/auto-update-flake
-          delete-branch: true
+          # Create PR via Gitea API
+          curl -X POST \
+            -H "Authorization: token ${GITEA_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "title": "chore: Update flake.lock",
+              "body": "Automated flake.lock update.\n\nThis PR updates the Nix flake inputs to their latest versions.",
+              "head": "'"$BRANCH"'",
+              "base": "main"
+            }' \
+            "https://git.pitaya.f5.si/api/v1/repos/${{ gitea.repository }}/pulls" || echo "PR may already exist"
