@@ -8,22 +8,22 @@ on:
 jobs:
   update-flake:
     runs-on: ubuntu-latest
-    container:
-      image: nixos/nix:latest
     steps:
-      - name: Install git
-        run: |
-          nix-env -iA nixpkgs.git nixpkgs.curl
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          repository: ${{ gitea.repository }}
+          ref: ${{ gitea.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          github-server-url: https://git.pitaya.f5.si
 
-      - name: Configure Nix
-        run: |
-          mkdir -p ~/.config/nix
-          echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
 
       - name: Configure git
         run: |
@@ -35,7 +35,7 @@ jobs:
 
       - name: Check for changes and create PR
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if git diff --quiet flake.lock; then
             echo "No changes to flake.lock"
@@ -50,7 +50,7 @@ jobs:
 
           # Create PR via Gitea API
           curl -X POST \
-            -H "Authorization: token ${GITEA_TOKEN}" \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
             -H "Content-Type: application/json" \
             -d '{
               "title": "chore: Update flake.lock",
