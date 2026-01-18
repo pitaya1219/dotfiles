@@ -4,7 +4,7 @@
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
     pkgs = import nixpkgs {
       system = "aarch64-linux";
-      overlays = [ overlays.neovim-nightly ];
+      overlays = [ overlays.neovim-nightly overlays.mistral-vibe ];
     };
     modules = [
       ({ config, pkgs, lib, ... }: {
@@ -37,6 +37,7 @@
             cloudflared
             jq
             llama-cpp
+            mistral-vibe
             rclone
           ];
         };

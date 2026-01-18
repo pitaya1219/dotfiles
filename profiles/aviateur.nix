@@ -4,7 +4,7 @@
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
     pkgs = import nixpkgs {
       system = "x86_64-linux";
-      overlays = [ overlays.neovim-nightly ];
+      overlays = [ overlays.neovim-nightly overlays.mistral-vibe ];
     };
     modules = [
       ({ config, pkgs, lib, ... }: {
@@ -29,6 +29,7 @@
           homeDirectory = "/home/aviateur";
           stateVersion = "23.11";
           packages = with pkgs; [
+            mistral-vibe
             rclone
           ];
         };

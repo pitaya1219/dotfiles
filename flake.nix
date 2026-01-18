@@ -11,14 +11,19 @@
       url = "github:nix-community/neovim-nightly-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    mistral-vibe = {
+      url = "github:pitaya1219/mistral-vibe-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, home-manager, neovim-nightly-overlay }:
+  outputs = { self, nixpkgs, home-manager, neovim-nightly-overlay, mistral-vibe }:
     let
       profileLib = import ./lib/profiles.nix { inherit (nixpkgs) lib; };
-      
+
       overlays = {
         neovim-nightly = neovim-nightly-overlay.overlays.default;
+        mistral-vibe = mistral-vibe.overlays.default;
       };
       
       # Load all profiles automatically

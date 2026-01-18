@@ -4,7 +4,7 @@
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
     pkgs = import nixpkgs {
       system = "aarch64-darwin";
-      overlays = [ overlays.neovim-nightly ];
+      overlays = [ overlays.neovim-nightly overlays.mistral-vibe ];
     };
     modules = [
       ({ config, pkgs, lib, ... }: {
@@ -38,6 +38,7 @@
             elixir
             elixir-ls
             jq
+            mistral-vibe
             rclone
             xlsx2csv
           ];
