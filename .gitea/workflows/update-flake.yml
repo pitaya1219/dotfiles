@@ -62,13 +62,15 @@ jobs:
           echo "=== Checking for existing PR ==="
           EXISTING_PR=$(curl -s \
             -H "Authorization: token ${GITHUB_TOKEN}" \
-            "https://git.pitaya.f5.si/api/v1/repos/${{ gitea.repository }}/pulls?state=open&head=${{ gitea.repository_owner }}:${BRANCH}")
-          echo "Existing PRs: $EXISTING_PR"
+            "https://git.pitaya.f5.si/api/v1/repos/${{ gitea.repository }}/pulls?state=open")
+          echo "Open PRs count: $(echo "$EXISTING_PR" | grep -o '"number"' | wc -l)"
 
-          if echo "$EXISTING_PR" | grep -q '"number"'; then
-            echo "PR already exists, skipping creation"
+          # Check if there's a PR from our specific branch
+          if echo "$EXISTING_PR" | grep -q "\"ref\":\"${BRANCH}\""; then
+            echo "PR from ${BRANCH} already exists, skipping creation"
             exit 0
           fi
+          echo "No existing PR from ${BRANCH}, creating one..."
 
           echo "=== Creating PR via API ==="
           RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
