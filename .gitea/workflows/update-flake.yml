@@ -5,6 +5,10 @@ on:
     - cron: '0 3 * * *'  # Every day at 3:00 AM
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   update-flake:
     runs-on: ubuntu-latest
@@ -14,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
           repository: ${{ gitea.repository }}
-          ref: ${{ gitea.ref }}
+          ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
           github-server-url: https://git.pitaya.f5.si
 
@@ -37,19 +41,37 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          echo "=== Checking for changes ==="
+          git status
+          git diff --stat flake.lock || true
+
           if git diff --quiet flake.lock; then
             echo "No changes to flake.lock"
             exit 0
           fi
 
+          echo "=== Changes detected, creating PR ==="
           BRANCH="chore/auto-update-flake"
           git checkout -B "$BRANCH"
           git add flake.lock
           git commit -m "chore: Update flake.lock."
+
+          echo "=== Pushing branch ==="
           git push -f origin "$BRANCH"
 
-          # Create PR via Gitea API
-          curl -X POST \
+          echo "=== Checking for existing PR ==="
+          EXISTING_PR=$(curl -s \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            "https://git.pitaya.f5.si/api/v1/repos/${{ gitea.repository }}/pulls?state=open&head=${{ gitea.repository_owner }}:${BRANCH}")
+          echo "Existing PRs: $EXISTING_PR"
+
+          if echo "$EXISTING_PR" | grep -q '"number"'; then
+            echo "PR already exists, skipping creation"
+            exit 0
+          fi
+
+          echo "=== Creating PR via API ==="
+          RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
             -H "Authorization: token ${GITHUB_TOKEN}" \
             -H "Content-Type: application/json" \
             -d '{
@@ -58,4 +80,5 @@ jobs:
               "head": "'"$BRANCH"'",
               "base": "main"
             }' \
-            "https://git.pitaya.f5.si/api/v1/repos/${{ gitea.repository }}/pulls" || echo "PR may already exist"
+            "https://git.pitaya.f5.si/api/v1/repos/${{ gitea.repository }}/pulls")
+          echo "API Response: $RESPONSE"
