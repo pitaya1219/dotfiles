@@ -40,6 +40,7 @@ jobs:
       - name: Check for changes and create PR
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
           echo "=== Checking for changes ==="
           git status
@@ -61,7 +62,7 @@ jobs:
 
           echo "=== Checking for existing PR ==="
           EXISTING_PR=$(curl -s \
-            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Authorization: token ${BOT_TOKEN}" \
             "https://git.pitaya.f5.si/api/v1/repos/${{ gitea.repository }}/pulls?state=open")
           echo "Open PRs count: $(echo "$EXISTING_PR" | grep -o '"number"' | wc -l)"
 
@@ -74,7 +75,7 @@ jobs:
 
           echo "=== Creating PR via API ==="
           RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST \
-            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Authorization: token ${BOT_TOKEN}" \
             -H "Content-Type: application/json" \
             -d '{
               "title": "chore: Update flake.lock",
