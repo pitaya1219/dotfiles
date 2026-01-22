@@ -20,7 +20,6 @@ jobs:
           repository: ${{ gitea.repository }}
           ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
-          github-server-url: ${{ vars.SERVER_URL || gitea.server_url }}
 
       - name: Install Nix
         uses: cachix/install-nix-action@v27
@@ -30,12 +29,9 @@ jobs:
             experimental-features = nix-command flakes
 
       - name: Configure git
-        env:
-          SERVER_URL: ${{ vars.SERVER_URL || gitea.server_url }}
         run: |
           git config user.name "gitea-actions[bot]"
-          DOMAIN=$(echo "${SERVER_URL}" | sed 's|https\?://||')
-          git config user.email "gitea-actions[bot]@noreply.${DOMAIN}"
+          git config user.email "gitea-actions[bot]@noreply.git.pitaya.f5.si"
 
       - name: Update flake inputs
         run: nix flake update
@@ -44,7 +40,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          SERVER_URL: ${{ vars.SERVER_URL || gitea.server_url }}
+          GITEA_SERVER_URL: ${{ gitea.server_url }}
           REPO: ${{ gitea.repository }}
         run: |
           echo "=== Checking for changes ==="
@@ -68,7 +64,7 @@ jobs:
           echo "=== Checking for existing PR ==="
           EXISTING_PR=$(curl -s \
             -H "Authorization: token ${BOT_TOKEN}" \
-            "${SERVER_URL}/api/v1/repos/${REPO}/pulls?state=open")
+            "${GITEA_SERVER_URL}/api/v1/repos/${REPO}/pulls?state=open")
           echo "Open PRs count: $(echo "$EXISTING_PR" | grep -o '"number"' | wc -l)"
 
           # Check if there's a PR from our specific branch
@@ -88,5 +84,5 @@ jobs:
               "head": "'"$BRANCH"'",
               "base": "main"
             }' \
-            "${SERVER_URL}/api/v1/repos/${REPO}/pulls")
+            "${GITEA_SERVER_URL}/api/v1/repos/${REPO}/pulls")
           echo "API Response: $RESPONSE"
