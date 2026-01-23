@@ -39,6 +39,7 @@
             rclone
             passt
             mistral-vibe
+            tailscale
           ];
         };
       })
