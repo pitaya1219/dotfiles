@@ -70,13 +70,16 @@ _shellm_status() {
 }
 
 # Keybindings (vi-command mode with : prefix)
-bind -m vi-command -x '"::": _shellm_complete'
-bind -m vi-command -x '":e": _shellm_fix'
-bind -m vi-command -x '":x": _shellm_explain'
-bind -m vi-command -x '":c": _shellm_cheatsheet'
-bind -m vi-command -x '":p": _shellm_preview'
-bind -m vi-command -x '":h": _shellm_history'
-bind -m vi-command -x '":?": _shellm_status'
+# Only bind in interactive shells with line editing enabled
+if [[ $- == *i* ]]; then
+    bind -m vi-command -x '"::": _shellm_complete' 2>/dev/null
+    bind -m vi-command -x '":e": _shellm_fix' 2>/dev/null
+    bind -m vi-command -x '":x": _shellm_explain' 2>/dev/null
+    bind -m vi-command -x '":c": _shellm_cheatsheet' 2>/dev/null
+    bind -m vi-command -x '":p": _shellm_preview' 2>/dev/null
+    bind -m vi-command -x '":h": _shellm_history' 2>/dev/null
+    bind -m vi-command -x '":?": _shellm_status' 2>/dev/null
+fi
 
 # Capture last command and exit status
 _shellm_capture() {
