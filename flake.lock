@@ -52,11 +52,11 @@
         "uv2nix": "uv2nix_2"
       },
       "locked": {
-        "lastModified": 1770346908,
-        "narHash": "sha256-N9HzhwbPrSeFVZcDxgubH0utR37RTP5cCM3mPB+66is=",
+        "lastModified": 1770427776,
+        "narHash": "sha256-1Nz9uOQwxLy7Hpk7dyw7HjXhb3XQWO1ZwLzoaBtkCcI=",
         "owner": "pitaya1219",
         "repo": "mistral-vibe-nix",
-        "rev": "240fb419099ad3f7bfc02c9e3d77607711d1edc9",
+        "rev": "a438ce582e17a64503551d954c8b8cba5e037523",
         "type": "github"
       },
       "original": {
@@ -68,16 +68,15 @@
     "mistral-vibe-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1768236860,
-        "narHash": "sha256-R+sh8xQpLDIKqQwE1JjguP4NwE2Jz7tuXNK1+EsHnrA=",
+        "lastModified": 1769780981,
+        "narHash": "sha256-eZqNxibJ0Ps65tHT6msaizRxvUPNNq0OZ++aAYvUi0E=",
         "owner": "mistralai",
         "repo": "mistral-vibe",
-        "rev": "79f215d91cf8ca7c8970d9d81470b76199fecc43",
+        "rev": "9809cfc8315049b6f02b1865306903d92428919f",
         "type": "github"
       },
       "original": {
         "owner": "mistralai",
-        "ref": "v1.3.5",
         "repo": "mistral-vibe",
         "type": "github"
       }
