@@ -8,26 +8,27 @@
     };
     modules = [
       ({ config, pkgs, lib, ... }: {
-        imports = [
-          ../shared/activations/rootless-docker.nix
-          ../shared/activations/proton-pass.nix
-          ../shared/programs/bash.nix
-          ../shared/programs/bare.nix
-          ../shared/programs/rust.nix
-          ../shared/programs/claude-code.nix
-          ../shared/programs/opencode.nix
-          ../shared/programs/direnv.nix
-          ../shared/programs/git.nix
-          ../shared/programs/neovim.nix
-          ../shared/programs/tmux.nix
-          ../shared/programs/starship.nix
-          ../shared/programs/readline.nix
-          ./lepetitprince/rclone/config.nix
-          ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "lepetitprince")
-          ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "lepetitprince")
-          ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "lepetitprince")
-          (import ../shared/programs/unfree.nix { additionalPackages = []; })
-        ];
+         imports = [
+           ../shared/activations/rootless-docker.nix
+           ../shared/activations/proton-pass.nix
+           ../shared/programs/bash.nix
+           ../shared/programs/bare.nix
+           ../shared/programs/rust.nix
+           ../shared/programs/claude-code.nix
+           ../shared/programs/opencode.nix
+           ../shared/programs/openclaw.nix
+           ../shared/programs/direnv.nix
+           ../shared/programs/git.nix
+           ../shared/programs/neovim.nix
+           ../shared/programs/tmux.nix
+           ../shared/programs/starship.nix
+           ../shared/programs/readline.nix
+           ./lepetitprince/rclone/config.nix
+           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "lepetitprince")
+           ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "lepetitprince")
+           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "lepetitprince")
+           (import ../shared/programs/unfree.nix { additionalPackages = []; })
+         ];
 
         home = {
           username = "lepetitprince";
