@@ -19,6 +19,30 @@ tasks:
         nix flake update
         echo "Rebuilding configuration..."
         nix run home-manager/master -- switch --flake .#{{.USER}}
+  rollback:
+    desc: Rollback home-manager to previous generation
+    silent: true
+    cmds:
+      - |
+        echo "🔄 Rolling back home-manager to previous generation..."
+        # Source Nix profile if it exists
+        if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
+          source ~/.nix-profile/etc/profile.d/nix.sh
+        fi
+
+        # List recent generations
+        echo "📋 Recent home-manager generations:"
+        nix profile history --profile ~/.local/state/nix/profiles/home-manager | sed -n '1,10p'
+
+        # Perform rollback
+        echo ""
+        echo "⏪ Performing rollback..."
+        nix profile rollback --profile ~/.local/state/nix/profiles/home-manager
+
+        echo "✅ Rollback complete!"
+        echo ""
+        echo "Current generation:"
+        nix profile history --profile ~/.local/state/nix/profiles/home-manager | sed -n '1,3p'
   get_github_hash:*:*:*:
     desk:
     silent: true
