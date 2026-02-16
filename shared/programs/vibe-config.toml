@@ -1,0 +1,9 @@
+model = "devstral-2"
+
+[[mcp_servers]]
+name = "gitea"
+transport = "stdio"
+command = "gitea-mcp"
+args = ["-host", "{env:GITEA_HOST}", "-token", "{env:GITEA_VIBE_BOT_TOKEN}"]
+startup_timeout_sec = 10
+tool_timeout_sec = 60
