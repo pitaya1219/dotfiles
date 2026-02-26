@@ -14,6 +14,7 @@
           ../shared/programs/bare.nix
           ../shared/programs/claude-code.nix
           ../shared/programs/opencode.nix
+          ../shared/programs/vibe.nix
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix
           ../shared/programs/tmux.nix
