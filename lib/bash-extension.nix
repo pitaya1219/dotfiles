@@ -23,7 +23,7 @@
         else "";
 
       profileEnv = if builtins.pathExists profileEnvPath
-        then import profileEnvPath
+        then import profileEnvPath { inherit lib; }
         else {};
 
     in {
