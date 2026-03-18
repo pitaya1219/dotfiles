@@ -17,7 +17,7 @@ in
     
     # Basic environment with default value for SHELLM_MODEL
     sessionVariables = baseEnv // {
-      SHELLM_MODEL = lib.mkDefault "qwen2.5-coder-1.5b-Q4_K_M";
+      SHELLM_MODEL = lib.mkDefault "Qwen3.5-0.8B-UD-Q4_K_XL";
     };
     
     # Common shell options
