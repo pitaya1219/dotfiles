@@ -41,6 +41,24 @@
         "type": "github"
       }
     },
+    "homelab": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1773880649,
+        "narHash": "sha256-wpUK8Sper7SAcJlQj7+36Mn6hZN1TNgTDBymEqBWgJk=",
+        "ref": "refs/heads/main",
+        "rev": "d439ca4578ad2ac79707407656a4de8d02d0baf9",
+        "revCount": 239,
+        "type": "git",
+        "url": "https://git.pitaya.f5.si/pitaya1219/homelab.git"
+      },
+      "original": {
+        "type": "git",
+        "url": "https://git.pitaya.f5.si/pitaya1219/homelab.git"
+      }
+    },
     "mistral-vibe": {
       "inputs": {
         "mistral-vibe-src": "mistral-vibe-src",
@@ -121,6 +139,22 @@
     },
     "nixpkgs": {
       "locked": {
+        "lastModified": 1770562336,
+        "narHash": "sha256-ub1gpAONMFsT/GU2hV6ZWJjur8rJ6kKxdm9IlCT0j84=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "d6c71932130818840fc8fe9509cf50be8c64634f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
         "lastModified": 1773646010,
         "narHash": "sha256-iYrs97hS7p5u4lQzuNWzuALGIOdkPXvjz7bviiBjUu8=",
         "owner": "NixOS",
@@ -185,9 +219,10 @@
     "root": {
       "inputs": {
         "home-manager": "home-manager",
+        "homelab": "homelab",
         "mistral-vibe": "mistral-vibe",
         "neovim-nightly-overlay": "neovim-nightly-overlay",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs_2"
       }
     },
     "uv2nix": {
