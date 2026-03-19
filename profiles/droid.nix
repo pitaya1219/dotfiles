@@ -1,4 +1,4 @@
-{ nixpkgs, home-manager, overlays }:
+{ nixpkgs, home-manager, overlays, homelab ? null }:
 
 {
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {

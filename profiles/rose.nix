@@ -1,4 +1,4 @@
-{ nixpkgs, home-manager, overlays }:
+{ nixpkgs, home-manager, overlays, homelab }:
 
 {
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
@@ -7,6 +7,7 @@
       overlays = [ overlays.neovim-nightly overlays.mistral-vibe ];
     };
     modules = [
+      homelab.homeManagerModules.dns-updater
       ({ config, pkgs, lib, ... }: {
         imports = [
           ../shared/activations/huggingface_hub.nix
@@ -28,6 +29,8 @@
           ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "rose")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
         ];
+
+        services.dns-updater.enable = true;
 
         home = {
           username = "rose";

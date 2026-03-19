@@ -15,9 +15,10 @@
       url = "github:pitaya1219/mistral-vibe-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    homelab.url = "git+https://git.pitaya.f5.si/pitaya1219/homelab.git";
   };
 
-  outputs = { self, nixpkgs, home-manager, neovim-nightly-overlay, mistral-vibe }:
+  outputs = { self, nixpkgs, home-manager, neovim-nightly-overlay, mistral-vibe, homelab }:
     let
       profileLib = import ./lib/profiles.nix { inherit (nixpkgs) lib; };
 
@@ -29,7 +30,7 @@
       # Load all profiles automatically
       profiles = profileLib.loadProfiles {
         profilesPath = ./profiles;
-        inherit nixpkgs home-manager overlays;
+        inherit nixpkgs home-manager overlays homelab;
       };
       
       # Generate home configurations from profiles  
