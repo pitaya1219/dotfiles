@@ -30,7 +30,10 @@
       # Load all profiles automatically
       profiles = profileLib.loadProfiles {
         profilesPath = ./profiles;
-        inherit nixpkgs home-manager overlays homelab;
+        inherit nixpkgs home-manager overlays;
+        extraModules = {
+          rose = [ homelab.homeManagerModules.dns-updater ];
+        };
       };
       
       # Generate home configurations from profiles  

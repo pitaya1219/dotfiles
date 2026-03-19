@@ -1,4 +1,4 @@
-{ nixpkgs, home-manager, overlays, homelab }:
+{ nixpkgs, home-manager, overlays, extraModules ? [] }:
 
 {
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
@@ -6,8 +6,7 @@
       system = "x86_64-linux";
       overlays = [ overlays.neovim-nightly overlays.mistral-vibe ];
     };
-    modules = [
-      homelab.homeManagerModules.dns-updater
+    modules = extraModules ++ [
       ({ config, pkgs, lib, ... }: {
         imports = [
           ../shared/activations/huggingface_hub.nix

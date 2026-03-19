@@ -20,14 +20,15 @@ rec {
     in profileNames;
 
   # Load all profiles from a directory
-  loadProfiles = { profilesPath, nixpkgs, home-manager, overlays, homelab ? null }:
+  loadProfiles = { profilesPath, nixpkgs, home-manager, overlays, extraModules ? {} }:
     let
       profileNames = discoverProfiles profilesPath;
     in
     builtins.listToAttrs (map (profileName: {
       name = profileName;
       value = import (profilesPath + "/${profileName}.nix") {
-        inherit nixpkgs home-manager overlays homelab;
+        inherit nixpkgs home-manager overlays;
+        extraModules = extraModules.${profileName} or [];
       };
     }) profileNames);
 }

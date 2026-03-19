@@ -1,4 +1,4 @@
-{ nixpkgs, home-manager, overlays, homelab ? null }:
+{ nixpkgs, home-manager, overlays, extraModules ? [] }:
 
 {
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
