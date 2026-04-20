@@ -40,6 +40,7 @@
             mistral-vibe
             passt
             tea
+            rclone
           ];
         };
       })
