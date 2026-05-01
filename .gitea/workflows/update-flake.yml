@@ -34,7 +34,12 @@ jobs:
           git config user.email "gitea-actions[bot]@noreply.git.pitaya.f5.si"
 
       - name: Update flake inputs
-        run: nix flake update
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          GITEA_SERVER_URL: ${{ gitea.server_url }}
+        run: |
+          git config --global url."https://oauth2:${BOT_TOKEN}@git.pitaya.f5.si/".insteadOf "https://git.pitaya.f5.si/"
+          nix flake update
 
       - name: Check for changes and create PR
         env:
