@@ -101,9 +101,9 @@ in
 
     nodejs
     # Language servers and tools
-    nodePackages.typescript-language-server
-    nodePackages.eslint
-    nodePackages.prettier
+    typescript-language-server
+    eslint
+    prettier
     
     # Nix language server
     nixd
