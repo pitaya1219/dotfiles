@@ -32,7 +32,10 @@
         profilesPath = ./profiles;
         inherit nixpkgs home-manager overlays;
         extraModules = {
-          rose = [ homelab.homeManagerModules.dns-updater ];
+          rose = [
+            homelab.homeManagerModules.dns-updater
+            homelab.homeManagerModules.nextcloud-backup
+          ];
         };
       };
       

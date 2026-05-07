@@ -46,11 +46,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1778043374,
-        "narHash": "sha256-kY41Myv37nf+oiwy8hy/EW2XKfDVY9vaXpn9pbAV9Kk=",
+        "lastModified": 1778148068,
+        "narHash": "sha256-eQpOj4uBjGSdYB3gUkejalws+SBI1cVbIzKV+UdRmIs=",
         "ref": "main",
-        "rev": "c4e99d434b4384175b2d161da53a93602a976f25",
-        "revCount": 244,
+        "rev": "2158581177af2aa0d10e4dd09885c1f770830bfa",
+        "revCount": 247,
         "type": "git",
         "url": "https://git.pitaya.f5.si/pitaya1219/homelab.git"
       },

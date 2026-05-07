@@ -31,6 +31,21 @@
 
         services.dns-updater.enable = true;
 
+        services.nextcloud-backup = {
+          main = {
+            enable = true;
+            homelabRoot = "/home/rose/homelab";
+            sourceDir = "/home/rose/homelab/apps/storage/nextcloud/nextcloud/data";
+            distDir = "/media/backup/nextcloud/";
+            remote = "";
+            exclude = "**/piwigo/**,appdata_*/**,**/.ocdata/**,.htaccess,**trashbin**,**/files_versions/**,nextcloud.log,**/Talk/**";
+            backupRemovedFile = true;
+            encrypted = false;
+            onCalendar = "Fri *-*-* 22:00:00";
+            onBootDelay = "6h";
+          };
+        };
+
         home = {
           username = "rose";
           homeDirectory = "/home/rose";
