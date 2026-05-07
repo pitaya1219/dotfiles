@@ -28,11 +28,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1778110974,
-        "narHash": "sha256-7V7bW5uZSdKPRmemMQUulXRffnlnjRj5N/HGHOsOda8=",
+        "lastModified": 1778144356,
+        "narHash": "sha256-dGM+QCstz/DyLB68+JK5GWyMx4QSqmOJEVgZmy63d/g=",
         "owner": "nix-community",
         "repo": "home-manager",
-        "rev": "75fac363324f18d2b83a30fd916e509d2a02fb0e",
+        "rev": "e4419d3123b780d5f4c0bceeace450424387638c",
         "type": "github"
       },
       "original": {
@@ -46,16 +46,16 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1778148068,
-        "narHash": "sha256-eQpOj4uBjGSdYB3gUkejalws+SBI1cVbIzKV+UdRmIs=",
-        "ref": "main",
-        "rev": "2158581177af2aa0d10e4dd09885c1f770830bfa",
-        "revCount": 247,
+        "lastModified": 1778192120,
+        "narHash": "sha256-7blOcHcyL3o3UgYAk3RGVXOIHgLg6eDzEo42s7BfxCE=",
+        "ref": "fix/nextcloud-backup-attrsof",
+        "rev": "e8726186ec35f4e64ea867db5ef0ceb6cf5fc7a3",
+        "revCount": 252,
         "type": "git",
         "url": "https://git.pitaya.f5.si/pitaya1219/homelab.git"
       },
       "original": {
-        "ref": "main",
+        "ref": "fix/nextcloud-backup-attrsof",
         "type": "git",
         "url": "https://git.pitaya.f5.si/pitaya1219/homelab.git"
       }

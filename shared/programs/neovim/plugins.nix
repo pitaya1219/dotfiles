@@ -29,7 +29,7 @@ let
       owner = "elliothatch";
       repo = "burgundy.vim";
       rev = "master";
-      sha256 = "0ni0x8kx25mvgrlza9zvddn78bkv232cdr01cqr9nmp0jblsj86a";
+      sha256 = "07z656b5ravc9k39nai6j2732d569nmd9fp3dpyqph684sqg1qx3";
     }
     {
       name = "nvim-colorizer";
