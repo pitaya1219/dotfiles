@@ -35,7 +35,7 @@
           main = {
             enable = true;
             homelabRoot = "/home/rose/homelab";
-            sourceDir = "/home/rose/homelab/apps/storage/nextcloud/nextcloud/data";
+            sourceDir = "/home/rose/homelab/apps/storage/nextcloud/nextcloud/data/";
             distDir = "/media/backup/nextcloud/";
             remote = "";
             exclude = "**/piwigo/**,appdata_*/**,**/.ocdata/**,.htaccess,**trashbin**,**/files_versions/**,nextcloud.log,**/Talk/**";

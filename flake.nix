@@ -15,7 +15,7 @@
       url = "github:pitaya1219/mistral-vibe-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    homelab.url = "git+https://git.pitaya.f5.si/pitaya1219/homelab.git?ref=fix/nextcloud-backup-attrsof";
+    homelab.url = "git+https://git.pitaya.f5.si/pitaya1219/homelab.git?ref=main";
   };
 
   outputs = { self, nixpkgs, home-manager, neovim-nightly-overlay, mistral-vibe, homelab }:

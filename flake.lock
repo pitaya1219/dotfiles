@@ -48,14 +48,14 @@
       "locked": {
         "lastModified": 1778192120,
         "narHash": "sha256-7blOcHcyL3o3UgYAk3RGVXOIHgLg6eDzEo42s7BfxCE=",
-        "ref": "fix/nextcloud-backup-attrsof",
+        "ref": "main",
         "rev": "e8726186ec35f4e64ea867db5ef0ceb6cf5fc7a3",
         "revCount": 252,
         "type": "git",
         "url": "https://git.pitaya.f5.si/pitaya1219/homelab.git"
       },
       "original": {
-        "ref": "fix/nextcloud-backup-attrsof",
+        "ref": "main",
         "type": "git",
         "url": "https://git.pitaya.f5.si/pitaya1219/homelab.git"
       }
