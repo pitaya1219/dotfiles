@@ -22,7 +22,7 @@
           ./r-shibuya/ssh/config.nix
           ./r-shibuya/rclone/config.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "r-shibuya")
-          ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "r-shibuya")
+          ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "r-shibuya")
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "r-shibuya")
           (import ../shared/programs/unfree.nix { additionalPackages = [ "copilot.vim" ]; })
         ];

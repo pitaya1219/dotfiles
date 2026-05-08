@@ -21,7 +21,7 @@
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "aviateur")
-          ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "aviateur")
+          ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "aviateur")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
         ];
 

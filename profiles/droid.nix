@@ -24,7 +24,7 @@
           ./droid/ssh/config.nix
           ./droid/rclone/config.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "droid")
-          ((import ../lib/neovim-extension.nix { inherit lib; }).forProfile "droid")
+          ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "droid")
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "droid")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
         ];

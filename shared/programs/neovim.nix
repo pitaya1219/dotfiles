@@ -42,7 +42,19 @@ in
   }) luaFiles // lib.mapAttrs' (name: path: {
     name = ".config/nvim/${name}";
     value.source = path;
-  }) pluginFiles // {
-    ".config/nvim/coc-settings.json".source = cocSettingsFile;
-  };
+  }) pluginFiles;
+
+  # Deploy coc-settings.json as regular file via activation (not symlink)
+  # Use lib.mkDefault so profile overrides can take precedence
+  home.activation.deployCocSettings = lib.mkDefault (lib.hm.dag.entryAfter ["checkLinkTargets"] ''
+    mkdir -p "$HOME/.config/nvim"
+    
+    # Backup existing file only if content differs
+    if [ -f "$HOME/.config/nvim/coc-settings.json" ] && ! diff -q "${cocSettingsFile}" "$HOME/.config/nvim/coc-settings.json" >/dev/null; then
+      cp "$HOME/.config/nvim/coc-settings.json" "$HOME/.config/nvim/coc-settings.json.bak.$(date +%Y%m%d%H%M%S)"
+    fi
+    
+    cp "${cocSettingsFile}" "$HOME/.config/nvim/coc-settings.json"
+    chmod 644 "$HOME/.config/nvim/coc-settings.json"
+  '');
 }

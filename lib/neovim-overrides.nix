@@ -1,9 +1,9 @@
-# Shared neovim profile extension utilities
+# Shared neovim profile overrides
 { lib }:
 
 {
-  # Creates a neovim profile extension module
-  # Usage: import (neovimExtension.forProfile "profile-name")
+  # Creates a neovim profile overrides module
+  # Usage: import (neovimOverrides.forProfile "profile-name")
   forProfile = profileName: 
     { config, pkgs, lib, ... }:
     
@@ -56,8 +56,20 @@
       home.file = lib.mapAttrs' (name: path: {
         name = ".config/nvim/${name}";
         value.source = path;
-      }) profileAfterPluginFiles // lib.optionalAttrs (profileCocSettings != {}) {
-        ".config/nvim/coc-settings.json" = lib.mkForce { source = cocSettingsFile; };
-      };
+      }) profileAfterPluginFiles;
+
+      # Deploy merged coc-settings.json as regular file via activation (overriding base)
+      # Use lib.mkForce to ensure this takes precedence over the base config
+      home.activation.deployCocSettings = lib.mkForce (lib.hm.dag.entryAfter ["checkLinkTargets"] ''
+        mkdir -p "$HOME/.config/nvim"
+        
+        # Backup existing file only if content differs
+        if [ -f "$HOME/.config/nvim/coc-settings.json" ] && ! diff -q "${cocSettingsFile}" "$HOME/.config/nvim/coc-settings.json" >/dev/null; then
+          cp "$HOME/.config/nvim/coc-settings.json" "$HOME/.config/nvim/coc-settings.json.bak.$(date +%Y%m%d%H%M%S)"
+        fi
+        
+        cp "${cocSettingsFile}" "$HOME/.config/nvim/coc-settings.json"
+        chmod 644 "$HOME/.config/nvim/coc-settings.json"
+      '');
     };
 }
