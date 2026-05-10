@@ -1,11 +1,13 @@
 { config, pkgs, lib, ... }:
 
 {
-  # Use shared AI commands directory
-  home.file.".vibe/commands" = {
-    source = ./ai-commands;
-    recursive = true;
-  };
+  imports = [ ./agent.nix ];  # Agent directories are managed in agent.nix
+
+  # Symlink .vibe/commands -> .agent/commands
+  home.file.".vibe/commands".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/commands";
+
+  # Symlink .vibe/skills -> .agent/skills
+  home.file.".vibe/skills".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/skills";
 
   # Gitea MCP wrapper script
   home.file.".vibe/gitea-mcp-wrapper.sh" = {

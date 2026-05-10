@@ -1,11 +1,13 @@
 { config, pkgs, lib, ... }:
 
 {
-  # Use shared AI commands directory
-  home.file.".claude/commands" = {
-    source = ./ai-commands;
-    recursive = true;
-  };
+  imports = [ ./agent.nix ];  # Agent directories are managed in agent.nix
+
+  # Symlink .claude/commands -> .agent/commands
+  home.file.".claude/commands".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/commands";
+
+  # Symlink .claude/skills -> .agent/skills
+  home.file.".claude/skills".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/skills";
 
   # Claude Code settings (statusLine + default model)
   home.file.".claude/settings.json".text = builtins.toJSON {
