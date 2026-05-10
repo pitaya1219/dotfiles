@@ -40,9 +40,22 @@
             remote = "";
             exclude = "**/piwigo/**,appdata_*/**,**/.ocdata/**,.htaccess,**trashbin**,**/files_versions/**,nextcloud.log,**/Talk/**";
             backupRemovedFile = true;
+            verbose = true;
             encrypted = false;
             onCalendar = "Fri *-*-* 22:00:00";
             onBootDelay = "6h";
+          };
+          pcloud-encrypted = {
+            enable = true;
+            homelabRoot = "/home/rose/homelab";
+            parentDir = "backup";
+            encryptSubdir = "nextcloud";
+            sourceDir = "/media/backup/nextcloud";
+            backupRemovedFile = false;
+            verbose = true;
+            encrypted = true;
+            onCalendar = "Mon *-*-* 22:00:00";
+            onBootDelay = "12h";
           };
         };
 
