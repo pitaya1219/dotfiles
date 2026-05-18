@@ -1,5 +1,8 @@
 ---
+name: commands-session-save
 description: Save current session summary as markdown
+user-invocable: true
+version: 1.0.0
 ---
 
 Create a comprehensive summary of the current session and save it as a markdown file.

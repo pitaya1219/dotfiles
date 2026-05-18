@@ -1,5 +1,8 @@
 ---
+name: commands-git-create-pr
 description: Create a pull request by implementing changes from scratch
+user-invocable: true
+version: 1.0.0
 ---
 
 Create a pull request by implementing requested changes from scratch, including code editing, committing, and PR creation.
@@ -77,7 +80,7 @@ Use Gitea MCP tools or appropriate platform tools with:
 
 Output the PR URL and summary to user:
 ```
-✅ PR #N created: {url}
+PR #N created: {url}
 
 Summary: {brief description}
 Files changed: N files

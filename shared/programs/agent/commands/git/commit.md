@@ -1,5 +1,8 @@
 ---
+name: commands-git-commit
 description: Analyze changes and create commits in logical groups
+user-invocable: true
+version: 1.0.0
 ---
 
 Analyze the current git changes and create commits ONLY for work completed in this session.
