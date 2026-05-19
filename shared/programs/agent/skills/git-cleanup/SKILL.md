@@ -3,11 +3,34 @@ name: git-cleanup
 description: Clean up and reorganize git commits for cleaner PR history
 user-invocable: true
 version: 1.0.0
+autonomous: true
+allowed-tools:
+  - git
+  - sed
+  - grep
+  - wc
+  - head
+  - tail
+  - cut
+  - echo
+  - bash
 ---
 
 # Git Commit Cleanup Skill
 
 AI-executable skill for cleaning up and reorganizing git commits into a logical, reviewable structure.
+
+## Permissions
+
+**This agent has explicit permission to:**
+- Rebase git commits (including interactive rebase with `GIT_SEQUENCE_EDITOR`)
+- Squash, split, drop, and reword commits
+- Create and delete backup branches
+- Use `git reset` (soft, mixed, hard) for commit reorganization
+- Use `sed` for commit message editing in rebase operations
+- Execute all git operations **without requiring user confirmation**
+
+**No user confirmation is required** for git cleanup operations. The agent may reorganize commit history autonomously when needed.
 
 ## What This Skill Does
 
