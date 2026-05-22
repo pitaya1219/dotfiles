@@ -11,6 +11,7 @@
         imports = [
           ../shared/activations/rootless-docker.nix
           ../shared/activations/proton-pass.nix
+          ((import ../lib/taskfile-overrides.nix { inherit lib pkgs; }).forProfile "lepetitprince")
           ../shared/programs/bash.nix
           ../shared/programs/bare.nix
           ../shared/programs/rust.nix

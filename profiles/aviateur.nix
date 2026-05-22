@@ -10,6 +10,7 @@
       ({ config, pkgs, lib, ... }: {
         imports = [
           ../shared/activations/proton-pass.nix
+          ((import ../lib/taskfile-overrides.nix { inherit lib pkgs; }).forProfile "aviateur")
           ../shared/programs/bash.nix
           ../shared/programs/bare.nix
           ../shared/programs/claude-code.nix

@@ -11,6 +11,7 @@
         imports = [
           ../shared/activations/proton-pass.nix
           ../shared/programs/bare.nix
+          ((import ../lib/taskfile-overrides.nix { inherit lib pkgs; }).forProfile "r-shibuya")
           ../shared/programs/bash.nix
           ../shared/programs/claude-code.nix
           ../shared/programs/opencode.nix

@@ -27,6 +27,11 @@ if [ -d "/opt/homebrew/etc/bash_completion.d" ] && [ -n "''${BASH_COMPLETION_VER
   done
 fi
 
+# Task completion (taskfile.dev)
+if [ -x "$(command -v task)" ]; then
+  eval "$(task --completion bash)"
+fi
+
 # Color support for ls
 if [ -x /usr/bin/dircolors ]; then
   test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
