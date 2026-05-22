@@ -10,6 +10,7 @@
       ({ config, pkgs, lib, ... }: {
         imports = [
           ../shared/programs/bare.nix
+          ((import ../lib/taskfile-overrides.nix { inherit lib pkgs; }).forProfile "droid")
           ../shared/programs/bash.nix
           ../shared/programs/claude-code.nix
           ../shared/programs/opencode.nix
