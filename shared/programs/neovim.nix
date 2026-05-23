@@ -28,6 +28,8 @@ in
     defaultEditor = true;
     viAlias = false;
     vimAlias = true;
+    withRuby = true;
+    withPython3 = true;
 
     initLua = lib.fileContents ./neovim/init.lua;
     
