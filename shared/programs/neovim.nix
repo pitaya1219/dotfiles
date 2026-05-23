@@ -29,7 +29,7 @@ in
     viAlias = false;
     vimAlias = true;
 
-    extraLuaConfig = lib.fileContents ./neovim/init.lua;
+    initLua = lib.fileContents ./neovim/init.lua;
     
     plugins = baseNeovimPlugins.plugins;
     extraPackages = baseNeovimPlugins.extraPackages;
