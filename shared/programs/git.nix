@@ -3,7 +3,7 @@
 {
   programs.git = {
     enable = true;
-    extraConfig = {
+    settings = {
       credential = {
         helper = "${config.home.homeDirectory}/.config/git/git-credential-protonpass.sh";
       };
