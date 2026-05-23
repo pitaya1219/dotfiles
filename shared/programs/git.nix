@@ -7,6 +7,9 @@
       credential = {
         helper = "${config.home.homeDirectory}/.config/git/git-credential-protonpass.sh";
       };
+      core = {
+        hooksPath = "${config.home.homeDirectory}/.config/git/hooks";
+      };
     };
   };
 
@@ -32,6 +35,12 @@
   # Install git credential helper script
   home.file.".config/git/git-credential-protonpass.sh" = {
     source = ./git/git-credential-protonpass.sh;
+    executable = true;
+  };
+
+  # Install commit-msg hook to prevent AI references in commit messages
+  home.file.".config/git/hooks/commit-msg" = {
+    source = ./hooks/commit-msg;
     executable = true;
   };
 }
