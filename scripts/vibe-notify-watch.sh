@@ -62,9 +62,19 @@ while true; do
     last_notify=$(cat "$state_file" 2>/dev/null || echo 0)
 
     if (( now - last_notify >= RATE_LIMIT )); then
+      # Extract session title from meta.json as summary
+      SUMMARY=$(METAFILE="${latest_dir}/meta.json" python3 -c "
+import json, os
+try:
+    with open(os.environ['METAFILE']) as f:
+        print(json.load(f).get('title', ''))
+except Exception:
+    print('')
+" 2>/dev/null || true)
       "$NOTIFY" \
         --agent-type mistral-vibe \
         --session-id "$current_session" \
+        --summary "$SUMMARY" \
         --type info \
         --confirmation "Mistral Vibe is waiting for your response (session: ${current_session})" \
         &>/dev/null || true

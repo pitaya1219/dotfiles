@@ -16,6 +16,25 @@ except Exception:
 " 2>/dev/null)
 SESSION_ID="${SESSION_ID:-${CLAUDE_SESSION_ID:-unknown}}"
 
+# Extract session title from transcript as summary
+PROJECT_PATH=$(pwd | sed 's|/|-|g')
+SUMMARY=$(TRANSCRIPT="$HOME/.claude/projects/${PROJECT_PATH}/${SESSION_ID}.jsonl" python3 -c "
+import json, os
+title = ''
+try:
+    with open(os.environ['TRANSCRIPT']) as f:
+        for line in f:
+            try:
+                obj = json.loads(line)
+                if obj.get('type') == 'ai-title':
+                    title = obj.get('aiTitle', '')
+            except Exception:
+                pass
+except Exception:
+    pass
+print(title)
+" 2>/dev/null || true)
+
 # Per-session throttle state file
 STATE_FILE="/tmp/claude-notify-${SESSION_ID}"
 
@@ -27,6 +46,7 @@ if (( now - last >= THROTTLE )); then
   exec "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh" \
     --agent-type claude-code \
     --session-id "$SESSION_ID" \
+    --summary "$SUMMARY" \
     --type info \
     --confirmation "Claude Code is waiting for your response (session: ${SESSION_ID})" \
     "$@"
