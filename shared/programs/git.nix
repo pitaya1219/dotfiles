@@ -40,7 +40,7 @@
 
   # Install commit-msg hook to prevent AI references in commit messages
   home.file.".config/git/hooks/commit-msg" = {
-    source = ./hooks/commit-msg;
+    source = ./git/hooks/commit-msg;
     executable = true;
   };
 }
