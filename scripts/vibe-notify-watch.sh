@@ -9,6 +9,15 @@ LOG_DIR="${1:-${VIBE_HOME:-$HOME/.vibe}/logs/session}"
 IDLE_THRESHOLD="${VIBE_NOTIFY_IDLE:-3}"
 RATE_LIMIT="${VIBE_NOTIFY_RATE:-10}"
 
+# Prevent duplicate instances via PID file
+PIDFILE="/tmp/vibe-notify-watch.pid"
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  echo "[vibe-notify-watch] Already running (PID $(cat "$PIDFILE")), exiting."
+  exit 0
+fi
+echo $$ > "$PIDFILE"
+trap 'rm -f "$PIDFILE"' EXIT INT TERM
+
 last_active=$(date +%s)
 was_active=false
 current_session=""
