@@ -71,8 +71,28 @@ while true; do
     last_notify=$(cat "$state_file" 2>/dev/null || echo 0)
 
     if (( now - last_notify >= RATE_LIMIT )); then
-      # Extract session title from meta.json as summary
-      SUMMARY=$(METAFILE="${latest_dir}/meta.json" python3 -c "
+      # Only notify if last message is a final assistant response (not mid-tool-call)
+      IS_WAITING=$(MESSAGES_FILE="${latest_dir}/messages.jsonl" python3 -c "
+import json, os
+try:
+    last = None
+    with open(os.environ['MESSAGES_FILE']) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try: last = json.loads(line)
+                except: pass
+    if last and last.get('role') == 'assistant' and last.get('content') and not last.get('tool_calls'):
+        print('yes')
+    else:
+        print('no')
+except Exception:
+    print('no')
+" 2>/dev/null || echo "no")
+
+      if [ "$IS_WAITING" = "yes" ]; then
+        # Extract session title from meta.json as summary
+        SUMMARY=$(METAFILE="${latest_dir}/meta.json" python3 -c "
 import json, os
 try:
     with open(os.environ['METAFILE']) as f:
@@ -80,15 +100,18 @@ try:
 except Exception:
     print('')
 " 2>/dev/null || true)
-      "$NOTIFY" \
-        --agent-type mistral-vibe \
-        --session-id "$current_session" \
-        --summary "$SUMMARY" \
-        --type info \
-        --confirmation "Mistral Vibe is waiting for your response (session: ${current_session})" \
-        &>/dev/null || true
-      echo "$now" > "$state_file"
-      echo "[vibe-notify-watch] Notification sent at $(date -Is) for session $current_session"
+        "$NOTIFY" \
+          --agent-type mistral-vibe \
+          --session-id "$current_session" \
+          --summary "$SUMMARY" \
+          --type info \
+          --confirmation "Mistral Vibe is waiting for your response (session: ${current_session})" \
+          &>/dev/null || true
+        echo "$now" > "$state_file"
+        echo "[vibe-notify-watch] Notification sent at $(date -Is) for session $current_session"
+      else
+        echo "[vibe-notify-watch] Idle but Vibe still processing, skipping notification"
+      fi
     fi
     was_active=false
   fi
