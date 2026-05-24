@@ -16,6 +16,8 @@ let
   }) (lib.filterAttrs (name: type: 
     type == "regular" && lib.hasSuffix ".lua" name
   ) (builtins.readDir ./neovim/plugin));
+
+
   
   # Read base coc-settings.json
   baseCocSettings = builtins.fromJSON (builtins.readFile ./neovim/coc-settings.json);
@@ -38,13 +40,13 @@ in
   };
 
   # Create symlinks for lua configuration files (excluding init.lua)
-  home.file = lib.mapAttrs' (name: _: {
+  home.file = (lib.mapAttrs' (name: _: {
     name = ".config/nvim/${name}";
     value.source = ./neovim/${name};
-  }) luaFiles // lib.mapAttrs' (name: path: {
+  }) luaFiles) // (lib.mapAttrs' (name: path: {
     name = ".config/nvim/${name}";
     value.source = path;
-  }) pluginFiles;
+  }) pluginFiles);
 
   # Deploy coc-settings.json as regular file via activation (not symlink)
   # Use lib.mkDefault so profile overrides can take precedence

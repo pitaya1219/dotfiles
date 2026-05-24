@@ -121,6 +121,10 @@ function Vibe.open_in_terminal(work_dir)
   vim.cmd('enew')
   local buf = vim.api.nvim_get_current_buf()
 
+  -- Set terminal metadata for tab title display
+  vim.b[buf].terminal_type = 'vibe'
+  vim.b[buf].terminal_cwd = work_dir or vim.fn.getcwd()
+
   -- Apply settings after buffer creation but before terminal starts
   vim.schedule(function()
     apply_cell_settings()
@@ -148,6 +152,10 @@ function Vibe.open_in_new_tab(work_dir)
 
   vim.cmd('tabnew')
   local buf = vim.api.nvim_get_current_buf()
+
+  -- Set terminal metadata for tab title display
+  vim.b[buf].terminal_type = 'vibe'
+  vim.b[buf].terminal_cwd = work_dir or vim.fn.getcwd()
 
   -- Apply settings after buffer creation but before terminal starts
   vim.schedule(function()
