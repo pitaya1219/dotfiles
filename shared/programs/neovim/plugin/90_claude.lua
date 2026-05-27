@@ -57,7 +57,7 @@ local function setup_cell_autocmds(buf, saved_ambiwidth)
       apply_cell_settings()
     end
   })
-  
+
   vim.api.nvim_create_autocmd({"BufLeave", "WinLeave"}, {
     buffer = buf,
     callback = function()
@@ -97,10 +97,10 @@ function ClaudeCode.toggle(work_dir)
 
   -- Save current ambiwidth setting
   local saved_ambiwidth = save_ambiwidth()
-  
+
   -- To avoid issues with cell widths in the floating window
   apply_cell_settings()
-  
+
   -- Start claude if not already running
   if vim.bo[ClaudeCode.buf].buftype ~= 'terminal' then
     local cmd = get_claude_cmd(work_dir)
@@ -157,8 +157,11 @@ function ClaudeCode.open_in_terminal(work_dir)
   local buf = vim.api.nvim_get_current_buf()
 
   -- Set terminal metadata for tab title display
+  local cwd = work_dir or vim.fn.getcwd()
   vim.b[buf].terminal_type = 'claude'
-  vim.b[buf].terminal_cwd = work_dir or vim.fn.getcwd()
+  vim.b[buf].terminal_cwd = cwd
+  vim.b[buf].terminal_session_id = (_G.tab_titles and _G.tab_titles.get_claude_session_id
+    and _G.tab_titles.get_claude_session_id(cwd)) or ("claude-" .. vim.fn.getpid())
 
   -- Apply settings after buffer creation but before terminal starts
   vim.schedule(function()
@@ -174,6 +177,22 @@ function ClaudeCode.open_in_terminal(work_dir)
 
   -- Set buffer-local autocmd to maintain settings while in this terminal
   setup_cell_autocmds(buf, saved_ambiwidth)
+
+  -- Poll for new session ID after terminal opens (Claude creates session after startup)
+  for i = 1, 10 do
+    vim.defer_fn(function()
+      if vim.b[buf] and vim.api.nvim_buf_is_valid(buf) then
+        local new_session_id = _G.tab_titles and _G.tab_titles.get_claude_session_id
+          and _G.tab_titles.get_claude_session_id(cwd)
+        if new_session_id and vim.b[buf].terminal_session_id ~= new_session_id then
+          vim.b[buf].terminal_session_id = new_session_id
+          if _G.tab_titles then
+            _G.tab_titles.update_all_tab_titles()
+          end
+        end
+      end
+    end, i * 1000)
+  end
 
   vim.cmd('startinsert')
 end
@@ -194,8 +213,11 @@ function ClaudeCode.open_in_new_tab(work_dir)
   local buf = vim.api.nvim_get_current_buf()
 
   -- Set terminal metadata for tab title display
+  local cwd = work_dir or vim.fn.getcwd()
   vim.b[buf].terminal_type = 'claude'
-  vim.b[buf].terminal_cwd = work_dir or vim.fn.getcwd()
+  vim.b[buf].terminal_cwd = cwd
+  vim.b[buf].terminal_session_id = (_G.tab_titles and _G.tab_titles.get_claude_session_id
+    and _G.tab_titles.get_claude_session_id(cwd)) or ("claude-" .. vim.fn.getpid())
 
   -- Apply settings after buffer creation but before terminal starts
   vim.schedule(function()
@@ -211,6 +233,22 @@ function ClaudeCode.open_in_new_tab(work_dir)
 
   -- Set buffer-local autocmd to maintain settings while in this terminal
   setup_cell_autocmds(buf, saved_ambiwidth)
+
+  -- Poll for new session ID after terminal opens (Claude creates session after startup)
+  for i = 1, 10 do
+    vim.defer_fn(function()
+      if vim.b[buf] and vim.api.nvim_buf_is_valid(buf) then
+        local new_session_id = _G.tab_titles and _G.tab_titles.get_claude_session_id
+          and _G.tab_titles.get_claude_session_id(cwd)
+        if new_session_id and vim.b[buf].terminal_session_id ~= new_session_id then
+          vim.b[buf].terminal_session_id = new_session_id
+          if _G.tab_titles then
+            _G.tab_titles.update_all_tab_titles()
+          end
+        end
+      end
+    end, i * 1000)
+  end
 
   vim.cmd('startinsert')
 end

@@ -4,6 +4,71 @@ local Vibe = {}
 Vibe.win = nil
 Vibe.buf = nil
 
+-- Get the current Vibe session ID from logs
+-- Following workspace rules: check .vibe/logs/session/ (project-local) first,
+-- then ${VIBE_HOME:-~/.vibe}/logs/session/ (global)
+local function get_vibe_session_id()
+  -- 1. Environment variable (most reliable)
+  if vim.env.VIBE_SESSION_ID and vim.env.VIBE_SESSION_ID ~= "" then
+    return vim.env.VIBE_SESSION_ID
+  end
+
+  -- 2. Helper function to find and read meta.json from multiple locations
+  local function find_and_read_meta()
+    -- Try multiple locations in order
+    local locations = {
+      vim.fn.getcwd() .. "/.vibe/logs/session",
+      vim.fn.expand("~/agent-sessions/.vibe/logs/session"),
+    }
+    
+    for _, loc in ipairs(locations) do
+      local cmd = string.format('ls -dt "%s"/session_*/meta.json 2>/dev/null | head -1', loc)
+      local handle = io.popen(cmd)
+      local path = handle:read("*l")
+      handle:close()
+      if path and path ~= "" then
+        local file = io.open(path, "r")
+        if file then
+          local content = file:read("*a")
+          file:close()
+          local session_id = content:match('"session_id":"([^"]+)"')
+          if session_id then
+            return session_id
+          end
+        end
+      end
+    end
+    return nil
+  end
+
+  -- Try project-local first (current dir and agent-sessions)
+  local session_id = find_and_read_meta()
+  if session_id then
+    return session_id
+  end
+
+  -- 3. Global: check ${VIBE_HOME:-~/.vibe}/logs/session/
+  local vibe_home = vim.env.VIBE_HOME or vim.fn.expand("~/.vibe")
+  local cmd2 = string.format('ls -dt "%s/logs/session"/session_*/meta.json 2>/dev/null | head -1', vibe_home)
+  local handle = io.popen(cmd2)
+  local path = handle:read("*l")
+  handle:close()
+  if path and path ~= "" then
+    local file = io.open(path, "r")
+    if file then
+      local content = file:read("*a")
+      file:close()
+      session_id = content:match('"session_id":"([^"]+)"')
+      if session_id then
+        return session_id
+      end
+    end
+  end
+
+  -- Last resort: return a generic identifier
+  return "vibe-" .. vim.fn.getpid()
+end
+
 -- Common function to create vibe command
 local function get_vibe_cmd(work_dir)
   local cmd = 'eval "$(direnv export bash)" && vibe'
@@ -124,6 +189,7 @@ function Vibe.open_in_terminal(work_dir)
   -- Set terminal metadata for tab title display
   vim.b[buf].terminal_type = 'vibe'
   vim.b[buf].terminal_cwd = work_dir or vim.fn.getcwd()
+  vim.b[buf].terminal_session_id = get_vibe_session_id()
 
   -- Apply settings after buffer creation but before terminal starts
   vim.schedule(function()
@@ -139,6 +205,22 @@ function Vibe.open_in_terminal(work_dir)
 
   -- Set buffer-local autocmd to maintain settings while in this terminal
   setup_cell_autocmds(buf, saved_ambiwidth)
+
+  -- Poll for new session ID after terminal opens
+  -- Vibe may create new session file, so we check again
+  for i = 1, 10 do
+    vim.defer_fn(function()
+      if vim.b[buf] and vim.api.nvim_buf_is_valid(buf) then
+        local new_session_id = get_vibe_session_id()
+        if vim.b[buf].terminal_session_id ~= new_session_id then
+          vim.b[buf].terminal_session_id = new_session_id
+          if _G.tab_titles then
+            _G.tab_titles.update_all_tab_titles()
+          end
+        end
+      end
+    end, i * 1000)
+  end
 
   vim.cmd('startinsert')
 end
@@ -156,6 +238,7 @@ function Vibe.open_in_new_tab(work_dir)
   -- Set terminal metadata for tab title display
   vim.b[buf].terminal_type = 'vibe'
   vim.b[buf].terminal_cwd = work_dir or vim.fn.getcwd()
+  vim.b[buf].terminal_session_id = get_vibe_session_id()
 
   -- Apply settings after buffer creation but before terminal starts
   vim.schedule(function()
@@ -172,6 +255,21 @@ function Vibe.open_in_new_tab(work_dir)
   -- Set buffer-local autocmd to maintain settings while in this terminal
   setup_cell_autocmds(buf, saved_ambiwidth)
 
+  -- Poll for new session ID after terminal opens
+  for i = 1, 10 do
+    vim.defer_fn(function()
+      if vim.b[buf] and vim.api.nvim_buf_is_valid(buf) then
+        local new_session_id = get_vibe_session_id()
+        if vim.b[buf].terminal_session_id ~= new_session_id then
+          vim.b[buf].terminal_session_id = new_session_id
+          if _G.tab_titles then
+            _G.tab_titles.update_all_tab_titles()
+          end
+        end
+      end
+    end, i * 1000)
+  end
+
   vim.cmd('startinsert')
 end
 
@@ -184,7 +282,6 @@ function Vibe.find_tab()
     local tab_buffers = vim.fn.tabpagebuflist(i)
     for _, buf in ipairs(tab_buffers) do
       if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_option(buf, 'buftype') == 'terminal' then
-        -- Check if this terminal is running the vibe command
         local is_vibe_tab = false
         
         -- Try to get the terminal job command
