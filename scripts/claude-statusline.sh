@@ -16,13 +16,13 @@ if [ "$context" = "null" ] || [ -z "$context" ]; then
   icon="─"
   context_display="N/A"
 else
-  # Icon based on context percentage
-  if [ "$context" -le 20 ]; then icon="○"
-  elif [ "$context" -le 40 ]; then icon="◔"
-  elif [ "$context" -le 60 ]; then icon="◐"
-  elif [ "$context" -le 80 ]; then icon="◕"
-  else icon="●"
-  fi
+  # 8-block bar: ████░░░░
+  filled=$(( context * 8 / 100 ))
+  [ "$filled" -gt 8 ] && filled=8
+  empty=$(( 8 - filled ))
+  icon=""
+  for i in $(seq 1 $filled); do icon="${icon}█"; done
+  for i in $(seq 1 $empty); do icon="${icon}░"; done
   context_display="${context}%"
 fi
 
