@@ -36,6 +36,55 @@ local function detect_terminal_type(buf)
   return 'bash'
 end
 
+-- Get buffer title for a specific buffer
+function M.get_buffer_title(bufnr)
+  local buf = bufnr
+  
+  if not vim.api.nvim_buf_is_valid(buf) then
+    return ""
+  end
+
+  local buftype = vim.bo[buf].buftype
+  local buf_name = vim.api.nvim_buf_get_name(buf)
+
+  if buftype == 'terminal' then
+    local terminal_type = detect_terminal_type(buf)
+
+    if terminal_type == 'vibe' then
+      local session_id = vim.b[buf].terminal_session_id
+      if session_id then
+        return "vibe-" .. tostring(session_id):sub(1, 8)
+      end
+      return "vibe"
+    elseif terminal_type == 'claude' then
+      local session_id = vim.b[buf].terminal_session_id
+      if session_id then
+        return "claude-" .. tostring(session_id):sub(1, 8)
+      end
+      return "claude"
+    else
+      local pid = vim.b[buf].terminal_job_pid
+      local cwd
+      if vim.b[buf].terminal_cwd then
+        cwd = vim.b[buf].terminal_cwd
+      else
+        cwd = vim.fn.getcwd()
+      end
+      local dir_name = cwd and (cwd:match('([^/]+)$') or cwd) or "terminal"
+      if pid then
+        return pid .. ":" .. dir_name
+      end
+      return dir_name
+    end
+  end
+
+  if buf_name ~= "" then
+    return vim.fn.fnamemodify(buf_name, ":t")
+  end
+
+  return "[No Name]"
+end
+
 -- Get tab title for a specific tab
 function M.get_tab_title(tabnr)
   local tab_buffers = vim.fn.tabpagebuflist(tabnr)

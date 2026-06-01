@@ -7,7 +7,18 @@ local function get_buffer_list()
   local buffer_list = {}
 
   for _, info in ipairs(buf_info_list) do
-    local name = info.name ~= "" and vim.fn.fnamemodify(info.name, ":t") or "[No Name]"
+    -- Get dynamic buffer title if available (from 07_tab_titles.lua)
+    local name
+    if _G.tab_titles and _G.tab_titles.get_buffer_title then
+      local title = _G.tab_titles.get_buffer_title(info.bufnr)
+      if title and title ~= "" then
+        name = title
+      else
+        name = info.name ~= "" and vim.fn.fnamemodify(info.name, ":t") or "[No Name]"
+      end
+    else
+      name = info.name ~= "" and vim.fn.fnamemodify(info.name, ":t") or "[No Name]"
+    end
     table.insert(buffer_list, { num = tostring(info.bufnr), name = name, line = info.name })
   end
 
