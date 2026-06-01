@@ -298,15 +298,15 @@ end
 vim.api.nvim_create_user_command('ClaudeCode', function(opts)
   local work_dir = opts.args ~= '' and opts.args or nil
   ClaudeCode.toggle(work_dir)
-end, { nargs = '?' })
+end, { nargs = '?', complete = 'dir' })
 vim.api.nvim_create_user_command('ClaudeCodeTerminal', function(opts)
   local work_dir = opts.args ~= '' and opts.args or nil
   ClaudeCode.open_in_terminal(work_dir)
-end, { nargs = '?' })
+end, { nargs = '?', complete = 'dir' })
 vim.api.nvim_create_user_command('ClaudeCodeTab', function(opts)
   local work_dir = opts.args ~= '' and opts.args or nil
   ClaudeCode.open_in_new_tab(work_dir)
-end, { nargs = '?' })
+end, { nargs = '?', complete = 'dir' })
 vim.keymap.set('n', '<leader>claude', function() ClaudeCode.toggle() end, { desc = 'Toggle Claude Code' })
 vim.keymap.set('n', '<leader>clauden', function() ClaudeCode.open_in_terminal() end, { desc = 'Open Claude Code in terminal' })
 vim.keymap.set('n', '<leader>claudet', function() ClaudeCode.open_in_new_tab() end, { desc = 'Open Claude Code in new tab' })

@@ -380,15 +380,15 @@ end
 vim.api.nvim_create_user_command('Vibe', function(opts)
   local work_dir = opts.args ~= '' and opts.args or nil
   Vibe.toggle(work_dir)
-end, { nargs = '?' })
+end, { nargs = '?', complete = 'dir' })
 vim.api.nvim_create_user_command('VibeTerminal', function(opts)
   local work_dir = opts.args ~= '' and opts.args or nil
   Vibe.open_in_terminal(work_dir)
-end, { nargs = '?' })
+end, { nargs = '?', complete = 'dir' })
 vim.api.nvim_create_user_command('VibeTab', function(opts)
   local work_dir = opts.args ~= '' and opts.args or nil
   Vibe.open_in_new_tab(work_dir)
-end, { nargs = '?' })
+end, { nargs = '?', complete = 'dir' })
 vim.keymap.set('n', '<leader>vibe', function() Vibe.toggle() end, { desc = 'Toggle Vibe' })
 vim.keymap.set('n', '<leader>viben', function() Vibe.open_in_terminal() end, { desc = 'Open Vibe in terminal' })
 vim.keymap.set('n', '<leader>vibet', function() Vibe.open_in_new_tab() end, { desc = 'Open Vibe in new tab' })
