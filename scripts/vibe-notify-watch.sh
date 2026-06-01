@@ -8,6 +8,7 @@ NOTIFY="$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh"
 LOG_DIR="${1:-${VIBE_HOME:-$HOME/.vibe}/logs/session}"
 IDLE_THRESHOLD="${VIBE_NOTIFY_IDLE:-3}"
 RATE_LIMIT="${VIBE_NOTIFY_RATE:-10}"
+SESSION_EVENTS_FILE="${VIBE_SESSION_EVENTS:-/tmp/vibe-session-events}"
 
 # Prevent duplicate instances via PID file
 PIDFILE="/tmp/vibe-notify-watch.pid"
@@ -55,6 +56,8 @@ while true; do
     last_active=$(date +%s)
     was_active=false
     echo "[vibe-notify-watch] New session detected: $current_session"
+    # Publish event for Neovim to consume: "<epoch> <session_dir>"
+    echo "$(date +%s) $latest_dir" >> "$SESSION_EVENTS_FILE"
     continue
   fi
 

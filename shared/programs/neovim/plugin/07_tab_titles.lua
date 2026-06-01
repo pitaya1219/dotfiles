@@ -141,7 +141,7 @@ function M.get_tab_title(tabnr)
     local terminal_type = detect_terminal_type(current_buf)
 
     if terminal_type == 'vibe' then
-      local session_id = vim.b[current_buf].terminal_session_id or M.get_vibe_session_id()
+      local session_id = vim.b[current_buf].terminal_session_id
       if session_id then
         return "vibe-" .. tostring(session_id):sub(1, 8)
       end

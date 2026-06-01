@@ -4,7 +4,46 @@ local Vibe = {}
 Vibe.win = nil
 Vibe.buf = nil
 
--- Snapshot all known vibe session directories (returns a set keyed by dir path)
+-- Extract session ID from a vibe session directory:
+-- tries meta.json first (full UUID), falls back to 8-char prefix in dir name
+local function session_id_from_vibe_dir(dir)
+  local meta = io.open(dir .. "meta.json", "r")
+  if meta then
+    local content = meta:read("*a")
+    meta:close()
+    local session_id = content:match('"session_id":"([^"]+)"')
+    if session_id then return session_id end
+  end
+  return dir:match("session_%d+_%d+_([0-9a-f]+)/?$")
+end
+
+-- Read /tmp/vibe-session-events (written by vibe-notify-watch.sh) and return
+-- the session ID of the first dir that appeared after open_time and is not in snapshot.
+-- File format per line: "<epoch> <session_dir_path>"
+local EVENTS_FILE = vim.env.VIBE_SESSION_EVENTS or "/tmp/vibe-session-events"
+
+local function find_session_from_events(open_time, snapshot)
+  local f = io.open(EVENTS_FILE, "r")
+  if not f then return nil end
+  local result = nil
+  for line in f:lines() do
+    local epoch_str, dir = line:match("^(%d+)%s+(.+)$")
+    if epoch_str and dir then
+      local epoch = tonumber(epoch_str)
+      -- trailing slash normalisation
+      if not dir:match("/$") then dir = dir .. "/" end
+      if epoch >= open_time and not snapshot[dir] then
+        result = session_id_from_vibe_dir(dir)
+        if result then break end
+      end
+    end
+  end
+  f:close()
+  return result
+end
+
+-- Snapshot all known vibe session directories (returns a set keyed by dir path).
+-- Used to distinguish "new" dirs from pre-existing ones.
 local function snapshot_vibe_session_dirs(cwd)
   local vibe_home = vim.env.VIBE_HOME or vim.fn.expand("~/.vibe")
   local agent_sessions = vim.fn.expand("~/agent-sessions")
@@ -23,13 +62,15 @@ local function snapshot_vibe_session_dirs(cwd)
   return known
 end
 
--- Find the newest session dir not present in the snapshot, return its session ID
-local function find_new_vibe_session(cwd, snapshot)
+-- Filesystem fallback: find the newest session dir NOT in snapshot.
+-- Used when the watcher event file is unavailable.
+local function find_new_vibe_session_fs(snapshot)
   local vibe_home = vim.env.VIBE_HOME or vim.fn.expand("~/.vibe")
   local agent_sessions = vim.fn.expand("~/agent-sessions")
+  -- cwd is not available here; search all known locations
   local cmd = string.format(
-    'ls -dt "%s/.vibe/logs/session"/session_*/ "%s/.vibe/logs/session"/session_*/ "%s/logs/session"/session_*/ 2>/dev/null',
-    cwd, agent_sessions, vibe_home
+    'ls -dt "%s/.vibe/logs/session"/session_*/ "%s/logs/session"/session_*/ 2>/dev/null',
+    agent_sessions, vibe_home
   )
   local handle = io.popen(cmd)
   if not handle then return nil end
@@ -43,17 +84,35 @@ local function find_new_vibe_session(cwd, snapshot)
   return nil
 end
 
--- Extract session ID from a vibe session directory:
--- tries meta.json first (full UUID), falls back to 8-char prefix in dir name
-local function session_id_from_vibe_dir(dir)
-  local meta = io.open(dir .. "meta.json", "r")
-  if meta then
-    local content = meta:read("*a")
-    meta:close()
-    local session_id = content:match('"session_id":"([^"]+)"')
-    if session_id then return session_id end
+-- Try events file first (no subprocess); fall back to filesystem scan.
+local function find_vibe_session(open_time, snapshot)
+  local sid = find_session_from_events(open_time, snapshot)
+  if sid then return sid end
+  return find_new_vibe_session_fs(snapshot)
+end
+
+-- Set up session ID detection for a vibe terminal buffer.
+-- Fires 10 initial 1s polls for fast detection, then installs a TermEnter
+-- autocmd so detection works even if the user takes > 10s to send a message.
+local function setup_vibe_session_watcher(buf, open_time, snapshot)
+  local function try_update()
+    if not vim.api.nvim_buf_is_valid(buf) then return end
+    if vim.b[buf].terminal_session_id then return end
+    local sid = find_vibe_session(open_time, snapshot)
+    if sid then
+      vim.b[buf].terminal_session_id = sid
+      if _G.tab_titles then _G.tab_titles.update_all_tab_titles() end
+    end
   end
-  return dir:match("session_%d+_%d+_([0-9a-f]+)/?$")
+
+  for i = 1, 10 do
+    vim.defer_fn(try_update, i * 1000)
+  end
+
+  vim.api.nvim_create_autocmd("TermEnter", {
+    buffer = buf,
+    callback = try_update,
+  })
 end
 
 -- Common function to create vibe command
@@ -177,7 +236,7 @@ function Vibe.open_in_terminal(work_dir)
   local cwd = work_dir or vim.fn.getcwd()
   vim.b[buf].terminal_type = 'vibe'
   vim.b[buf].terminal_cwd = cwd
-  -- Snapshot existing session dirs before vibe starts
+  local open_time = os.time()
   local snapshot = snapshot_vibe_session_dirs(cwd)
 
   -- Apply settings after buffer creation but before terminal starts
@@ -194,20 +253,7 @@ function Vibe.open_in_terminal(work_dir)
 
   -- Set buffer-local autocmd to maintain settings while in this terminal
   setup_cell_autocmds(buf, saved_ambiwidth)
-
-  -- Poll for a new session dir not in snapshot (created at vibe startup)
-  for i = 1, 30 do
-    vim.defer_fn(function()
-      if not vim.api.nvim_buf_is_valid(buf) then return end
-      local session_id = find_new_vibe_session(cwd, snapshot)
-      if session_id and vim.b[buf].terminal_session_id ~= session_id then
-        vim.b[buf].terminal_session_id = session_id
-        if _G.tab_titles then
-          _G.tab_titles.update_all_tab_titles()
-        end
-      end
-    end, i * 1000)
-  end
+  setup_vibe_session_watcher(buf, open_time, snapshot)
 
   vim.cmd('startinsert')
 end
@@ -226,7 +272,7 @@ function Vibe.open_in_new_tab(work_dir)
   local cwd = work_dir or vim.fn.getcwd()
   vim.b[buf].terminal_type = 'vibe'
   vim.b[buf].terminal_cwd = cwd
-  -- Snapshot existing session dirs before vibe starts
+  local open_time = os.time()
   local snapshot = snapshot_vibe_session_dirs(cwd)
 
   -- Apply settings after buffer creation but before terminal starts
@@ -243,20 +289,7 @@ function Vibe.open_in_new_tab(work_dir)
 
   -- Set buffer-local autocmd to maintain settings while in this terminal
   setup_cell_autocmds(buf, saved_ambiwidth)
-
-  -- Poll for a new session dir not in snapshot (created at vibe startup)
-  for i = 1, 30 do
-    vim.defer_fn(function()
-      if not vim.api.nvim_buf_is_valid(buf) then return end
-      local session_id = find_new_vibe_session(cwd, snapshot)
-      if session_id and vim.b[buf].terminal_session_id ~= session_id then
-        vim.b[buf].terminal_session_id = session_id
-        if _G.tab_titles then
-          _G.tab_titles.update_all_tab_titles()
-        end
-      end
-    end, i * 1000)
-  end
+  setup_vibe_session_watcher(buf, open_time, snapshot)
 
   vim.cmd('startinsert')
 end
