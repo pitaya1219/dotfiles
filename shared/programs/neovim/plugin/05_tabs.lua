@@ -16,7 +16,17 @@ local function get_tab_list()
     local current_buf = tab_buffers[vim.fn.tabpagewinnr(i)]
     local buf_name = vim.api.nvim_buf_get_name(current_buf)
     
-    if buf_name == "" then
+    -- Get dynamic tab title if available (from 07_tab_titles.lua)
+    if _G.tab_titles and _G.tab_titles.get_tab_title then
+      local title = _G.tab_titles.get_tab_title(i)
+      if title and title ~= "" then
+        tab_info.name = title
+      elseif buf_name == "" then
+        tab_info.name = "[No Name]"
+      else
+        tab_info.name = vim.fn.fnamemodify(buf_name, ":t")
+      end
+    elseif buf_name == "" then
       tab_info.name = "[No Name]"
     else
       tab_info.name = vim.fn.fnamemodify(buf_name, ":t")
