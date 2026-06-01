@@ -153,20 +153,18 @@ function M.get_tab_title(tabnr)
       end
       return "claude"
     else
+      local pid = vim.b[current_buf].terminal_job_pid
       local cwd
       if vim.b[current_buf].terminal_cwd then
         cwd = vim.b[current_buf].terminal_cwd
       else
         cwd = vim.fn.getcwd()
       end
-      if cwd then
-        local dir_name = cwd:match('([^/]+)$')
-        if dir_name and dir_name ~= "" then
-          return dir_name
-        end
-        return cwd
+      local dir_name = cwd and (cwd:match('([^/]+)$') or cwd) or "terminal"
+      if pid then
+        return pid .. ":" .. dir_name
       end
-      return "terminal"
+      return dir_name
     end
   end
 
