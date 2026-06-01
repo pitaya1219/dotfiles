@@ -39,7 +39,20 @@ end
 -- Get tab title for a specific tab
 function M.get_tab_title(tabnr)
   local tab_buffers = vim.fn.tabpagebuflist(tabnr)
-  local current_buf = tab_buffers[vim.fn.tabpagewinnr(tabnr)]
+
+  -- Prefer claude/vibe terminal over the focused window
+  local agent_buf
+  for _, buf in ipairs(tab_buffers) do
+    if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == 'terminal' then
+      local t = detect_terminal_type(buf)
+      if t == 'claude' or t == 'vibe' then
+        agent_buf = buf
+        break
+      end
+    end
+  end
+
+  local current_buf = agent_buf or tab_buffers[vim.fn.tabpagewinnr(tabnr)]
 
   if not vim.api.nvim_buf_is_valid(current_buf) then
     return ""
