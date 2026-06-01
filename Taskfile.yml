@@ -9,7 +9,6 @@ vars:
 
 includes:
   install: ./tasks/install.yml
-  secret: ./tasks/secret.yml
   setup: ./tasks/setup.yml
   nix: ./tasks/nix.yml
   proot: ./tasks/proot.yml
