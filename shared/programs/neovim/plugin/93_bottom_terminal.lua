@@ -90,5 +90,7 @@ function M.toggle()
   end
 end
 
--- <M-j> = Alt+j on Linux, Option+j on macOS (terminal must send escape sequences for Option)
+-- <M-j> = Alt+j on Linux, Option+j on macOS when terminal sends Esc+j (e.g. iTerm2 with Use Option as Meta Key)
 vim.keymap.set({ 'n', 't' }, '<M-j>', M.toggle, { desc = 'Toggle bottom terminal' })
+-- macOS fallback: Option+j sends ∆ (U+2206) in Terminal.app and other apps that don't remap Option as Meta
+vim.keymap.set({ 'n', 't' }, '∆', M.toggle, { desc = 'Toggle bottom terminal (macOS)' })
