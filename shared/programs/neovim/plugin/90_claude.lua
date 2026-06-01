@@ -4,6 +4,21 @@ local ClaudeCode = {}
 ClaudeCode.win = nil
 ClaudeCode.buf = nil
 
+-- Scan terminal buffer lines (bottom-up) for a Claude session UUID
+local function find_session_in_buf(buf)
+  if not vim.api.nvim_buf_is_valid(buf) then return nil end
+  local line_count = vim.api.nvim_buf_line_count(buf)
+  local start = math.max(0, line_count - 50)
+  local lines = vim.api.nvim_buf_get_lines(buf, start, line_count, false)
+  for i = #lines, 1, -1 do
+    local uuid = lines[i]:match(
+      "%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x"
+    )
+    if uuid then return uuid end
+  end
+  return nil
+end
+
 -- Common function to create claude command
 local function get_claude_cmd(work_dir)
   -- Ask user for permission mode
@@ -160,8 +175,6 @@ function ClaudeCode.open_in_terminal(work_dir)
   local cwd = work_dir or vim.fn.getcwd()
   vim.b[buf].terminal_type = 'claude'
   vim.b[buf].terminal_cwd = cwd
-  vim.b[buf].terminal_session_id = (_G.tab_titles and _G.tab_titles.get_claude_session_id
-    and _G.tab_titles.get_claude_session_id(cwd)) or ("claude-" .. vim.fn.getpid())
 
   -- Apply settings after buffer creation but before terminal starts
   vim.schedule(function()
@@ -178,17 +191,15 @@ function ClaudeCode.open_in_terminal(work_dir)
   -- Set buffer-local autocmd to maintain settings while in this terminal
   setup_cell_autocmds(buf, saved_ambiwidth)
 
-  -- Poll for new session ID after terminal opens (Claude creates session after startup)
-  for i = 1, 10 do
+  -- Poll terminal buffer content for session UUID (shown in Claude's status bar)
+  for i = 1, 30 do
     vim.defer_fn(function()
-      if vim.b[buf] and vim.api.nvim_buf_is_valid(buf) then
-        local new_session_id = _G.tab_titles and _G.tab_titles.get_claude_session_id
-          and _G.tab_titles.get_claude_session_id(cwd)
-        if new_session_id and vim.b[buf].terminal_session_id ~= new_session_id then
-          vim.b[buf].terminal_session_id = new_session_id
-          if _G.tab_titles then
-            _G.tab_titles.update_all_tab_titles()
-          end
+      if not vim.api.nvim_buf_is_valid(buf) then return end
+      local session_id = find_session_in_buf(buf)
+      if session_id and vim.b[buf].terminal_session_id ~= session_id then
+        vim.b[buf].terminal_session_id = session_id
+        if _G.tab_titles then
+          _G.tab_titles.update_all_tab_titles()
         end
       end
     end, i * 1000)
@@ -216,8 +227,6 @@ function ClaudeCode.open_in_new_tab(work_dir)
   local cwd = work_dir or vim.fn.getcwd()
   vim.b[buf].terminal_type = 'claude'
   vim.b[buf].terminal_cwd = cwd
-  vim.b[buf].terminal_session_id = (_G.tab_titles and _G.tab_titles.get_claude_session_id
-    and _G.tab_titles.get_claude_session_id(cwd)) or ("claude-" .. vim.fn.getpid())
 
   -- Apply settings after buffer creation but before terminal starts
   vim.schedule(function()
@@ -234,17 +243,15 @@ function ClaudeCode.open_in_new_tab(work_dir)
   -- Set buffer-local autocmd to maintain settings while in this terminal
   setup_cell_autocmds(buf, saved_ambiwidth)
 
-  -- Poll for new session ID after terminal opens (Claude creates session after startup)
-  for i = 1, 10 do
+  -- Poll terminal buffer content for session UUID (shown in Claude's status bar)
+  for i = 1, 30 do
     vim.defer_fn(function()
-      if vim.b[buf] and vim.api.nvim_buf_is_valid(buf) then
-        local new_session_id = _G.tab_titles and _G.tab_titles.get_claude_session_id
-          and _G.tab_titles.get_claude_session_id(cwd)
-        if new_session_id and vim.b[buf].terminal_session_id ~= new_session_id then
-          vim.b[buf].terminal_session_id = new_session_id
-          if _G.tab_titles then
-            _G.tab_titles.update_all_tab_titles()
-          end
+      if not vim.api.nvim_buf_is_valid(buf) then return end
+      local session_id = find_session_in_buf(buf)
+      if session_id and vim.b[buf].terminal_session_id ~= session_id then
+        vim.b[buf].terminal_session_id = session_id
+        if _G.tab_titles then
+          _G.tab_titles.update_all_tab_titles()
         end
       end
     end, i * 1000)

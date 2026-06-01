@@ -62,7 +62,7 @@ function M.get_vibe_session_id()
     end
   end
 
-  return "vibe-" .. vim.fn.getpid()
+  return tostring(vim.fn.getpid())
 end
 
 -- Get the Claude Code session ID for the given working directory.
@@ -143,14 +143,13 @@ function M.get_tab_title(tabnr)
     if terminal_type == 'vibe' then
       local session_id = vim.b[current_buf].terminal_session_id or M.get_vibe_session_id()
       if session_id then
-        return tostring(session_id):sub(1, 8)
+        return "vibe-" .. tostring(session_id):sub(1, 8)
       end
       return "vibe"
     elseif terminal_type == 'claude' then
       local session_id = vim.b[current_buf].terminal_session_id
-                      or M.get_claude_session_id(vim.b[current_buf].terminal_cwd)
       if session_id then
-        return tostring(session_id):sub(1, 8)
+        return "claude-" .. tostring(session_id):sub(1, 8)
       end
       return "claude"
     else
@@ -180,11 +179,7 @@ end
 
 -- Update all tab titles
 function M.update_all_tab_titles()
-  local tab_count = vim.fn.tabpagenr('$')
-  for i = 1, tab_count do
-    local title = M.get_tab_title(i)
-    vim.api.nvim_tabpage_set_var(i, 'tab_title', title)
-  end
+  vim.cmd('redrawtabline')
 end
 
 -- Custom tabline function
