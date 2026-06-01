@@ -58,6 +58,11 @@ while true; do
     echo "[vibe-notify-watch] New session detected: $current_session"
     # Publish event for Neovim to consume: "<epoch> <session_dir>"
     echo "$(date +%s) $latest_dir" >> "$SESSION_EVENTS_FILE"
+    # Trim to last 500 entries to prevent unbounded growth
+    if [ -f "$SESSION_EVENTS_FILE" ] && [ "$(wc -l < "$SESSION_EVENTS_FILE")" -gt 1000 ]; then
+      tail -n 500 "$SESSION_EVENTS_FILE" > "${SESSION_EVENTS_FILE}.tmp" \
+        && mv "${SESSION_EVENTS_FILE}.tmp" "$SESSION_EVENTS_FILE"
+    fi
     continue
   fi
 

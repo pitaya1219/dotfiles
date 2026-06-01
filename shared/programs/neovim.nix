@@ -17,8 +17,6 @@ let
     type == "regular" && lib.hasSuffix ".lua" name
   ) (builtins.readDir ./neovim/plugin));
 
-
-  
   # Read base coc-settings.json
   baseCocSettings = builtins.fromJSON (builtins.readFile ./neovim/coc-settings.json);
   cocSettingsFile = pkgs.writeText "coc-settings.json" (builtins.toJSON baseCocSettings);

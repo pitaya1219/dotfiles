@@ -6,95 +6,6 @@
 
 local M = {}
 
--- Get the most recent Vibe session ID from logs
--- Check .vibe/logs/session/ (project-local) first,
--- then ${VIBE_HOME:-~/.vibe}/logs/session/ (global)
-function M.get_vibe_session_id()
-  if vim.env.VIBE_SESSION_ID and vim.env.VIBE_SESSION_ID ~= "" then
-    return vim.env.VIBE_SESSION_ID
-  end
-
-  local function find_and_read_meta()
-    local locations = {
-      vim.fn.getcwd() .. "/.vibe/logs/session",
-      vim.fn.expand("~/agent-sessions/.vibe/logs/session"),
-    }
-
-    for _, loc in ipairs(locations) do
-      local cmd = string.format('ls -dt "%s"/session_*/meta.json 2>/dev/null | head -1', loc)
-      local handle = io.popen(cmd)
-      local path = handle:read("*l")
-      handle:close()
-      if path and path ~= "" then
-        local file = io.open(path, "r")
-        if file then
-          local content = file:read("*a")
-          file:close()
-          local session_id = content:match('"session_id":"([^"]+)"')
-          if session_id then
-            return session_id
-          end
-        end
-      end
-    end
-    return nil
-  end
-
-  local session_id = find_and_read_meta()
-  if session_id then
-    return session_id
-  end
-
-  local vibe_home = vim.env.VIBE_HOME or vim.fn.expand("~/.vibe")
-  local cmd2 = string.format('ls -dt "%s/logs/session"/session_*/meta.json 2>/dev/null | head -1', vibe_home)
-  local handle = io.popen(cmd2)
-  local path = handle:read("*l")
-  handle:close()
-  if path and path ~= "" then
-    local file = io.open(path, "r")
-    if file then
-      local content = file:read("*a")
-      file:close()
-      session_id = content:match('"session_id":"([^"]+)"')
-      if session_id then
-        return session_id
-      end
-    end
-  end
-
-  return tostring(vim.fn.getpid())
-end
-
--- Get the Claude Code session ID for the given working directory.
--- Looks in ~/.claude/projects/{encoded-cwd}/ for the most recently modified
--- session file (UUID.jsonl or UUID/ directory), matching CLAUDE.md convention.
-function M.get_claude_session_id(work_dir)
-  local cwd = work_dir or vim.fn.getcwd()
-  -- Encode path the same way Claude does: replace / with -
-  local encoded = cwd:gsub("/", "-")
-  local project_dir = vim.fn.expand("~/.claude/projects") .. "/" .. encoded
-
-  -- Use ls -dt with UUID glob patterns to find most recent session
-  local cmd = string.format(
-    'ls -dt "%s"/????????-????-????-????-????????????.jsonl "%s"/????????-????-????-????-????????????/ 2>/dev/null | head -1',
-    project_dir, project_dir
-  )
-  local handle = io.popen(cmd)
-  local path = handle:read("*l")
-  handle:close()
-
-  if path and path ~= "" then
-    -- Extract UUID: strip .jsonl extension (files) or trailing slash (dirs)
-    local session_id = path:match("([0-9a-f%-]+)%.jsonl$")
-                    or path:match("([0-9a-f%-]+)/?$")
-    if session_id then
-      return session_id
-    end
-  end
-
-  return "claude-" .. vim.fn.getpid()
-end
-
 -- Detect terminal type for a buffer
 local function detect_terminal_type(buf)
   if vim.b[buf].terminal_type == 'vibe' then
@@ -134,7 +45,7 @@ function M.get_tab_title(tabnr)
     return ""
   end
 
-  local buftype = vim.api.nvim_buf_get_option(current_buf, 'buftype')
+  local buftype = vim.bo[current_buf].buftype
   local buf_name = vim.api.nvim_buf_get_name(current_buf)
 
   if buftype == 'terminal' then
@@ -201,7 +112,7 @@ function M.tabline()
     end
 
     -- %{i}T marks the clickable region for tab i (enables mouse/touch tap)
-    table.insert(result, string.format('%%%dT%s %d:%s %%T', i, highlight, i, title))
+    table.insert(result, string.format('%%%dT%s %d:%s %%T ', i, highlight, i, title))
   end
 
   table.insert(result, '%#TabLineFill#%T')

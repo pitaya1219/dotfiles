@@ -19,6 +19,28 @@ local function find_session_in_buf(buf)
   return nil
 end
 
+-- Set up session UUID detection for a Claude terminal buffer.
+-- Fires 30 initial 1s polls, then installs a TermEnter autocmd for indefinite retry.
+local function setup_claude_session_watcher(buf)
+  local function try_update()
+    if not vim.api.nvim_buf_is_valid(buf) then return end
+    local session_id = find_session_in_buf(buf)
+    if session_id and vim.b[buf].terminal_session_id ~= session_id then
+      vim.b[buf].terminal_session_id = session_id
+      if _G.tab_titles then _G.tab_titles.update_all_tab_titles() end
+    end
+  end
+
+  for i = 1, 30 do
+    vim.defer_fn(try_update, i * 1000)
+  end
+
+  vim.api.nvim_create_autocmd("TermEnter", {
+    buffer = buf,
+    callback = try_update,
+  })
+end
+
 -- Common function to create claude command
 local function get_claude_cmd(work_dir)
   -- Ask user for permission mode
@@ -190,20 +212,7 @@ function ClaudeCode.open_in_terminal(work_dir)
 
   -- Set buffer-local autocmd to maintain settings while in this terminal
   setup_cell_autocmds(buf, saved_ambiwidth)
-
-  -- Poll terminal buffer content for session UUID (shown in Claude's status bar)
-  for i = 1, 30 do
-    vim.defer_fn(function()
-      if not vim.api.nvim_buf_is_valid(buf) then return end
-      local session_id = find_session_in_buf(buf)
-      if session_id and vim.b[buf].terminal_session_id ~= session_id then
-        vim.b[buf].terminal_session_id = session_id
-        if _G.tab_titles then
-          _G.tab_titles.update_all_tab_titles()
-        end
-      end
-    end, i * 1000)
-  end
+  setup_claude_session_watcher(buf)
 
   vim.cmd('startinsert')
 end
@@ -242,20 +251,7 @@ function ClaudeCode.open_in_new_tab(work_dir)
 
   -- Set buffer-local autocmd to maintain settings while in this terminal
   setup_cell_autocmds(buf, saved_ambiwidth)
-
-  -- Poll terminal buffer content for session UUID (shown in Claude's status bar)
-  for i = 1, 30 do
-    vim.defer_fn(function()
-      if not vim.api.nvim_buf_is_valid(buf) then return end
-      local session_id = find_session_in_buf(buf)
-      if session_id and vim.b[buf].terminal_session_id ~= session_id then
-        vim.b[buf].terminal_session_id = session_id
-        if _G.tab_titles then
-          _G.tab_titles.update_all_tab_titles()
-        end
-      end
-    end, i * 1000)
-  end
+  setup_claude_session_watcher(buf)
 
   vim.cmd('startinsert')
 end
@@ -268,7 +264,7 @@ function ClaudeCode.find_tab()
   for i = 1, tab_count do
     local tab_buffers = vim.fn.tabpagebuflist(i)
     for _, buf in ipairs(tab_buffers) do
-      if vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_option(buf, 'buftype') == 'terminal' then
+      if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == 'terminal' then
         local buf_name = vim.api.nvim_buf_get_name(buf)
         if buf_name:match('claude') then
           claude_tab = i
