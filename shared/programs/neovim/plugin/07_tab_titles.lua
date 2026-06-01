@@ -202,7 +202,8 @@ function M.tabline()
       highlight = '%#TabLine#'
     end
 
-    table.insert(result, string.format('%s %d:%s %s ', highlight, i, title, highlight))
+    -- %{i}T marks the clickable region for tab i (enables mouse/touch tap)
+    table.insert(result, string.format('%%%dT%s %d:%s %%T', i, highlight, i, title))
   end
 
   table.insert(result, '%#TabLineFill#%T')
@@ -214,6 +215,11 @@ end
 function M.setup()
   if vim.o.showtabline < 2 then
     vim.o.showtabline = 2
+  end
+
+  -- Enable mouse in all modes so touch/click on tabline works
+  if not vim.o.mouse:find('a') then
+    vim.o.mouse = 'a'
   end
 
   vim.cmd([[

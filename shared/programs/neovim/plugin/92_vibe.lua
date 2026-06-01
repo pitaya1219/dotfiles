@@ -91,12 +91,36 @@ local function find_vibe_session(open_time, snapshot)
   return find_new_vibe_session_fs(snapshot)
 end
 
+-- Scan terminal buffer (bottom-up) for "Resumed session XXXXXXXX" message.
+local function find_resumed_session_in_buf(buf)
+  if not vim.api.nvim_buf_is_valid(buf) then return nil end
+  local line_count = vim.api.nvim_buf_line_count(buf)
+  local start = math.max(0, line_count - 200)
+  local lines = vim.api.nvim_buf_get_lines(buf, start, line_count, false)
+  for i = #lines, 1, -1 do
+    local sid = lines[i]:match("[Rr]esumed session (%x+)")
+    if sid then return sid end
+  end
+  return nil
+end
+
 -- Set up session ID detection for a vibe terminal buffer.
 -- Fires 10 initial 1s polls for fast detection, then installs a TermEnter
 -- autocmd so detection works even if the user takes > 10s to send a message.
+-- Resume detection (buffer scan) can override an already-set session ID.
 local function setup_vibe_session_watcher(buf, open_time, snapshot)
   local function try_update()
     if not vim.api.nvim_buf_is_valid(buf) then return end
+
+    -- Resume takes priority: "Resumed session XXXXXXXX" in buffer output
+    local resumed = find_resumed_session_in_buf(buf)
+    if resumed and vim.b[buf].terminal_session_id ~= resumed then
+      vim.b[buf].terminal_session_id = resumed
+      if _G.tab_titles then _G.tab_titles.update_all_tab_titles() end
+      return
+    end
+
+    -- New session: only if ID not yet set
     if vim.b[buf].terminal_session_id then return end
     local sid = find_vibe_session(open_time, snapshot)
     if sid then
