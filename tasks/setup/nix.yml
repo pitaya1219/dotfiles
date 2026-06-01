@@ -35,24 +35,30 @@ tasks:
   home:
     desc: Setup nix home-manager and switch profile
     silent: true
+    vars:
+      PROFILE: '{{.PROFILE | default ""}}'
     cmds:
       - |
         echo "❄️ Setup home..."
-        depth_opt=$(find --help 2>/dev/null | grep -q GNU && echo '-maxdepth 1' || echo '-depth 1')
-        select profile in $(
-          find profiles ${depth_opt} -name "*.nix" | xargs -I {} basename {} .nix
-        ); do
-          if [ -n "$profile" ]; then
-            echo "Using profile: $profile"
-            # Source Nix profile if it exists
-            if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
-              source ~/.nix-profile/etc/profile.d/nix.sh;
+        if [ -n "{{.PROFILE}}" ]; then
+          profile="{{.PROFILE}}"
+          echo "Using profile: $profile"
+        else
+          depth_opt=$(find --help 2>/dev/null | grep -q GNU && echo '-maxdepth 1' || echo '-depth 1')
+          select profile in $(
+            find profiles ${depth_opt} -name "*.nix" | xargs -I {} basename {} .nix
+          ); do
+            if [ -n "$profile" ]; then
+              echo "Using profile: $profile"
+            else
+              echo "⚠️ Invalid selection. Please try again."
             fi
-        
-            nix run home-manager/master -- switch --flake .#"${profile}"
             break
-          else
-            echo "⚠️ Invalid selection. Please try again."
-            break
+          done
+        fi
+        if [ -n "$profile" ]; then
+          if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
+            source ~/.nix-profile/etc/profile.d/nix.sh
           fi
-        done
+          nix run home-manager/master -- switch --flake .#"${profile}"
+        fi
