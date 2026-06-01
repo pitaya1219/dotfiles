@@ -3,16 +3,12 @@ local msg = {
 }
 
 local function get_buffer_list()
-  local buffers_output = vim.fn.execute('ls')
-  local lines = vim.split(buffers_output, '\n', { plain = true, trimempty = true })
+  local buf_info_list = vim.fn.getbufinfo({ buflisted = 1 })
   local buffer_list = {}
 
-  for _, line in ipairs(lines) do
-    local buffer_num = line:match('^%s*(%d+)')
-    local name = line:match('"([^"]*)"') or '[No Name]'
-    if buffer_num then
-      table.insert(buffer_list, { num = buffer_num, name = name, line = line })
-    end
+  for _, info in ipairs(buf_info_list) do
+    local name = info.name ~= "" and vim.fn.fnamemodify(info.name, ":t") or "[No Name]"
+    table.insert(buffer_list, { num = tostring(info.bufnr), name = name, line = info.name })
   end
 
   return buffer_list
@@ -295,27 +291,28 @@ vim.keymap.set('n', '<leader>bufm', manage_buffer, { silent = true })
 
 
 vim.keymap.set('n', '<leader>bufc', function()
-  -- generate list like following format:
-  --   [ [{buffer_num}, {buffer_is_active_or_not}] ]
-  -- e.g. [ ['2', 'a'], ['5', ' '] ]
-  local buffers_output = vim.fn.execute('ls')
-  local lines = vim.split(buffers_output, '\n', { plain = true, trimempty = true })
+  -- Get list of buffers and filter out active and terminal buffers
+  local current_buf = vim.api.nvim_get_current_buf()
+  local buf_info_list = vim.fn.getbufinfo({ buflisted = 1 })
   local wipeout_nums = {}
-  for _, line in ipairs(lines) do
-    -- Match buffer number and check for 'a' flag (active buffer)
-    -- Buffer list format: "  1 %a   "file.txt"  line 1"
-    local buffer_num = line:match('^%s*(%d+)')
-    local flags_section = line:match('^%s*%d+%s+([^"]+)')
-    if buffer_num and flags_section then
-      -- Check if 'a' flag is present (active buffer)
-      local is_active = flags_section:find('%%a') ~= nil
-      -- Check if it's a terminal buffer
-      local is_terminal = line:find('term://') ~= nil
-      if not is_active and not is_terminal then
-        table.insert(wipeout_nums, buffer_num)
-      end
+  
+  for _, info in ipairs(buf_info_list) do
+    -- Skip current buffer (active)
+    if info.bufnr == current_buf then
+      goto continue
     end
+    -- Skip terminal buffers
+    if vim.bo[info.bufnr].buftype == 'terminal' then
+      goto continue
+    end
+    -- Skip unloaded buffers
+    if not info.loaded then
+      goto continue
+    end
+    table.insert(wipeout_nums, tostring(info.bufnr))
+    ::continue::
   end
+  
   if #wipeout_nums == 0 then
     vim.api.nvim_echo({{msg.no_unactive_buffer, 'Normal'}}, false, {})
     return

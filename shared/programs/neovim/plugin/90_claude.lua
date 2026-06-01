@@ -80,7 +80,7 @@ end
 -- Common function to apply cell width settings
 local function apply_cell_settings()
   vim.opt.ambiwidth = "single"
-  vim.fn.setcellwidths {
+  vim.opt.cellwidths = {
     { 0x2500, 0x257f, 1 },
     { 0x2100, 0x214d, 1 },
   }
