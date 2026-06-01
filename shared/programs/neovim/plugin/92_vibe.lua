@@ -96,19 +96,10 @@ local function find_resumed_session_in_buf(buf)
   if not vim.api.nvim_buf_is_valid(buf) then return nil end
   local line_count = vim.api.nvim_buf_line_count(buf)
   local tail_start = math.max(0, line_count - 200)
-  -- Scan recent output (bottom 200 lines)
   local lines = vim.api.nvim_buf_get_lines(buf, tail_start, line_count, false)
   for i = #lines, 1, -1 do
     local sid = lines[i]:match("[Rr]esumed session (%x+)")
     if sid then return sid end
-  end
-  -- Also scan session start (top 20 lines) in case resume scrolled past window
-  if tail_start > 20 then
-    local head = vim.api.nvim_buf_get_lines(buf, 0, 20, false)
-    for i = #head, 1, -1 do
-      local sid = head[i]:match("[Rr]esumed session (%x+)")
-      if sid then return sid end
-    end
   end
   return nil
 end
