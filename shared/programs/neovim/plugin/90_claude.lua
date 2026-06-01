@@ -80,10 +80,12 @@ end
 -- Common function to apply cell width settings
 local function apply_cell_settings()
   vim.opt.ambiwidth = "single"
-  vim.opt.cellwidths = {
-    { 0x2500, 0x257f, 1 },
-    { 0x2100, 0x214d, 1 },
-  }
+  pcall(function()
+    vim.opt.cellwidths = {
+      { 0x2500, 0x257f, 1 },
+      { 0x2100, 0x214d, 1 },
+    }
+  end)
 end
 
 -- Common function to setup autocmds for maintaining cell settings
@@ -215,6 +217,10 @@ function ClaudeCode.open_in_terminal(work_dir)
   setup_claude_session_watcher(buf)
 
   vim.cmd('startinsert')
+
+  vim.schedule(function()
+    if _G.BottomTerminal then _G.BottomTerminal.open() end
+  end)
 end
 
 -- Open in new tab function
@@ -254,6 +260,10 @@ function ClaudeCode.open_in_new_tab(work_dir)
   setup_claude_session_watcher(buf)
 
   vim.cmd('startinsert')
+
+  vim.schedule(function()
+    if _G.BottomTerminal then _G.BottomTerminal.open() end
+  end)
 end
 
 -- Find existing Claude Code tab and switch to it
