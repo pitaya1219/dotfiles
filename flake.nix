@@ -25,6 +25,13 @@
       overlays = {
         neovim-nightly = neovim-nightly-overlay.overlays.default;
         mistral-vibe = mistral-vibe.overlays.default;
+        pipx-no-check = final: prev: {
+          pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
+            (_: pyPrev: {
+              pipx = pyPrev.pipx.overrideAttrs (_: { doInstallCheck = false; });
+            })
+          ];
+        };
       };
       
       # Load all profiles automatically
