@@ -29,7 +29,9 @@ in
     viAlias = false;
     vimAlias = true;
     withRuby = true;
+    withNodeJs = true;
     withPython3 = true;
+    withPerl = true;
 
     initLua = lib.fileContents ./neovim/init.lua;
     
