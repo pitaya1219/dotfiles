@@ -4,9 +4,35 @@ _G.BottomTerminal = M
 
 local state = {}  -- [tabnr] = { buf, win }
 
-vim.api.nvim_create_autocmd("TabClosed", {
+-- Highlight for the winbar notice (bold yellow; links to WarningMsg for theme compat)
+vim.api.nvim_set_hl(0, 'BottomTermNotice', { link = 'WarningMsg', bold = true, default = true })
+
+local NOTICE = '%#BottomTermNotice#  ⬇  terminal ready  ·  <Alt-j> to open  %*'
+
+-- Update winbar on every window in the current tab.
+-- Shows notice when bottom terminal is hidden, clears it when visible.
+local function refresh_notice()
+  local tab = vim.fn.tabpagenr()
+  local s = state[tab]
+  local is_hidden = s
+    and vim.api.nvim_buf_is_valid(s.buf)
+    and (not s.win or not vim.api.nvim_win_is_valid(s.win))
+
+  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    vim.wo[w].winbar = is_hidden and NOTICE or ''
+  end
+end
+
+vim.api.nvim_create_autocmd('TabClosed', {
   callback = function(ev)
     state[tonumber(ev.file)] = nil
+  end,
+})
+
+-- Refresh notice whenever we switch tabs (other tabs may have hidden terminals)
+vim.api.nvim_create_autocmd('TabEnter', {
+  callback = function()
+    vim.schedule(refresh_notice)
   end,
 })
 
@@ -29,6 +55,7 @@ function M.open()
 
   state[tab] = { buf = buf, win = nil }
   vim.api.nvim_set_current_win(prev_win)
+  vim.schedule(refresh_notice)
 end
 
 function M.toggle()
@@ -45,6 +72,7 @@ function M.toggle()
     -- Visible → hide
     vim.api.nvim_win_close(s.win, false)
     s.win = nil
+    refresh_notice()
     vim.schedule(function()
       local buf = vim.api.nvim_win_get_buf(vim.api.nvim_get_current_win())
       if vim.bo[buf].buftype == 'terminal' then
@@ -57,6 +85,7 @@ function M.toggle()
     s.win = vim.api.nvim_get_current_win()
     vim.cmd('wincmd _')
     vim.cmd('redraw!')
+    refresh_notice()
     vim.cmd('startinsert')
   end
 end
