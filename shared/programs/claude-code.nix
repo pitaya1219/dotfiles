@@ -70,8 +70,16 @@
       };
     };
 
-    xdg.configFile."claude-code/mcp.json".text = builtins.toJSON {
-      mcpServers = config.dotfiles.claude-code.mcpServers;
-    };
+    # Merge MCP servers into ~/.claude.json (user scope).
+    # Runs on every home-manager switch; Nix-defined servers always win.
+    home.activation.claudeCodeMcpServers = lib.hm.dag.entryAfter ["writeBoundary"] ''
+      claude_json="$HOME/.claude.json"
+      if [ -f "$claude_json" ]; then
+        tmp=$(mktemp)
+        ${pkgs.jq}/bin/jq --argjson servers '${builtins.toJSON config.dotfiles.claude-code.mcpServers}' \
+          '.mcpServers = ((.mcpServers // {}) + $servers)' \
+          "$claude_json" > "$tmp" && mv "$tmp" "$claude_json"
+      fi
+    '';
   };
 }
