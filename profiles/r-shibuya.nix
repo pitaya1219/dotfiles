@@ -12,7 +12,12 @@
           asana = {
             type = "http";
             url = "https://mcp.asana.com/v2/mcp";
-            oauth.callbackPort = 8080;
+            oauth = {
+              callbackPort = 8080;
+              authorizationUrl = "https://app.asana.com/-/oauth_authorize";
+              tokenUrl = "https://app.asana.com/-/oauth_token";
+              scope = "default";
+            };
           };
         };
 
