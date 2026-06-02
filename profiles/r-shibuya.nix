@@ -19,6 +19,29 @@
           };
         };
 
+        # Inject Asana client secret into the Claude Code Keychain blob.
+        # This is the same location `claude mcp add --client-secret` writes to,
+        # so Claude Code finds the secret without any ~/.claude.json modification.
+        home.activation.asanaKeychain = lib.hm.dag.entryAfter ["writeBoundary"] ''
+          _secret="$(passage show asana/client/secret 2>/dev/null || true)"
+          if [ -n "$_secret" ]; then
+            _current="$(security find-generic-password \
+              -s "Claude Code-credentials" -a "$USER" -w 2>/dev/null || echo '{}')"
+            _key="$(echo "$_current" | ${pkgs.jq}/bin/jq -r \
+              '(.mcpOAuthClientConfig // {}) | keys[] | select(startswith("asana|"))' \
+              2>/dev/null | head -1)"
+            _key="''${_key:-asana|71ef7e5a38eea4f1}"
+            _new="$(echo "$_current" | ${pkgs.jq}/bin/jq \
+              --arg k "$_key" --arg s "$_secret" \
+              '.mcpOAuthClientConfig[$k].clientSecret = $s')"
+            security add-generic-password -U \
+              -s "Claude Code-credentials" \
+              -l "Claude Code-credentials" \
+              -a "$USER" \
+              -w "$_new" 2>/dev/null || true
+          fi
+        '';
+
         imports = [
           ../shared/activations/proton-pass.nix
           ../shared/programs/bare.nix
