@@ -12,24 +12,12 @@
           asana = {
             type = "http";
             url = "https://mcp.asana.com/v2/mcp";
-            oauth.callbackPort = 8080;
+            oauth = {
+              clientId = "1215309192573242";
+              callbackPort = 8080;
+            };
           };
         };
-
-        # Inject Asana OAuth credentials from env vars (defined in env.nix via passage).
-        home.activation.asanaCredentials = lib.hm.dag.entryAfter ["claudeJson"] ''
-          claude_json="$HOME/.claude.json"
-          if [ -f "$claude_json" ]; then
-            _asana_id="''${ASANA_CLIENT_ID:-$(passage show asana/client/id 2>/dev/null)}"
-            _asana_secret="''${ASANA_CLIENT_SECRET:-$(passage show asana/client/secret 2>/dev/null)}"
-            tmp=$(mktemp)
-            ${pkgs.jq}/bin/jq \
-              --arg id "$_asana_id" \
-              --arg secret "$_asana_secret" \
-              '.mcpServers.asana.oauth.clientId = $id | .mcpServers.asana.oauth.clientSecret = $secret' \
-              "$claude_json" > "$tmp" && mv "$tmp" "$claude_json"
-          fi
-        '';
 
         imports = [
           ../shared/activations/proton-pass.nix
