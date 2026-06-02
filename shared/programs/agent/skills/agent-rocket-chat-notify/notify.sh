@@ -211,11 +211,20 @@ case "$MESSAGE_TYPE" in
     ;;
 esac
 
+# Build short session label: e.g. "claude-968ef4fc" or "vibe-a1b2c3d4"
+case "$AGENT_TYPE" in
+  claude-code)  SHORT_TYPE="claude" ;;
+  mistral-vibe) SHORT_TYPE="vibe" ;;
+  opencode)     SHORT_TYPE="opencode" ;;
+  *)            SHORT_TYPE="agent" ;;
+esac
+SESSION_LABEL="${SHORT_TYPE}-${SESSION_ID:0:8}"
+
 # Send notification
 # Build JSON payload
 JSON_PAYLOAD=$(cat <<EOF
 {
-  "text": "[${AGENT_TYPE}] Confirmation Required",
+  "text": "[${SESSION_LABEL}] Confirmation Required",
   "attachments": [{
     "color": "${COLOR}",
     "title": "${TITLE}",
