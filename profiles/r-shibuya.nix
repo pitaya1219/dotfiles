@@ -12,18 +12,19 @@
           asana = {
             type = "http";
             url = "https://mcp.asana.com/v2/mcp";
-            headers = {};
+            oauth.callbackPort = 8080;
           };
         };
 
-        # Inject ASANA_PAT env var into the Authorization header.
+        # Inject Asana OAuth client ID from passage.
+        # client_secret is stored in the macOS Keychain via `claude mcp add --client-secret`.
         home.activation.asanaCredentials = lib.hm.dag.entryAfter ["claudeJson"] ''
           claude_json="$HOME/.claude.json"
-          if [ -f "$claude_json" ] && [ -n "''${ASANA_PAT:-}" ]; then
+          if [ -f "$claude_json" ]; then
             tmp=$(mktemp)
             ${pkgs.jq}/bin/jq \
-              --arg pat "$ASANA_PAT" \
-              '.mcpServers.asana.headers.Authorization = ("Bearer " + $pat)' \
+              --arg id "$(passage show asana/client/id 2>/dev/null)" \
+              '.mcpServers.asana.oauth.clientId = $id' \
               "$claude_json" > "$tmp" && mv "$tmp" "$claude_json"
           fi
         '';

@@ -15,5 +15,4 @@ rec {
   LOGSEQ_REMOTE = "pcloud-crypt:app/logseq";
   LOGSEQ_LOCAL = "\${HOME}/personal/app/logseq";
   LOGSEQ_SYNC_INTERVAL = 600;
-  ASANA_PAT = "$(passage show asana/pat 2>/dev/null)";
 }
