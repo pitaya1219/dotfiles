@@ -23,7 +23,7 @@
         # This is the same location `claude mcp add --client-secret` writes to,
         # so Claude Code finds the secret without any ~/.claude.json modification.
         home.activation.asanaKeychain = lib.hm.dag.entryAfter ["writeBoundary"] ''
-          _secret="$(passage show asana/client/secret 2>/dev/null || true)"
+          _secret="$("$HOME/.nix-profile/bin/passage" show asana/client/secret 2>/dev/null || true)"
           if [ -n "$_secret" ]; then
             _current="$(security find-generic-password \
               -s "Claude Code-credentials" -a "$USER" -w 2>/dev/null || echo '{}')"
