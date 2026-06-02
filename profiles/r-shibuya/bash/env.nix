@@ -1,6 +1,8 @@
 { ... }:
 rec {
   REQUESTS_CA_BUNDLE = "/Library/Application Support/Netskope/STAgent/data/nscacert_combined.pem";
+  ASANA_CLIENT_ID = "$(passage show asana/client/id 2>/dev/null)";
+  ASANA_CLIENT_SECRET = "$(passage show asana/client/secret 2>/dev/null)";
   AWS_CA_BUNDLE = "${REQUESTS_CA_BUNDLE}";
   GIT_SSL_CAPATH = "${REQUESTS_CA_BUNDLE}";
   NODE_EXTRA_CA_CERTS = "${REQUESTS_CA_BUNDLE}";
