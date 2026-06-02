@@ -3,9 +3,20 @@
 {
   imports = [ ./agent.nix ];
 
-  options.dotfiles.claude-code.mcpServers = lib.mkOption {
-    type = lib.types.attrsOf lib.types.anything;
-    default = {};
+  options = {
+    # Generic deep-merge target for ~/.claude.json.
+    # Any module can contribute top-level keys here.
+    dotfiles.claudeJson = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = {};
+    };
+
+    # MCP servers collected from all profiles; merged into claudeJson.mcpServers.
+    # Kept separate so multiple modules can extend it without conflict.
+    dotfiles.claude-code.mcpServers = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = {};
+    };
   };
 
   config = {
@@ -23,6 +34,8 @@
         };
       };
     };
+
+    dotfiles.claudeJson.mcpServers = config.dotfiles.claude-code.mcpServers;
 
     home.file.".claude/commands".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/commands";
     home.file.".claude/skills".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/skills";
@@ -70,14 +83,14 @@
       };
     };
 
-    # Merge MCP servers into ~/.claude.json (user scope).
-    # Runs on every home-manager switch; Nix-defined servers always win.
-    home.activation.claudeCodeMcpServers = lib.hm.dag.entryAfter ["writeBoundary"] ''
+    # Deep-merge dotfiles.claudeJson into ~/.claude.json on every home-manager switch.
+    # jq `*` recursively merges objects; Nix-defined values win on conflict.
+    home.activation.claudeJson = lib.hm.dag.entryAfter ["writeBoundary"] ''
       claude_json="$HOME/.claude.json"
       if [ -f "$claude_json" ]; then
         tmp=$(mktemp)
-        ${pkgs.jq}/bin/jq --argjson servers '${builtins.toJSON config.dotfiles.claude-code.mcpServers}' \
-          '.mcpServers = ((.mcpServers // {}) + $servers)' \
+        ${pkgs.jq}/bin/jq --argjson patch '${builtins.toJSON config.dotfiles.claudeJson}' \
+          '. * $patch' \
           "$claude_json" > "$tmp" && mv "$tmp" "$claude_json"
       fi
     '';
