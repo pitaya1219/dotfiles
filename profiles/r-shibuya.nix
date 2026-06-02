@@ -8,12 +8,6 @@
     };
     modules = [
       ({ config, pkgs, lib, ... }: {
-        programs.claude-code.extraMcpServers = {
-          asana = {
-            url = "https://mcp.asana.com/v2/mcp";
-          };
-        };
-
         imports = [
           ../shared/activations/proton-pass.nix
           ../shared/programs/bare.nix
@@ -61,6 +55,26 @@
             xlsx2csv
           ];
           file.".config/tmux/override.conf".source = ./r-shibuya/tmux/override.conf;
+
+          # Merge Asana MCP OAuth config into ~/.claude.json (writable, not a Nix symlink).
+          # ASANA_CLIENT_ID must be set in the environment when running home-manager switch.
+          # The client secret is stored separately in the macOS Keychain.
+          activation.asanaMcp = lib.hm.dag.entryAfter ["writeBoundary"] ''
+            claude_json="$HOME/.claude.json"
+            if [ -f "$claude_json" ] && [ -n "''${ASANA_CLIENT_ID:-}" ]; then
+              tmp=$(mktemp)
+              ${pkgs.jq}/bin/jq --arg client_id "$ASANA_CLIENT_ID" '
+                .mcpServers.asana = {
+                  "type": "http",
+                  "url": "https://mcp.asana.com/v2/mcp",
+                  "oauth": {
+                    "clientId": $client_id,
+                    "callbackPort": 8080
+                  }
+                }
+              ' "$claude_json" > "$tmp" && mv "$tmp" "$claude_json"
+            fi
+          '';
         };
       })
     ];
