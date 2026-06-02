@@ -25,6 +25,11 @@
       overlays = {
         neovim-nightly = neovim-nightly-overlay.overlays.default;
         mistral-vibe = mistral-vibe.overlays.default;
+
+        # WORKAROUND: Disable pipx install checks to avoid test suite failures
+        # The test suite has assertion failures in package specifier formatting.
+        # This affects all platforms. Should be removed once upstream fixes are available.
+        # Related: test_package_specifier.py failures
         pipx-no-check = final: prev: {
           pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
             (_: pyPrev: {
