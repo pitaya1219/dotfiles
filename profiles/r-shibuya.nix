@@ -12,12 +12,20 @@
           asana = {
             type = "http";
             url = "https://mcp.asana.com/v2/mcp";
-            oauth = {
-              clientId = "\${ASANA_CLIENT_ID}";
-              callbackPort = 8080;
-            };
+            oauth.callbackPort = 8080;
           };
         };
+
+        # Inject ASANA_CLIENT_ID after the main claudeJson merge.
+        # oauth.clientId must be the actual value; Claude Code does not expand ${VAR} there.
+        home.activation.asanaClientId = lib.hm.dag.entryAfter ["claudeJson"] ''
+          if [ -f "$HOME/.claude.json" ] && [ -n "''${ASANA_CLIENT_ID:-}" ]; then
+            tmp=$(mktemp)
+            ${pkgs.jq}/bin/jq --arg id "$ASANA_CLIENT_ID" \
+              '.mcpServers.asana.oauth.clientId = $id' \
+              "$HOME/.claude.json" > "$tmp" && mv "$tmp" "$HOME/.claude.json"
+          fi
+        '';
 
         imports = [
           ../shared/activations/proton-pass.nix
