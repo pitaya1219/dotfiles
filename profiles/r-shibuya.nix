@@ -22,7 +22,7 @@
         # Inject Asana client secret from env var (defined in env.nix via passage).
         home.activation.asanaSecret = lib.hm.dag.entryAfter ["claudeJson"] ''
           claude_json="$HOME/.claude.json"
-          _secret="''${ASANA_CLIENT_SECRET:-$(passage show asana/client/secret 2>/dev/null)}"
+          _secret="''${ASANA_CLIENT_SECRET:-$(passage show asana/client/secret 2>/dev/null || true)}"
           if [ -f "$claude_json" ] && [ -n "$_secret" ]; then
             tmp=$(mktemp)
             ${pkgs.jq}/bin/jq --arg s "$_secret" \
