@@ -8,6 +8,12 @@
     };
     modules = [
       ({ config, pkgs, lib, ... }: {
+        programs.claude-code.extraMcpServers = {
+          asana = {
+            url = "https://mcp.asana.com/v2/mcp";
+          };
+        };
+
         imports = [
           ../shared/activations/proton-pass.nix
           ../shared/programs/bare.nix
