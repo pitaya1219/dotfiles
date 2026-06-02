@@ -87,12 +87,14 @@
     # jq `*` recursively merges objects; Nix-defined values win on conflict.
     home.activation.claudeJson = lib.hm.dag.entryAfter ["writeBoundary"] ''
       claude_json="$HOME/.claude.json"
+      tmp=$(mktemp)
       if [ -f "$claude_json" ]; then
-        tmp=$(mktemp)
         ${pkgs.jq}/bin/jq --argjson patch '${builtins.toJSON config.dotfiles.claudeJson}' \
-          '. * $patch' \
-          "$claude_json" > "$tmp" && mv "$tmp" "$claude_json"
+          '. * $patch' "$claude_json" > "$tmp"
+      else
+        echo '${builtins.toJSON config.dotfiles.claudeJson}' > "$tmp"
       fi
+      mv "$tmp" "$claude_json"
     '';
   };
 }
