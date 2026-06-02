@@ -2,15 +2,35 @@
 name: session-wrapup
 description: Archive session summary
 user-invocable: true
-version: 1.0.0
+version: 1.1.0
 ---
 
 # Session Wrapup Skill (Global Version)
 
 ## What This Skill Does
 
-1. Provides a template for creating session summary markdown files
+1. Creates a session summary markdown file in the correct location
 2. Guides branch cleanup operations using the project's default branch
+
+## Summary File Location
+
+Always save to: `~/agent-sessions/.agent/sessions/`
+
+## Naming Convention
+
+```
+session-{SESSION_UUID}-{short-description}-{YYYY-MM-DD}.md
+```
+
+- `SESSION_UUID`: full UUID of the current Claude Code session
+- `short-description`: kebab-case summary of the session topic (e.g. `nvim-dir-completion`, `fix-home-manager-warnings`)
+- `YYYY-MM-DD`: today's date
+
+Examples:
+```
+session-65410f8b-31e4-4489-88bc-c96b1a9e6538-nvim-dir-completion-claude-vibe-2026-06-02.md
+session-1d88e9e8-c9a2-451b-a932-122cffbed8ae-enable-nvim-providers-2026-06-01.md
+```
 
 ## Summary MD Template
 
@@ -22,10 +42,6 @@ version: 1.0.0
 - **Open Items** — TODO + known issues
 - **Next Session** — Tasks for next session (cold-start ready)
 - **References** — Commands, URLs, snippets
-
-## Usage
-
-Create a summary file manually using the template. Example:
 
 ## Branch Cleanup Flow (Global)
 
@@ -43,12 +59,9 @@ git branch -D feat/your-feature
 git pull origin $DEFAULT_BRANCH
 ```
 
-**Note**: Global version does NOT manage session directories.
-
 ---
 
-```bash
-cat > session-summary-$(date +%Y-%m-%d).md << 'EOF'
+```markdown
 # Session Summary
 
 ## Overview
@@ -59,10 +72,10 @@ cat > session-summary-$(date +%Y-%m-%d).md << 'EOF'
 - [Action 2]
 
 ## Files Changed
-[List of changed files]
+[git diff --stat output]
 
 ## Decisions Made
-[Key decisions]
+[Key decisions and reasons]
 
 ## Problems & Solutions
 - Problem: [description]
@@ -75,6 +88,5 @@ cat > session-summary-$(date +%Y-%m-%d).md << 'EOF'
 [Tasks for next session]
 
 ## References
-[Relevant links]
-EOF
+[Relevant links, commands, snippets]
 ```
