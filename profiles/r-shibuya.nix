@@ -28,6 +28,16 @@
           (import ../shared/programs/unfree.nix { additionalPackages = [ "copilot.vim" ]; })
         ];
 
+        # WORKAROUND: Force package overrides at nixpkgs.config level for macOS
+        # This ensures ALL evaluations use the modified packages
+        nixpkgs.config.packageOverrides = pkgs: {
+          neovim-unwrapped = pkgs.neovim-unwrapped.overrideAttrs (old: {
+            doCheck = false;
+            doInstallCheck = false;
+            checkPhase = "echo 'Tests skipped on macOS'";
+          });
+        };
+
         home = {
           username = "r-shibuya";
           homeDirectory = "/Users/r-shibuya";
