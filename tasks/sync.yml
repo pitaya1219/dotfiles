@@ -8,6 +8,13 @@ vars:
       else
         echo "bash ./scripts/logseq-sync.sh"
       fi
+  LOGSEQ_CONFLICTS_CMD:
+    sh: |
+      if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+        echo "NOTIFY_SCRIPT=./scripts/notify.sh bash <(sed '1s|^#!/usr/bin/env bash\$|#!/data/data/com.termux/files/usr/bin/bash|' ./scripts/logseq-sync-conflicts.sh)"
+      else
+        echo "bash ./scripts/logseq-sync-conflicts.sh"
+      fi
   LOGSEQ_SCHEDULE_CMD:
     sh: |
       if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
@@ -26,6 +33,11 @@ tasks:
     desc: Sync logseq folder with cloud (default bidirectional)
     cmds:
       - '{{.LOGSEQ_SYNC_CMD}} {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}bidirectional{{end}}'
+
+  logseq:conflicts:
+    desc: Process conflict files and create Logseq conflict pages
+    cmds:
+      - "{{.LOGSEQ_CONFLICTS_CMD}}"
 
   logseq:setup:
     desc: Setup automatic logseq sync scheduling
