@@ -16,13 +16,13 @@
           };
         };
 
-        # Inject Asana PAT from passage into the Authorization header.
+        # Inject ASANA_PAT env var into the Authorization header.
         home.activation.asanaCredentials = lib.hm.dag.entryAfter ["claudeJson"] ''
           claude_json="$HOME/.claude.json"
-          if [ -f "$claude_json" ]; then
+          if [ -f "$claude_json" ] && [ -n "''${ASANA_PAT:-}" ]; then
             tmp=$(mktemp)
             ${pkgs.jq}/bin/jq \
-              --arg pat "$(passage show asana/pat 2>/dev/null)" \
+              --arg pat "$ASANA_PAT" \
               '.mcpServers.asana.headers.Authorization = ("Bearer " + $pat)' \
               "$claude_json" > "$tmp" && mv "$tmp" "$claude_json"
           fi
