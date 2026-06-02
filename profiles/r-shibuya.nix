@@ -12,25 +12,20 @@
           asana = {
             type = "http";
             url = "https://mcp.asana.com/v2/mcp";
-            oauth = {
-              authorizationUrl = "https://app.asana.com/-/oauth_authorize";
-              tokenUrl = "https://app.asana.com/-/oauth_token";
-              scope = "default";
-            };
+            oauth = {};
           };
         };
 
-        # Inject Asana OAuth credentials after the main claudeJson merge.
-        # Claude Code does not expand ${VAR} in oauth fields; actual values are required.
+        # Inject Asana client_id from passage after the main claudeJson merge.
+        # Claude Code does not expand ${VAR} in oauth fields; actual value is required.
+        # client_secret is stored separately in the macOS Keychain by Claude Code.
         home.activation.asanaCredentials = lib.hm.dag.entryAfter ["claudeJson"] ''
           claude_json="$HOME/.claude.json"
           if [ -f "$claude_json" ]; then
             tmp=$(mktemp)
             ${pkgs.jq}/bin/jq \
-              --arg id     "$(passage show asana/client/id 2>/dev/null)" \
-              --arg secret "$(passage show asana/client/secret 2>/dev/null)" \
-              '.mcpServers.asana.oauth.clientId = $id |
-               .mcpServers.asana.oauth.clientSecret = $secret' \
+              --arg id "$(passage show asana/client/id 2>/dev/null)" \
+              '.mcpServers.asana.oauth.clientId = $id' \
               "$claude_json" > "$tmp" && mv "$tmp" "$claude_json"
           fi
         '';
