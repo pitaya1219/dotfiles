@@ -1,22 +1,32 @@
 { config, pkgs, lib, ... }:
 
 {
-  imports = [ ./agent.nix ];  # Agent directories are managed in agent.nix
+  imports = [ ./agent.nix ];
 
-  options.programs.claude-code.extraMcpServers = lib.mkOption {
+  options.dotfiles.claude-code.mcpServers = lib.mkOption {
     type = lib.types.attrsOf lib.types.anything;
     default = {};
-    description = "Profile-specific MCP servers to merge into the shared claude-code MCP config.";
   };
 
   config = {
-    # Symlink .claude/commands -> .agent/commands
-    home.file.".claude/commands".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/commands";
+    dotfiles.claude-code.mcpServers = {
+      gitea = {
+        command = "gitea-mcp";
+        args = [
+          "-host"
+          "\${GITEA_HOST}"
+          "-token"
+          "\${GITEA_CLAUDE_BOT_TOKEN}"
+        ];
+        env = {
+          GITEA_USER = "claude-bot";
+        };
+      };
+    };
 
-    # Symlink .claude/skills -> .agent/skills
+    home.file.".claude/commands".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/commands";
     home.file.".claude/skills".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/skills";
 
-    # Claude Code settings (statusLine + default model + Stop hook)
     home.file.".claude/settings.json".text = builtins.toJSON {
       statusLine = {
         type = "command";
@@ -61,20 +71,7 @@
     };
 
     xdg.configFile."claude-code/mcp.json".text = builtins.toJSON {
-      mcpServers = {
-        gitea = {
-          command = "gitea-mcp";
-          args = [
-            "-host"
-            "\${GITEA_HOST}"
-            "-token"
-            "\${GITEA_CLAUDE_BOT_TOKEN}"
-          ];
-          env = {
-            GITEA_USER = "claude-bot";
-          };
-        };
-      } // config.programs.claude-code.extraMcpServers;
+      mcpServers = config.dotfiles.claude-code.mcpServers;
     };
   };
 }
