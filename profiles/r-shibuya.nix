@@ -20,14 +20,18 @@
           };
         };
 
-        # Inject ASANA_CLIENT_ID after the main claudeJson merge.
-        # oauth.clientId must be the actual value; Claude Code does not expand ${VAR} there.
-        home.activation.asanaClientId = lib.hm.dag.entryAfter ["claudeJson"] ''
-          if [ -f "$HOME/.claude.json" ] && [ -n "''${ASANA_CLIENT_ID:-}" ]; then
+        # Inject Asana OAuth credentials after the main claudeJson merge.
+        # Claude Code does not expand ${VAR} in oauth fields; actual values are required.
+        home.activation.asanaCredentials = lib.hm.dag.entryAfter ["claudeJson"] ''
+          claude_json="$HOME/.claude.json"
+          if [ -f "$claude_json" ]; then
             tmp=$(mktemp)
-            ${pkgs.jq}/bin/jq --arg id "$ASANA_CLIENT_ID" \
-              '.mcpServers.asana.oauth.clientId = $id' \
-              "$HOME/.claude.json" > "$tmp" && mv "$tmp" "$HOME/.claude.json"
+            ${pkgs.jq}/bin/jq \
+              --arg id     "$(passage show asana/client/id 2>/dev/null)" \
+              --arg secret "$(passage show asana/client/secret 2>/dev/null)" \
+              '.mcpServers.asana.oauth.clientId = $id |
+               .mcpServers.asana.oauth.clientSecret = $secret' \
+              "$claude_json" > "$tmp" && mv "$tmp" "$claude_json"
           fi
         '';
 
