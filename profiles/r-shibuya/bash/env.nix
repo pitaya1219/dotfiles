@@ -1,3 +1,4 @@
+{ ... }:
 rec {
   REQUESTS_CA_BUNDLE = "/Library/Application Support/Netskope/STAgent/data/nscacert_combined.pem";
   AWS_CA_BUNDLE = "${REQUESTS_CA_BUNDLE}";
