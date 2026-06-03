@@ -17,6 +17,46 @@ local function session_id_from_vibe_dir(dir)
   return dir:match("session_%d+_%d+_([0-9a-f]+)/?$")
 end
 
+-- Look up the working directory recorded in a vibe session's meta.json.
+local function work_dir_from_vibe_session(session_id)
+  local vibe_home = vim.env.VIBE_HOME or vim.fn.expand("~/.vibe")
+  local agent_sessions = vim.fn.expand("~/agent-sessions")
+  local cmd = string.format(
+    'ls -dt "%s/.vibe/logs/session/session_"*/ "%s/logs/session/session_"*/ 2>/dev/null',
+    agent_sessions, vibe_home
+  )
+  local handle = io.popen(cmd)
+  if not handle then return nil end
+  local target_dir = nil
+  for line in handle:lines() do
+    local sid = line:match("session_%d+_%d+_([0-9a-f]+)/?$")
+    if sid == session_id then
+      target_dir = line:match("^(.+/?)")
+      break
+    end
+  end
+  handle:close()
+  if not target_dir then return nil end
+
+  -- Normalise trailing slash
+  if not target_dir:match("/$") then target_dir = target_dir .. "/" end
+  local meta = io.open(target_dir .. "meta.json", "r")
+  if not meta then return nil end
+  local content = meta:read("*a")
+  meta:close()
+
+  local cwd = content:match('"cwd":"([^"]+)"')
+              or content:match('"work_dir":"([^"]+)"')
+              or content:match('"working_dir":"([^"]+)"')
+  return cwd and vim.fn.isdirectory(cwd) == 1 and cwd or nil
+end
+
+local VIBE_SID_PAT = "^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$"
+
+local function is_vibe_session_id(s)
+  return s ~= nil and s:match(VIBE_SID_PAT) ~= nil
+end
+
 -- Read /tmp/vibe-session-events (written by vibe-notify-watch.sh) and return
 -- the session ID of the first dir that appeared after open_time and is not in snapshot.
 -- File format per line: "<epoch> <session_dir_path>"
@@ -139,7 +179,7 @@ local function setup_vibe_session_watcher(buf, open_time, snapshot)
   })
 end
 
--- List Vibe session IDs from known session directories
+-- List Vibe session IDs from known session directories (most recent first)
 local function list_vibe_sessions()
   local vibe_home = vim.env.VIBE_HOME or vim.fn.expand("~/.vibe")
   local agent_sessions = vim.fn.expand("~/agent-sessions")
@@ -163,7 +203,9 @@ local function list_vibe_sessions()
   return sessions
 end
 
--- Custom completion: directories for first arg, session IDs for second arg
+-- Custom completion:
+--   arg 1 – session IDs by default; directories if arglead starts with / ~ .
+--   arg 2 – session IDs (when arg 1 was a directory)
 local function vibe_complete(arglead, cmdline, cursorpos)
   local before = cmdline:sub(1, cursorpos)
   local n = 0
@@ -171,12 +213,38 @@ local function vibe_complete(arglead, cmdline, cursorpos)
   local arg_pos = n - 1 + (before:match('%s$') and 1 or 0)
 
   if arg_pos <= 1 then
-    return vim.fn.getcompletion(arglead, 'dir')
+    if arglead:match('^[/%.~]') then
+      return vim.fn.getcompletion(arglead, 'dir')
+    end
+    local sessions = list_vibe_sessions()
+    if arglead == '' then return sessions end
+    return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, sessions)
   else
     local sessions = list_vibe_sessions()
     if arglead == '' then return sessions end
     return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, sessions)
   end
+end
+
+-- Parse command args into (work_dir, session_id), auto-deriving work_dir from
+-- the session when an 8-char hex session ID is given as the sole first argument.
+local function parse_vibe_args(fargs)
+  local arg1 = fargs[1]
+  local arg2 = fargs[2]
+  local work_dir, session_id
+
+  if arg1 and is_vibe_session_id(arg1) then
+    session_id = arg1
+    work_dir = work_dir_from_vibe_session(session_id)
+  else
+    work_dir = (arg1 and arg1 ~= '') and arg1 or nil
+    session_id = (arg2 and arg2 ~= '') and arg2 or nil
+    if session_id and not work_dir then
+      work_dir = work_dir_from_vibe_session(session_id)
+    end
+  end
+
+  return work_dir, session_id
 end
 
 -- Common function to create vibe command
@@ -428,20 +496,22 @@ local function current_work_dir()
 end
 
 -- Command and keymap
--- Args: [work_dir] [session_id]  (both optional; Tab completes dirs then session IDs)
+-- Arg forms:
+--   :Vibe                        → new session in cwd
+--   :Vibe <8-hex-id>             → resume session, work_dir auto-derived
+--   :Vibe /dir                   → new session in /dir
+--   :Vibe /dir <8-hex-id>        → resume session in /dir
+-- Tab completion: arg1 shows session IDs (or dirs if starts with / ~ .)
 vim.api.nvim_create_user_command('Vibe', function(opts)
-  local work_dir = opts.fargs[1] ~= '' and opts.fargs[1] or nil
-  local session_id = opts.fargs[2]
+  local work_dir, session_id = parse_vibe_args(opts.fargs)
   Vibe.toggle(work_dir, session_id)
 end, { nargs = '*', complete = vibe_complete })
 vim.api.nvim_create_user_command('VibeTerminal', function(opts)
-  local work_dir = opts.fargs[1] ~= '' and opts.fargs[1] or nil
-  local session_id = opts.fargs[2]
+  local work_dir, session_id = parse_vibe_args(opts.fargs)
   Vibe.open_in_terminal(work_dir, session_id)
 end, { nargs = '*', complete = vibe_complete })
 vim.api.nvim_create_user_command('VibeTab', function(opts)
-  local work_dir = opts.fargs[1] ~= '' and opts.fargs[1] or nil
-  local session_id = opts.fargs[2]
+  local work_dir, session_id = parse_vibe_args(opts.fargs)
   Vibe.open_in_new_tab(work_dir, session_id)
 end, { nargs = '*', complete = vibe_complete })
 vim.keymap.set('n', '<leader>vibe', function() Vibe.toggle(current_work_dir()) end, { desc = 'Toggle Vibe' })
