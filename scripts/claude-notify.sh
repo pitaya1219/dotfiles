@@ -43,6 +43,17 @@ last=$(cat "$STATE_FILE" 2>/dev/null || echo 0)
 
 if (( now - last >= THROTTLE )); then
   echo "$now" > "$STATE_FILE"
+
+  # Notify the nvim that hosts this claude terminal (only when running inside nvim)
+  if [ -n "${NVIM:-}" ]; then
+    NVIM_MSG="${SUMMARY:+${SUMMARY} | }Waiting for response (session: ${SESSION_ID:0:8})"
+    "$HOME/dotfiles/scripts/nvim-notify.sh" \
+      --title "Claude Code" \
+      --message "$NVIM_MSG" \
+      --level WARN \
+      --skip-registry 2>/dev/null || true
+  fi
+
   exec "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh" \
     --agent-type claude-code \
     --session-id "$SESSION_ID" \

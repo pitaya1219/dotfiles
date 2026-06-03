@@ -5,6 +5,7 @@
 # Meant to run as background process alongside vibe.
 
 NOTIFY="$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh"
+NVIM_NOTIFY="$HOME/dotfiles/scripts/nvim-notify.sh"
 LOG_DIR="${1:-${VIBE_HOME:-$HOME/.vibe}/logs/session}"
 IDLE_THRESHOLD="${VIBE_NOTIFY_IDLE:-3}"
 RATE_LIMIT="${VIBE_NOTIFY_RATE:-10}"
@@ -108,6 +109,12 @@ try:
 except Exception:
     print('')
 " 2>/dev/null || true)
+        # Notify all registered nvim instances via vim.notify() (registry-based; no $NVIM set for daemon)
+        "$NVIM_NOTIFY" \
+          --title "Vibe" \
+          --message "${SUMMARY:+${SUMMARY} | }Waiting for response (session: ${current_session:0:8})" \
+          --level WARN \
+          &>/dev/null || true
         "$NOTIFY" \
           --agent-type mistral-vibe \
           --session-id "$current_session" \

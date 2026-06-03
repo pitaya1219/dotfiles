@@ -45,10 +45,23 @@ if [ -n "$TOOL_NAME" ]; then
   CONFIRMATION="Permission required: ${TOOL_NAME} (session: ${SESSION_ID})"
   PRIORITY="high"
   MSG_TYPE="confirmation"
+  NVIM_MSG="Permission required: ${TOOL_NAME} (session: ${SESSION_ID:0:8})"
+  NVIM_LEVEL="ERROR"
 else
   CONFIRMATION="Claude Code notification (session: ${SESSION_ID})"
   PRIORITY="medium"
   MSG_TYPE="info"
+  NVIM_MSG="Notification (session: ${SESSION_ID:0:8})"
+  NVIM_LEVEL="INFO"
+fi
+
+# Notify the nvim that hosts this claude terminal (only when running inside nvim)
+if [ -n "${NVIM:-}" ]; then
+  "$HOME/dotfiles/scripts/nvim-notify.sh" \
+    --title "Claude Code" \
+    --message "$NVIM_MSG" \
+    --level "$NVIM_LEVEL" \
+    --skip-registry 2>/dev/null || true
 fi
 
 exec "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh" \
