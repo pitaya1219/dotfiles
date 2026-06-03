@@ -41,8 +41,43 @@ local function setup_claude_session_watcher(buf)
   })
 end
 
+-- List Claude session IDs from ~/.claude/projects/
+local function list_claude_sessions()
+  local home = vim.fn.expand("~")
+  local cmd = string.format(
+    'find "%s/.claude/projects" -maxdepth 2 -name "*.jsonl" -exec basename "{}" .jsonl \\; 2>/dev/null'
+      .. ' | grep -E "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" | sort -r',
+    home
+  )
+  local handle = io.popen(cmd)
+  local sessions = {}
+  if handle then
+    for line in handle:lines() do
+      table.insert(sessions, line)
+    end
+    handle:close()
+  end
+  return sessions
+end
+
+-- Custom completion: directories for first arg, session IDs for second arg
+local function claude_complete(arglead, cmdline, cursorpos)
+  local before = cmdline:sub(1, cursorpos)
+  local n = 0
+  for _ in before:gmatch('%S+') do n = n + 1 end
+  local arg_pos = n - 1 + (before:match('%s$') and 1 or 0)
+
+  if arg_pos <= 1 then
+    return vim.fn.getcompletion(arglead, 'dir')
+  else
+    local sessions = list_claude_sessions()
+    if arglead == '' then return sessions end
+    return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, sessions)
+  end
+end
+
 -- Common function to create claude command
-local function get_claude_cmd(work_dir)
+local function get_claude_cmd(work_dir, session_id)
   -- Ask user for permission mode
   local choice = vim.fn.confirm(
     'Select permission mode for Claude Code:',
@@ -65,6 +100,10 @@ local function get_claude_cmd(work_dir)
   end
 
   local cmd = 'eval "$(direnv export bash)" && claude' .. permission_mode
+
+  if session_id and session_id ~= '' then
+    cmd = cmd .. ' --resume ' .. vim.fn.shellescape(session_id)
+  end
 
   if work_dir then
     cmd = 'cd ' .. vim.fn.shellescape(work_dir) ..  ' && ' .. cmd
@@ -105,7 +144,7 @@ local function setup_cell_autocmds(buf, saved_ambiwidth)
   })
 end
 
-function ClaudeCode.toggle(work_dir)
+function ClaudeCode.toggle(work_dir, session_id)
   if ClaudeCode.win and vim.api.nvim_win_is_valid(ClaudeCode.win) then
     vim.api.nvim_win_close(ClaudeCode.win, true)
     ClaudeCode.win = nil
@@ -142,7 +181,7 @@ function ClaudeCode.toggle(work_dir)
 
   -- Start claude if not already running
   if vim.bo[ClaudeCode.buf].buftype ~= 'terminal' then
-    local cmd = get_claude_cmd(work_dir)
+    local cmd = get_claude_cmd(work_dir, session_id)
 
     -- If user cancelled, close the window and return
     if not cmd then
@@ -181,11 +220,11 @@ function ClaudeCode.toggle(work_dir)
 end
 
 -- Terminal mode function
-function ClaudeCode.open_in_terminal(work_dir)
+function ClaudeCode.open_in_terminal(work_dir, session_id)
   -- Save current ambiwidth setting
   local saved_ambiwidth = save_ambiwidth()
 
-  local cmd = get_claude_cmd(work_dir)
+  local cmd = get_claude_cmd(work_dir, session_id)
 
   -- If user cancelled, return without opening terminal
   if not cmd then
@@ -224,11 +263,11 @@ function ClaudeCode.open_in_terminal(work_dir)
 end
 
 -- Open in new tab function
-function ClaudeCode.open_in_new_tab(work_dir)
+function ClaudeCode.open_in_new_tab(work_dir, session_id)
   -- Save current ambiwidth setting
   local saved_ambiwidth = save_ambiwidth()
 
-  local cmd = get_claude_cmd(work_dir)
+  local cmd = get_claude_cmd(work_dir, session_id)
 
   -- If user cancelled, return without opening terminal
   if not cmd then
@@ -304,18 +343,22 @@ local function current_work_dir()
 end
 
 -- Command and keymap
+-- Args: [work_dir] [session_id]  (both optional; Tab completes dirs then session UUIDs)
 vim.api.nvim_create_user_command('ClaudeCode', function(opts)
-  local work_dir = opts.args ~= '' and opts.args or nil
-  ClaudeCode.toggle(work_dir)
-end, { nargs = '?', complete = 'dir' })
+  local work_dir = opts.fargs[1] ~= '' and opts.fargs[1] or nil
+  local session_id = opts.fargs[2]
+  ClaudeCode.toggle(work_dir, session_id)
+end, { nargs = '*', complete = claude_complete })
 vim.api.nvim_create_user_command('ClaudeCodeTerminal', function(opts)
-  local work_dir = opts.args ~= '' and opts.args or nil
-  ClaudeCode.open_in_terminal(work_dir)
-end, { nargs = '?', complete = 'dir' })
+  local work_dir = opts.fargs[1] ~= '' and opts.fargs[1] or nil
+  local session_id = opts.fargs[2]
+  ClaudeCode.open_in_terminal(work_dir, session_id)
+end, { nargs = '*', complete = claude_complete })
 vim.api.nvim_create_user_command('ClaudeCodeTab', function(opts)
-  local work_dir = opts.args ~= '' and opts.args or nil
-  ClaudeCode.open_in_new_tab(work_dir)
-end, { nargs = '?', complete = 'dir' })
+  local work_dir = opts.fargs[1] ~= '' and opts.fargs[1] or nil
+  local session_id = opts.fargs[2]
+  ClaudeCode.open_in_new_tab(work_dir, session_id)
+end, { nargs = '*', complete = claude_complete })
 vim.keymap.set('n', '<leader>claude', function() ClaudeCode.toggle(current_work_dir()) end, { desc = 'Toggle Claude Code' })
 vim.keymap.set('n', '<leader>clauden', function() ClaudeCode.open_in_terminal(current_work_dir()) end, { desc = 'Open Claude Code in terminal' })
 vim.keymap.set('n', '<leader>claudet', function() ClaudeCode.open_in_new_tab(current_work_dir()) end, { desc = 'Open Claude Code in new tab' })

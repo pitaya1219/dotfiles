@@ -139,9 +139,54 @@ local function setup_vibe_session_watcher(buf, open_time, snapshot)
   })
 end
 
+-- List Vibe session IDs from known session directories
+local function list_vibe_sessions()
+  local vibe_home = vim.env.VIBE_HOME or vim.fn.expand("~/.vibe")
+  local agent_sessions = vim.fn.expand("~/agent-sessions")
+  local cmd = string.format(
+    'ls -dt "%s/.vibe/logs/session/session_"*/ "%s/logs/session/session_"*/ 2>/dev/null',
+    agent_sessions, vibe_home
+  )
+  local handle = io.popen(cmd)
+  local sessions = {}
+  local seen = {}
+  if handle then
+    for line in handle:lines() do
+      local sid = line:match("session_%d+_%d+_([0-9a-f]+)/?$")
+      if sid and not seen[sid] then
+        seen[sid] = true
+        table.insert(sessions, sid)
+      end
+    end
+    handle:close()
+  end
+  return sessions
+end
+
+-- Custom completion: directories for first arg, session IDs for second arg
+local function vibe_complete(arglead, cmdline, cursorpos)
+  local before = cmdline:sub(1, cursorpos)
+  local n = 0
+  for _ in before:gmatch('%S+') do n = n + 1 end
+  local arg_pos = n - 1 + (before:match('%s$') and 1 or 0)
+
+  if arg_pos <= 1 then
+    return vim.fn.getcompletion(arglead, 'dir')
+  else
+    local sessions = list_vibe_sessions()
+    if arglead == '' then return sessions end
+    return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, sessions)
+  end
+end
+
 -- Common function to create vibe command
-local function get_vibe_cmd(work_dir)
+-- session_id: 8-char hex string to resume a specific session (vibe --resume <id>)
+local function get_vibe_cmd(work_dir, session_id)
   local cmd = 'eval "$(direnv export bash)" && vibe'
+
+  if session_id and session_id ~= '' then
+    cmd = cmd .. ' --resume ' .. vim.fn.shellescape(session_id)
+  end
 
   if work_dir then
     cmd = 'cd ' .. vim.fn.shellescape(work_dir) ..  ' && ' .. cmd
@@ -182,7 +227,7 @@ local function setup_cell_autocmds(buf, saved_ambiwidth)
   })
 end
 
-function Vibe.toggle(work_dir)
+function Vibe.toggle(work_dir, session_id)
   if Vibe.win and vim.api.nvim_win_is_valid(Vibe.win) then
     vim.api.nvim_win_close(Vibe.win, true)
     Vibe.win = nil
@@ -219,7 +264,7 @@ function Vibe.toggle(work_dir)
 
   -- Start vibe if not already running
   if vim.bo[Vibe.buf].buftype ~= 'terminal' then
-    local cmd = get_vibe_cmd(work_dir)
+    local cmd = get_vibe_cmd(work_dir, session_id)
 
     vim.fn.termopen(cmd, {
       on_exit = function()
@@ -249,11 +294,11 @@ function Vibe.toggle(work_dir)
 end
 
 -- Terminal mode function
-function Vibe.open_in_terminal(work_dir)
+function Vibe.open_in_terminal(work_dir, session_id)
   -- Save current ambiwidth setting
   local saved_ambiwidth = save_ambiwidth()
 
-  local cmd = get_vibe_cmd(work_dir)
+  local cmd = get_vibe_cmd(work_dir, session_id)
 
   vim.cmd('enew')
   local buf = vim.api.nvim_get_current_buf()
@@ -289,11 +334,11 @@ function Vibe.open_in_terminal(work_dir)
 end
 
 -- Open in new tab function
-function Vibe.open_in_new_tab(work_dir)
+function Vibe.open_in_new_tab(work_dir, session_id)
   -- Save current ambiwidth setting
   local saved_ambiwidth = save_ambiwidth()
 
-  local cmd = get_vibe_cmd(work_dir)
+  local cmd = get_vibe_cmd(work_dir, session_id)
 
   vim.cmd('tabnew')
   local buf = vim.api.nvim_get_current_buf()
@@ -338,7 +383,7 @@ function Vibe.find_tab()
     for _, buf in ipairs(tab_buffers) do
       if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == 'terminal' then
         local is_vibe_tab = false
-        
+
         -- Try to get the terminal job command
         local job_id = vim.fn.jobstart('echo', { rpc = true })
         if job_id and job_id > 0 then
@@ -351,13 +396,13 @@ function Vibe.find_tab()
             end
           end
         end
-        
+
         -- Also check buffer name as fallback
         local buf_name = vim.api.nvim_buf_get_name(buf)
         if buf_name:match('vibe') or buf_name:match('mistral') then
           is_vibe_tab = true
         end
-        
+
         if is_vibe_tab then
           vibe_tab = i
           break
@@ -383,18 +428,22 @@ local function current_work_dir()
 end
 
 -- Command and keymap
+-- Args: [work_dir] [session_id]  (both optional; Tab completes dirs then session IDs)
 vim.api.nvim_create_user_command('Vibe', function(opts)
-  local work_dir = opts.args ~= '' and opts.args or nil
-  Vibe.toggle(work_dir)
-end, { nargs = '?', complete = 'dir' })
+  local work_dir = opts.fargs[1] ~= '' and opts.fargs[1] or nil
+  local session_id = opts.fargs[2]
+  Vibe.toggle(work_dir, session_id)
+end, { nargs = '*', complete = vibe_complete })
 vim.api.nvim_create_user_command('VibeTerminal', function(opts)
-  local work_dir = opts.args ~= '' and opts.args or nil
-  Vibe.open_in_terminal(work_dir)
-end, { nargs = '?', complete = 'dir' })
+  local work_dir = opts.fargs[1] ~= '' and opts.fargs[1] or nil
+  local session_id = opts.fargs[2]
+  Vibe.open_in_terminal(work_dir, session_id)
+end, { nargs = '*', complete = vibe_complete })
 vim.api.nvim_create_user_command('VibeTab', function(opts)
-  local work_dir = opts.args ~= '' and opts.args or nil
-  Vibe.open_in_new_tab(work_dir)
-end, { nargs = '?', complete = 'dir' })
+  local work_dir = opts.fargs[1] ~= '' and opts.fargs[1] or nil
+  local session_id = opts.fargs[2]
+  Vibe.open_in_new_tab(work_dir, session_id)
+end, { nargs = '*', complete = vibe_complete })
 vim.keymap.set('n', '<leader>vibe', function() Vibe.toggle(current_work_dir()) end, { desc = 'Toggle Vibe' })
 vim.keymap.set('n', '<leader>viben', function() Vibe.open_in_terminal(current_work_dir()) end, { desc = 'Open Vibe in terminal' })
 vim.keymap.set('n', '<leader>vibet', function() Vibe.open_in_new_tab(current_work_dir()) end, { desc = 'Open Vibe in new tab' })
