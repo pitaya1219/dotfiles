@@ -121,6 +121,8 @@ function OpenCode.open_in_terminal(work_dir)
   vim.cmd('enew')
   local buf = vim.api.nvim_get_current_buf()
 
+  local cwd = work_dir or vim.fn.getcwd()
+
   -- Apply settings after buffer creation but before terminal starts
   vim.schedule(function()
     apply_cell_settings()
@@ -137,6 +139,10 @@ function OpenCode.open_in_terminal(work_dir)
   setup_cell_autocmds(buf, saved_ambiwidth)
 
   vim.cmd('startinsert')
+
+  vim.schedule(function()
+    if _G.BottomTerminal then _G.BottomTerminal.open(cwd) end
+  end)
 end
 
 -- Open in new tab function
@@ -149,6 +155,8 @@ function OpenCode.open_in_new_tab(work_dir)
   vim.cmd('tabnew')
   local buf = vim.api.nvim_get_current_buf()
 
+  local cwd = work_dir or vim.fn.getcwd()
+
   -- Apply settings after buffer creation but before terminal starts
   vim.schedule(function()
     apply_cell_settings()
@@ -165,6 +173,10 @@ function OpenCode.open_in_new_tab(work_dir)
   setup_cell_autocmds(buf, saved_ambiwidth)
 
   vim.cmd('startinsert')
+
+  vim.schedule(function()
+    if _G.BottomTerminal then _G.BottomTerminal.open(cwd) end
+  end)
 end
 
 -- Find existing OpenCode tab and switch to it
@@ -195,6 +207,12 @@ function OpenCode.find_tab()
   end
 end
 
+local function current_work_dir()
+  local p = vim.fn.expand('%:p:h')
+  if p ~= '' and vim.fn.isdirectory(p) == 1 then return p end
+  return vim.fn.getcwd()
+end
+
 -- Command and keymap
 vim.api.nvim_create_user_command('OpenCode', function(opts)
   local work_dir = opts.args ~= '' and opts.args or nil
@@ -208,7 +226,7 @@ vim.api.nvim_create_user_command('OpenCodeTab', function(opts)
   local work_dir = opts.args ~= '' and opts.args or nil
   OpenCode.open_in_new_tab(work_dir)
 end, { nargs = '?' })
-vim.keymap.set('n', '<leader>opencode', function() OpenCode.toggle() end, { desc = 'Toggle OpenCode' })
-vim.keymap.set('n', '<leader>opencoden', function() OpenCode.open_in_terminal() end, { desc = 'Open OpenCode in terminal' })
-vim.keymap.set('n', '<leader>opencodet', function() OpenCode.open_in_new_tab() end, { desc = 'Open OpenCode in new tab' })
+vim.keymap.set('n', '<leader>opencode', function() OpenCode.toggle(current_work_dir()) end, { desc = 'Toggle OpenCode' })
+vim.keymap.set('n', '<leader>opencoden', function() OpenCode.open_in_terminal(current_work_dir()) end, { desc = 'Open OpenCode in terminal' })
+vim.keymap.set('n', '<leader>opencodet', function() OpenCode.open_in_new_tab(current_work_dir()) end, { desc = 'Open OpenCode in new tab' })
 vim.keymap.set('n', '<leader>findo', function() OpenCode.find_tab() end, { desc = 'Find OpenCode tab' })

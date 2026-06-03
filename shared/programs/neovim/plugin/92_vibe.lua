@@ -284,7 +284,7 @@ function Vibe.open_in_terminal(work_dir)
   vim.cmd('startinsert')
 
   vim.schedule(function()
-    if _G.BottomTerminal then _G.BottomTerminal.open() end
+    if _G.BottomTerminal then _G.BottomTerminal.open(cwd) end
   end)
 end
 
@@ -324,7 +324,7 @@ function Vibe.open_in_new_tab(work_dir)
   vim.cmd('startinsert')
 
   vim.schedule(function()
-    if _G.BottomTerminal then _G.BottomTerminal.open() end
+    if _G.BottomTerminal then _G.BottomTerminal.open(cwd) end
   end)
 end
 
@@ -376,6 +376,12 @@ function Vibe.find_tab()
   end
 end
 
+local function current_work_dir()
+  local p = vim.fn.expand('%:p:h')
+  if p ~= '' and vim.fn.isdirectory(p) == 1 then return p end
+  return vim.fn.getcwd()
+end
+
 -- Command and keymap
 vim.api.nvim_create_user_command('Vibe', function(opts)
   local work_dir = opts.args ~= '' and opts.args or nil
@@ -389,7 +395,7 @@ vim.api.nvim_create_user_command('VibeTab', function(opts)
   local work_dir = opts.args ~= '' and opts.args or nil
   Vibe.open_in_new_tab(work_dir)
 end, { nargs = '?', complete = 'dir' })
-vim.keymap.set('n', '<leader>vibe', function() Vibe.toggle() end, { desc = 'Toggle Vibe' })
-vim.keymap.set('n', '<leader>viben', function() Vibe.open_in_terminal() end, { desc = 'Open Vibe in terminal' })
-vim.keymap.set('n', '<leader>vibet', function() Vibe.open_in_new_tab() end, { desc = 'Open Vibe in new tab' })
+vim.keymap.set('n', '<leader>vibe', function() Vibe.toggle(current_work_dir()) end, { desc = 'Toggle Vibe' })
+vim.keymap.set('n', '<leader>viben', function() Vibe.open_in_terminal(current_work_dir()) end, { desc = 'Open Vibe in terminal' })
+vim.keymap.set('n', '<leader>vibet', function() Vibe.open_in_new_tab(current_work_dir()) end, { desc = 'Open Vibe in new tab' })
 vim.keymap.set('n', '<leader>findv', function() Vibe.find_tab() end, { desc = 'Find Vibe tab' })

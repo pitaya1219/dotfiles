@@ -219,7 +219,7 @@ function ClaudeCode.open_in_terminal(work_dir)
   vim.cmd('startinsert')
 
   vim.schedule(function()
-    if _G.BottomTerminal then _G.BottomTerminal.open() end
+    if _G.BottomTerminal then _G.BottomTerminal.open(cwd) end
   end)
 end
 
@@ -262,7 +262,7 @@ function ClaudeCode.open_in_new_tab(work_dir)
   vim.cmd('startinsert')
 
   vim.schedule(function()
-    if _G.BottomTerminal then _G.BottomTerminal.open() end
+    if _G.BottomTerminal then _G.BottomTerminal.open(cwd) end
   end)
 end
 
@@ -294,6 +294,15 @@ function ClaudeCode.find_tab()
   end
 end
 
+-- Returns the current buffer's directory, falling back to Neovim's cwd.
+-- This ensures the agent and its companion terminal start in the same place,
+-- even when Claude resumes a session from a different directory internally.
+local function current_work_dir()
+  local p = vim.fn.expand('%:p:h')
+  if p ~= '' and vim.fn.isdirectory(p) == 1 then return p end
+  return vim.fn.getcwd()
+end
+
 -- Command and keymap
 vim.api.nvim_create_user_command('ClaudeCode', function(opts)
   local work_dir = opts.args ~= '' and opts.args or nil
@@ -307,7 +316,7 @@ vim.api.nvim_create_user_command('ClaudeCodeTab', function(opts)
   local work_dir = opts.args ~= '' and opts.args or nil
   ClaudeCode.open_in_new_tab(work_dir)
 end, { nargs = '?', complete = 'dir' })
-vim.keymap.set('n', '<leader>claude', function() ClaudeCode.toggle() end, { desc = 'Toggle Claude Code' })
-vim.keymap.set('n', '<leader>clauden', function() ClaudeCode.open_in_terminal() end, { desc = 'Open Claude Code in terminal' })
-vim.keymap.set('n', '<leader>claudet', function() ClaudeCode.open_in_new_tab() end, { desc = 'Open Claude Code in new tab' })
+vim.keymap.set('n', '<leader>claude', function() ClaudeCode.toggle(current_work_dir()) end, { desc = 'Toggle Claude Code' })
+vim.keymap.set('n', '<leader>clauden', function() ClaudeCode.open_in_terminal(current_work_dir()) end, { desc = 'Open Claude Code in terminal' })
+vim.keymap.set('n', '<leader>claudet', function() ClaudeCode.open_in_new_tab(current_work_dir()) end, { desc = 'Open Claude Code in new tab' })
 vim.keymap.set('n', '<leader>findc', function() ClaudeCode.find_tab() end, { desc = 'Find Claude Code tab' })
