@@ -19,3 +19,4 @@ vim.notify = notify
 vim.keymap.set("n", "<leader>notic", function()
   notify.dismiss({ silent = true, pending = true })
 end, { desc = "Dismiss all notifications" })
+vim.keymap.set("n", "<leader>notih", notify.history, { desc = "Notification history" })
