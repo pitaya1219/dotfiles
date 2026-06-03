@@ -63,15 +63,16 @@ in
   plugins = with pkgs.vimPlugins; [
     # Core plugins
     coc-nvim
-    
+
     # Language support
     vim-markdown
     vim-toml
-    
+
     # Development tools
     ollama-nvim
-    
+
     # UI enhancements
+    nvim-notify
     traces-vim
     
     # Color schemes
