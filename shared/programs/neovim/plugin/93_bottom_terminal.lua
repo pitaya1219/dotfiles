@@ -38,7 +38,8 @@ vim.api.nvim_create_autocmd('TabEnter', {
 
 -- Start a hidden terminal buffer for the current tab.
 -- The window is closed immediately; the shell process keeps running.
-function M.open()
+-- cwd: optional starting directory; defaults to Neovim's current working directory.
+function M.open(cwd)
   local tab = vim.fn.tabpagenr()
   local s = state[tab]
 
@@ -50,7 +51,8 @@ function M.open()
 
   vim.cmd('noautocmd botright new')
   local buf = vim.api.nvim_get_current_buf()
-  vim.fn.termopen(vim.env.SHELL or 'bash')
+  local term_opts = cwd and { cwd = cwd } or {}
+  vim.fn.termopen(vim.env.SHELL or 'bash', term_opts)
   vim.api.nvim_win_close(0, false)
 
   state[tab] = { buf = buf, win = nil }
