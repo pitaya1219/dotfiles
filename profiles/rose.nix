@@ -46,6 +46,8 @@
             encrypted = false;
             onCalendar = "Fri *-*-* 22:00:00";
             onBootDelay = "6h";
+            rcloneTransfers = 2;
+            rcloneBufferSize = "8M";
           };
           pcloud-encrypted = {
             enable = true;
@@ -58,6 +60,8 @@
             encrypted = true;
             onCalendar = "Mon *-*-* 22:00:00";
             onBootDelay = "12h";
+            rcloneTransfers = 2;
+            rcloneBufferSize = "8M";
           };
         };
 
