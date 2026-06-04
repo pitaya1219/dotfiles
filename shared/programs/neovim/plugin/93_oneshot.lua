@@ -144,7 +144,11 @@ end
 local function instruction_from(opts)
   if opts.range == 2 then
     local lines = vim.api.nvim_buf_get_lines(0, opts.line1 - 1, opts.line2, false)
-    return table.concat(lines, '\n')
+    local selected = table.concat(lines, '\n')
+    if opts.args and opts.args ~= '' then
+      return opts.args .. '\n\n' .. selected
+    end
+    return selected
   end
   return opts.args
 end
