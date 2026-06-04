@@ -8,6 +8,8 @@
     };
     modules = [
       ({ config, pkgs, lib, ... }: {
+        dotfiles.claudeJson.claudeAiMcpEverConnected = [ "claude.ai Asana" ];
+
         imports = [
           ../shared/activations/proton-pass.nix
           ../shared/programs/bare.nix
