@@ -25,18 +25,29 @@ local function current_work_dir()
 end
 
 local function show_split(text)
-  local lines = vim.split(text, '\n', { plain = true })
+  local new_lines = vim.split(text, '\n', { plain = true })
 
   if not (Oneshot.buf and vim.api.nvim_buf_is_valid(Oneshot.buf)) then
     Oneshot.buf = vim.api.nvim_create_buf(false, true)
     vim.bo[Oneshot.buf].filetype = 'markdown'
   end
+
   vim.bo[Oneshot.buf].modifiable = true
-  vim.api.nvim_buf_set_lines(Oneshot.buf, 0, -1, false, lines)
+  local existing = vim.api.nvim_buf_get_lines(Oneshot.buf, 0, -1, false)
+  local is_empty = #existing == 0 or (#existing == 1 and existing[1] == '')
+  if is_empty then
+    vim.api.nvim_buf_set_lines(Oneshot.buf, 0, -1, false, new_lines)
+  else
+    local append = { '', '---', '' }
+    for _, l in ipairs(new_lines) do table.insert(append, l) end
+    vim.api.nvim_buf_set_lines(Oneshot.buf, -1, -1, false, append)
+  end
   vim.bo[Oneshot.buf].modifiable = false
 
-  -- Window already open: update buffer silently without stealing focus
+  -- Window already open: scroll to bottom without stealing focus
   if Oneshot.win and vim.api.nvim_win_is_valid(Oneshot.win) then
+    local last = vim.api.nvim_buf_line_count(Oneshot.buf)
+    vim.api.nvim_win_set_cursor(Oneshot.win, { last, 0 })
     return
   end
 
