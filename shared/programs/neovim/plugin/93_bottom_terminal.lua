@@ -19,7 +19,9 @@ local function refresh_notice()
     and (not s.win or not vim.api.nvim_win_is_valid(s.win))
 
   for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-    vim.wo[w].winbar = is_hidden and NOTICE or ''
+    if vim.api.nvim_win_get_config(w).relative == '' then
+      vim.wo[w].winbar = is_hidden and NOTICE or ''
+    end
   end
 end
 
@@ -65,7 +67,13 @@ function M.toggle()
   local s = state[tab]
 
   if not s or not vim.api.nvim_buf_is_valid(s.buf) then
-    M.open()
+    local cwd = vim.fn.getcwd()
+    local bufname = vim.api.nvim_buf_get_name(0)
+    if bufname ~= '' and vim.bo.buftype == '' then
+      local dir = vim.fn.fnamemodify(bufname, ':p:h')
+      if dir ~= '' and vim.fn.isdirectory(dir) == 1 then cwd = dir end
+    end
+    M.open(cwd)
     s = state[tab]
     if not s then return end
   end
