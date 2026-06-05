@@ -8,7 +8,7 @@
     };
     modules = [
       ({ config, pkgs, lib, ... }: {
-        dotfiles.claudeJson.claudeAiMcpEverConnected = [ "claude.ai Asana" ];
+        dotfiles.claudeJson.claudeAiMcpEverConnected = [ "claude.ai Asana" "claude.ai GitHub Integration" "claude.ai Slack" ];
 
         dotfiles.agent.dailyReport = {
           sources = {
