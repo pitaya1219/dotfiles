@@ -10,6 +10,16 @@
       ({ config, pkgs, lib, ... }: {
         dotfiles.claudeJson.claudeAiMcpEverConnected = [ "claude.ai Asana" ];
 
+        dotfiles.agent.dailyReport = {
+          sources = {
+            github = { user = "pitaya1219"; };
+            slack = { user_id = "U05BARN5R98"; user_name = "r-shibuya"; };
+            asana = true;
+            sessions = { dir = "~/agent-sessions"; };
+          };
+          output_dir = "~/agent-sessions";
+        };
+
         imports = [
           ../shared/activations/proton-pass.nix
           ../shared/programs/bare.nix
