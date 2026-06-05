@@ -320,6 +320,10 @@ vim.keymap.set('n', '<leader>bufc', function()
     if not info.loaded then
       goto continue
     end
+    -- Skip buffers with unsaved changes
+    if info.changed == 1 then
+      goto continue
+    end
     table.insert(wipeout_nums, tostring(info.bufnr))
     ::continue::
   end
