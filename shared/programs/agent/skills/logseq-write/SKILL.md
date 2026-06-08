@@ -1,18 +1,20 @@
 ---
 name: logseq-write
-description: Append content to a Logseq page via HTTP API, with optional Markdown-to-blocks conversion
+description: Append content to a Logseq page (or create a new page) via HTTP API, with optional Markdown-to-blocks conversion
 user-invocable: true
-version: 1.0.0
+version: 2.0.0
 ---
 
-Append content to a Logseq page. Reads connection config from `~/.agent/logseq.json`.
+Append content to a Logseq page, or create a new page with properties. Reads connection config from `~/.agent/logseq.json`.
 
-`$ARGUMENTS` format: `<page> [--format markdown|logseq] [--title "..."] [--tag tag-name]`
+`$ARGUMENTS` format: `<page> [--format markdown|logseq] [--title "..."] [--tag tag-name] [--create-page] [--prop key=value]...`
 
-- `page` — Logseq page name (e.g. `2026-06-08` for today's journal)
+- `page` — Logseq page name (e.g. `2026-06-08` for today's journal, or `Session: fix-bug` for a new page)
 - `--format` — `markdown` (default) converts Markdown; `logseq` uses native outline as-is
-- `--title` — parent block heading; all content becomes its children
-- `--tag` — adds `tags:: #<tag>` property on the title block (requires `--title`)
+- `--title` — parent block heading; all content becomes its children (append mode only)
+- `--tag` — adds `tags:: #<tag>` property on the title block (requires `--title`, append mode only)
+- `--create-page` — create a new page instead of appending to an existing one; `<page>` becomes the page title
+- `--prop key=value` — set a page property (repeatable, requires `--create-page`)
 
 ## Step 1: Load Config
 
@@ -49,10 +51,37 @@ LOGSEQ_TOKEN=$(resolve_value '.token')
 From `$ARGUMENTS`, extract:
 - `PAGE` — first positional argument (required)
 - `FORMAT` — `--format` value (default: `markdown`)
-- `TITLE` — `--title` value (optional)
-- `TAG` — `--tag` value (optional)
+- `TITLE` — `--title` value (optional, append mode only)
+- `TAG` — `--tag` value (optional, append mode only)
+- `CREATE_PAGE` — true if `--create-page` is present
+- `PROPS` — map of key→value from all `--prop key=value` occurrences
 
-## Step 3: Build Block Tree
+## Step 3: Create Page (if `--create-page`)
+
+Call `logseq.Editor.createPage` with the page title and collected properties:
+
+```bash
+# Build properties JSON object from --prop key=value pairs
+PROPS_JSON=$(jq -n \
+  --arg tags   "$PROP_tags" \
+  --arg date   "$PROP_date" \
+  # ... repeat for each collected prop
+  '{tags: $tags, date: $date, ...}')
+
+RESULT=$(curl -sf \
+  -H "Authorization: Bearer $LOGSEQ_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --arg name "$PAGE" --argjson props "$PROPS_JSON" \
+        '{method: "logseq.Editor.createPage", args: [$name, $props, {"redirect": false}]}')" \
+  "$LOGSEQ_URL/api")
+
+# Verify page was created
+echo "$RESULT" | jq -e '.uuid' > /dev/null || { echo "createPage failed: $RESULT"; exit 1; }
+```
+
+After page creation, proceed to insert content blocks into the new page using `PAGE` as the page name.
+
+## Step 4: Build Block Tree
 
 The content to write is provided in the conversation context (by the calling skill or user).
 
@@ -90,9 +119,9 @@ Build a JSON array of block objects:
 ]
 ```
 
-## Step 4: Wrap with Title Block
+## Step 5: Wrap with Title Block (append mode only)
 
-If `--title` is given, construct the title block content:
+If `--title` is given (and not `--create-page`), construct the title block content:
 ```
 <TITLE>
 tags:: #<TAG>
@@ -106,7 +135,7 @@ Wrap the entire converted tree as children of this title block:
 
 If `--title` is not given, the converted tree's top-level blocks are inserted directly.
 
-## Step 5: Insert into Logseq
+## Step 6: Insert into Logseq
 
 Use `appendBlockInPage` to create the root block and obtain its UUID, then `insertBatchBlock` to insert its children.
 
