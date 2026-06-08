@@ -19,6 +19,10 @@ Parse the JSON. The `sources` key controls what to collect:
 - `sources.asana` — true → collect Asana tasks
 - `sources.sessions.dir` — collect session directory artifacts
 
+The `output` key controls where to write the report:
+- `output.local` — present (or `output` absent) → save to `output.local.dir` as `daily-YYYY-MM-DD.md`
+- `output.logseq` — present → also POST to Logseq HTTP API
+
 If the file does not exist, print an error and stop:
 > No config found at ~/.agent/daily-report.json. Set dotfiles.agent.dailyReport in your Nix profile.
 
@@ -116,13 +120,48 @@ done
 Unresolved items or observations.
 ```
 
-## Save
+## Step 4: Save
 
-Read `output_dir` from config:
+### Local (`output.local`)
+
 ```bash
-OUTPUT_DIR=$(cat ~/.agent/daily-report.json | jq -r '.output_dir' | sed "s|~|$HOME|")
+LOCAL_DIR=$(cat ~/.agent/daily-report.json | jq -r '.output.local.dir // "~/agent-sessions"' | sed "s|~|$HOME|")
 ```
 
-Save to `$OUTPUT_DIR/daily-YYYY-MM-DD.md`.
-If $ARGUMENTS is provided, use that path instead.
-Print the saved path when done.
+Save the report to `$LOCAL_DIR/daily-YYYY-MM-DD.md`.
+If `$ARGUMENTS` is provided, use that path instead.
+
+### Logseq (`output.logseq`)
+
+If `output.logseq` is present in config:
+
+```bash
+LOGSEQ_URL=$(cat ~/.agent/daily-report.json | jq -r '.output.logseq.url')
+TOKEN_FILE=$(cat ~/.agent/daily-report.json | jq -r '.output.logseq.token_file // "~/.agent/logseq-token"' | sed "s|~|$HOME|")
+LOGSEQ_TOKEN=$(cat "$TOKEN_FILE" 2>/dev/null)
+TODAY=$(date +%Y-%m-%d)
+```
+
+Append to today's Logseq journal page (page name = `$TODAY`):
+
+1. Create parent block with tag property:
+```bash
+PARENT_UUID=$(curl -sf \
+  -H "Authorization: Bearer $LOGSEQ_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"method\": \"logseq.Editor.appendBlockInPage\", \"args\": [\"$TODAY\", \"Daily Report — $TODAY\ntags:: #daily-report\"]}" \
+  "$LOGSEQ_URL/api" | jq -r '.result.uuid')
+```
+
+2. Insert report content as child block:
+```bash
+curl -sf \
+  -H "Authorization: Bearer $LOGSEQ_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"method\": \"logseq.Editor.insertBlock\", \"args\": [\"$PARENT_UUID\", $(cat "$LOCAL_DIR/daily-$TODAY.md" | jq -Rs .), {\"sibling\": false}]}" \
+  "$LOGSEQ_URL/api"
+```
+
+If the token file does not exist or any API call fails, print a warning and skip Logseq output without aborting.
+
+Print all saved/posted locations when done.

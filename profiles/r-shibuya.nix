@@ -17,7 +17,13 @@
             asana = true;
             sessions = { dir = "~/agent-sessions"; };
           };
-          output_dir = "~/agent-sessions";
+          output = {
+            local = { dir = "~/agent-sessions"; };
+            logseq = {
+              url = "http://localhost:12315";
+              token_file = "~/.agent/logseq-token";
+            };
+          };
         };
 
         imports = [
