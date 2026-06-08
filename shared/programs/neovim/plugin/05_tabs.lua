@@ -274,6 +274,19 @@ local function manage_tabs()
       vim.cmd('tabnew')
     end, { buffer = buf })
 
+    vim.keymap.set('n', 'r', function()
+      if #filtered_tab_list == 0 then return end
+      local selected_tab = filtered_tab_list[current_idx]
+      local current_name = selected_tab.name or ""
+      local new_name = vim.fn.input('Tab name: ', current_name)
+      if new_name ~= nil and _G.tab_titles and _G.tab_titles.set_tab_name then
+        _G.tab_titles.set_tab_name(selected_tab.num, new_name)
+        tab_list = get_tab_list()
+        filtered_tab_list = filter_tabs(search_query)
+        update_display()
+      end
+    end, { buffer = buf })
+
     vim.keymap.set('n', '/', start_search, { buffer = buf })
     vim.keymap.set('n', '<C-c>', clear_search, { buffer = buf })
 

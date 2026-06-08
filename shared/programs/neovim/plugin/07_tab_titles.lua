@@ -6,6 +6,18 @@
 
 local M = {}
 
+local custom_tab_names = {}
+local custom_buf_names = {}
+
+local function tabnr_to_handle(tabnr)
+  local handles = vim.api.nvim_list_tabpages()
+  for _, handle in ipairs(handles) do
+    if vim.api.nvim_tabpage_get_number(handle) == tabnr then
+      return handle
+    end
+  end
+end
+
 -- Detect terminal type for a buffer
 local function detect_terminal_type(buf)
   if vim.b[buf].terminal_type == 'vibe' then
@@ -39,9 +51,13 @@ end
 -- Get buffer title for a specific buffer
 function M.get_buffer_title(bufnr)
   local buf = bufnr
-  
+
   if not vim.api.nvim_buf_is_valid(buf) then
     return ""
+  end
+
+  if custom_buf_names[buf] then
+    return custom_buf_names[buf]
   end
 
   local buftype = vim.bo[buf].buftype
@@ -87,6 +103,11 @@ end
 
 -- Get tab title for a specific tab
 function M.get_tab_title(tabnr)
+  local handle = tabnr_to_handle(tabnr)
+  if handle and custom_tab_names[handle] then
+    return custom_tab_names[handle]
+  end
+
   local tab_buffers = vim.fn.tabpagebuflist(tabnr)
 
   -- Prefer claude/vibe terminal over the focused window
@@ -148,6 +169,25 @@ function M.get_tab_title(tabnr)
   return "[No Name]"
 end
 
+function M.set_tab_name(tabnr, name)
+  local handle = tabnr_to_handle(tabnr)
+  if not handle then return end
+  if name and name ~= "" then
+    custom_tab_names[handle] = name
+  else
+    custom_tab_names[handle] = nil
+  end
+  M.update_all_tab_titles()
+end
+
+function M.set_buf_name(bufnr, name)
+  if name and name ~= "" then
+    custom_buf_names[bufnr] = name
+  else
+    custom_buf_names[bufnr] = nil
+  end
+end
+
 -- Update all tab titles
 function M.update_all_tab_titles()
   vim.cmd('redrawtabline')
@@ -207,6 +247,38 @@ function M.setup()
       M.update_all_tab_titles()
     end
   })
+
+  vim.api.nvim_create_autocmd('TabClosed', {
+    callback = function()
+      local valid = {}
+      for _, h in ipairs(vim.api.nvim_list_tabpages()) do
+        valid[h] = true
+      end
+      for h in pairs(custom_tab_names) do
+        if not valid[h] then
+          custom_tab_names[h] = nil
+        end
+      end
+    end
+  })
+
+  vim.api.nvim_create_autocmd('BufWipeout', {
+    callback = function(ev)
+      custom_buf_names[ev.buf] = nil
+    end
+  })
+
+  vim.api.nvim_create_user_command('TabRename', function(opts)
+    M.set_tab_name(vim.fn.tabpagenr(), opts.args)
+  end, { nargs = '*', desc = 'Set a custom name for the current tab' })
+
+  vim.keymap.set('n', '<leader>tabrn', function()
+    local tabnr = vim.fn.tabpagenr()
+    local handle = tabnr_to_handle(tabnr)
+    local current = (handle and custom_tab_names[handle]) or ""
+    local new_name = vim.fn.input('Tab name: ', current)
+    M.set_tab_name(tabnr, new_name)
+  end, { silent = true, desc = 'Rename current tab' })
 end
 
 _G.tab_titles = M

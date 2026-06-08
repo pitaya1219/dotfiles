@@ -287,6 +287,19 @@ local function manage_buffer()
       end
     end, { buffer = buf })
 
+    vim.keymap.set('n', 'r', function()
+      if #filtered_buffer_list == 0 then return end
+      local selected_buffer = filtered_buffer_list[current_idx]
+      local current_name = selected_buffer.name or ""
+      local new_name = vim.fn.input('Buffer name: ', current_name)
+      if new_name ~= nil and _G.tab_titles and _G.tab_titles.set_buf_name then
+        _G.tab_titles.set_buf_name(tonumber(selected_buffer.num), new_name)
+        buffer_list = get_buffer_list()
+        filtered_buffer_list = filter_buffers(search_query)
+        update_display()
+      end
+    end, { buffer = buf })
+
     vim.keymap.set('n', '/', start_search, { buffer = buf })
     vim.keymap.set('n', '<C-c>', clear_search, { buffer = buf })
 
