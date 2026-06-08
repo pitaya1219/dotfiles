@@ -22,6 +22,7 @@ Parse the JSON. The `sources` key controls what to collect:
 The `output` key controls where to write the report:
 - `output.local` — present (or `output` absent) → save to `output.local.dir` as `daily-YYYY-MM-DD.md`
 - `output.logseq` — present → also POST to Logseq HTTP API
+  - `url` / `token` — each accepts a plain string, `{ "file": "..." }`, or `{ "command": "..." }`
 
 If the file does not exist, print an error and stop:
 > No config found at ~/.agent/daily-report.json. Set dotfiles.agent.dailyReport in your Nix profile.
@@ -135,19 +136,31 @@ If `$ARGUMENTS` is provided, use that path instead.
 
 If `output.logseq` is present in config:
 
+Both `url` and `token` support three forms: a plain string (static), `{ "file": "..." }`, or `{ "command": "..." }`.
+
 ```bash
-LOGSEQ_URL=$(cat ~/.agent/daily-report.json | jq -r '.output.logseq.url')
 TODAY=$(date +%Y-%m-%d)
 
-# Resolve token from either file or command
-TOKEN_TYPE=$(cat ~/.agent/daily-report.json | jq -r '.output.logseq.token | keys[0]')
-if [ "$TOKEN_TYPE" = "file" ]; then
-  TOKEN_PATH=$(cat ~/.agent/daily-report.json | jq -r '.output.logseq.token.file' | sed "s|~|$HOME|")
-  LOGSEQ_TOKEN=$(cat "$TOKEN_PATH" 2>/dev/null)
-elif [ "$TOKEN_TYPE" = "command" ]; then
-  TOKEN_CMD=$(cat ~/.agent/daily-report.json | jq -r '.output.logseq.token.command')
-  LOGSEQ_TOKEN=$(eval "$TOKEN_CMD" 2>/dev/null)
-fi
+# Resolve a value that may be a string, { file }, or { command }
+resolve_secret() {
+  local KEY="$1"
+  local TYPE=$(cat ~/.agent/daily-report.json | jq -r "$KEY | type")
+  if [ "$TYPE" = "string" ]; then
+    cat ~/.agent/daily-report.json | jq -r "$KEY"
+  else
+    local SUBKEY=$(cat ~/.agent/daily-report.json | jq -r "$KEY | keys[0]")
+    if [ "$SUBKEY" = "file" ]; then
+      local PATH=$(cat ~/.agent/daily-report.json | jq -r "$KEY.file" | sed "s|~|$HOME|")
+      cat "$PATH" 2>/dev/null
+    elif [ "$SUBKEY" = "command" ]; then
+      local CMD=$(cat ~/.agent/daily-report.json | jq -r "$KEY.command")
+      eval "$CMD" 2>/dev/null
+    fi
+  fi
+}
+
+LOGSEQ_URL=$(resolve_secret '.output.logseq.url')
+LOGSEQ_TOKEN=$(resolve_secret '.output.logseq.token')
 ```
 
 Append to today's Logseq journal page (page name = `$TODAY`):
