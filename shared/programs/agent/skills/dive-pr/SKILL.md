@@ -2,7 +2,7 @@
 name: dive-pr
 description: Set up a local workspace for reviewing a PR — clone branch, install deps, open nvim in tmux
 user-invocable: true
-version: 1.1.0
+version: 1.2.3
 ---
 
 # Dive PR Skill
@@ -198,6 +198,16 @@ If no files match, skip installation and proceed to Phase 6.
 
 ## Phase 6: Open nvim in tmux
 
+nvim is opened with `exe` to wrap `CocCommand explorer` so the surrounding `|` separators are not passed as arguments to CocCommand:
+
+```
+nvim +'try | exe "CocCommand explorer" | catch | Explore | endtry'
+```
+
+Note: **do not** split this into multiple `-c` flags — each `-c` runs in an independent context, breaking the `try/catch/endtry` block.
+
+**Quoting rule for the tmux context:** the outer shell uses `bash -c '...'` (single-quoted), so the `NVIM_CMD` variable must use single quotes on the outside and `\"` for the Vimscript string literal — this avoids single quotes inside the `bash -c` argument, which would break the shell string.
+
 ### If inside a tmux session (`$TMUX` is set)
 
 ```bash
@@ -207,8 +217,10 @@ ACTIVATE=""
 [ -f "$REPO_DIR/.venv/bin/activate" ] && \
   ACTIVATE="source '$REPO_DIR/.venv/bin/activate' && "
 
+NVIM_CMD='nvim +"try | exe \"CocCommand explorer\" | catch | Explore | endtry"'
+
 tmux new-window -c "$REPO_DIR" -n "$WINDOW_NAME" \
-  "bash -c '${ACTIVATE}nvim'"
+  "bash -c '${ACTIVATE}${NVIM_CMD}'"
 ```
 
 ### If NOT in a tmux session (`$TMUX` is unset)
@@ -219,7 +231,7 @@ Output the commands for the user to run manually and do not attempt to open tmux
 # Workspace ready — open manually:
 cd <REPO_DIR>
 source .venv/bin/activate   # (if .venv exists)
-nvim
+nvim +'try | exe "CocCommand explorer" | catch | Explore | endtry'
 ```
 
 ---
