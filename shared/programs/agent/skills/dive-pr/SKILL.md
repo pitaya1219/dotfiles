@@ -2,29 +2,82 @@
 name: dive-pr
 description: Set up a local workspace for reviewing a PR — clone branch, install deps, open nvim in tmux
 user-invocable: true
-version: 1.0.0
+version: 1.1.0
 ---
 
-# Review Setup Skill
+# Dive PR Skill
 
 ## What This Skill Does
 
 Automates the workspace setup required to review a pull request:
-1. Detects the Git platform (GitHub or Gitea) from the PR URL or current repo remote
-2. Fetches the PR head branch name via the appropriate API/CLI/MCP tool
-3. Creates a session directory and clones (or updates) the branch
-4. Auto-detects and installs dependencies
-5. Opens nvim in a new tmux window named after the session ID
+1. **Auto-detects** repos/PRs already present in the current session directory (when called with no argument)
+2. Detects the Git platform (GitHub or Gitea) from the PR URL or repo remote
+3. Fetches the PR head branch name via the appropriate API/CLI/MCP tool
+4. Creates a session directory and clones (or updates) the branch
+5. Auto-detects and installs dependencies
+6. Opens nvim in a new tmux window named after the session ID
 
 ## Usage
 
 ```
-/review-setup https://github.com/org/repo/pull/500
-/review-setup https://git.example.com/org/repo/pulls/500
-/review-setup --pr 500   # infers repo from the current git remote
+/dive-pr                                               # auto-detect from session dir
+/dive-pr https://github.com/org/repo/pull/500
+/dive-pr https://git.example.com/org/repo/pulls/500
+/dive-pr --pr 500   # infers repo from the current git remote
 ```
 
 `$ARGUMENTS` contains the raw argument string passed by the user.
+
+---
+
+## Phase 0: Auto-detect (when `$ARGUMENTS` is empty)
+
+If `$ARGUMENTS` is empty, scan the current session directory for existing git repositories and their associated PRs before asking the user for input.
+
+### Step 0-1: Locate the session directory
+
+```bash
+_BASE=~/.claude/projects/$(echo "$HOME/agent-sessions" | sed 's|/|-|g')
+SESSION_ID=$(ls -dt \
+    "${_BASE}"/????????-????-????-????-????????????/ \
+    "${_BASE}"/????????-????-????-????-????????????.jsonl \
+    2>/dev/null | head -1 | xargs basename 2>/dev/null | sed 's/\.jsonl$//')
+SESSION_DIR="$HOME/agent-sessions/session-${SESSION_ID}"
+```
+
+### Step 0-2: Find git repositories in the session directory
+
+```bash
+find "$SESSION_DIR" -maxdepth 2 -name ".git" -type d | sed 's|/.git$||'
+```
+
+For each found repo directory, collect:
+- **Current branch:** `git -C <dir> rev-parse --abbrev-ref HEAD`
+- **Remote URL:** `git -C <dir> remote get-url origin`
+
+Skip repos whose current branch is `main`, `master`, or `develop` (not a PR branch).
+
+### Step 0-3: Look up the associated PR for each candidate
+
+Determine the platform from the remote URL (same logic as Phase 1).
+
+**GitHub:**
+```bash
+gh pr view --repo <owner>/<repo> --head <branch> --json number,title,headRefName,baseRefName 2>/dev/null
+```
+
+**Gitea:**
+Use `mcp__gitea__list_pull_requests` (or `mcp__gitea__pull_request_read` if the PR number is known) to find an open PR whose `head.ref` matches the current branch.
+
+### Step 0-4: Decide
+
+| Candidates found | Action |
+|---|---|
+| **0** | Ask the user for a PR URL or `--pr <number>` and proceed to Phase 1 |
+| **1** | Use it automatically — skip Phase 1 and jump to Phase 4 (clone/update is already done) |
+| **2+** | List them and ask the user to choose, then jump to Phase 4 |
+
+When jumping directly to Phase 4 with an already-cloned repo, skip the clone step and go straight to the dependency install (Phase 5).
 
 ---
 
