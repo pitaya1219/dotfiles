@@ -137,9 +137,17 @@ If `output.logseq` is present in config:
 
 ```bash
 LOGSEQ_URL=$(cat ~/.agent/daily-report.json | jq -r '.output.logseq.url')
-TOKEN_FILE=$(cat ~/.agent/daily-report.json | jq -r '.output.logseq.token_file // "~/.agent/logseq-token"' | sed "s|~|$HOME|")
-LOGSEQ_TOKEN=$(cat "$TOKEN_FILE" 2>/dev/null)
 TODAY=$(date +%Y-%m-%d)
+
+# Resolve token from either file or command
+TOKEN_TYPE=$(cat ~/.agent/daily-report.json | jq -r '.output.logseq.token | keys[0]')
+if [ "$TOKEN_TYPE" = "file" ]; then
+  TOKEN_PATH=$(cat ~/.agent/daily-report.json | jq -r '.output.logseq.token.file' | sed "s|~|$HOME|")
+  LOGSEQ_TOKEN=$(cat "$TOKEN_PATH" 2>/dev/null)
+elif [ "$TOKEN_TYPE" = "command" ]; then
+  TOKEN_CMD=$(cat ~/.agent/daily-report.json | jq -r '.output.logseq.token.command')
+  LOGSEQ_TOKEN=$(eval "$TOKEN_CMD" 2>/dev/null)
+fi
 ```
 
 Append to today's Logseq journal page (page name = `$TODAY`):
@@ -162,6 +170,6 @@ curl -sf \
   "$LOGSEQ_URL/api"
 ```
 
-If the token file does not exist or any API call fails, print a warning and skip Logseq output without aborting.
+If the token cannot be resolved or any API call fails, print a warning and skip Logseq output without aborting.
 
 Print all saved/posted locations when done.
