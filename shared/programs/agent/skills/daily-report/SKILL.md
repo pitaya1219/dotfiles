@@ -116,13 +116,26 @@ done
 Unresolved items or observations.
 ```
 
-## Save
+## Step 4: Save
 
-Read `output_dir` from config:
+### Local (`output.local`)
+
+If `output.local` is present in config (or `output` key is absent entirely):
+
 ```bash
-OUTPUT_DIR=$(cat ~/.agent/daily-report.json | jq -r '.output_dir' | sed "s|~|$HOME|")
+LOCAL_DIR=$(cat ~/.agent/daily-report.json | jq -r '.output.local.dir // "~/agent-sessions"' | sed "s|~|$HOME|")
 ```
 
-Save to `$OUTPUT_DIR/daily-YYYY-MM-DD.md`.
-If $ARGUMENTS is provided, use that path instead.
-Print the saved path when done.
+Save the report to `$LOCAL_DIR/daily-YYYY-MM-DD.md`.
+If `$ARGUMENTS` is provided, use that path instead.
+
+### Logseq (`output.logseq`)
+
+If `output.logseq` is present and truthy in config, invoke the **logseq-write** skill with:
+- **Page**: today's date (e.g. `2026-06-08`)
+- **Format**: `markdown`
+- **Title**: `Daily Report — YYYY-MM-DD`
+- **Tag**: `daily-report`
+- **Content**: the report generated in Step 3
+
+Print all saved/posted locations when done.
