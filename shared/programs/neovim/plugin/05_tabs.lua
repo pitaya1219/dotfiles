@@ -312,3 +312,10 @@ vim.keymap.set('n', '<leader>tabt', function()
     vim.api.nvim_echo({{'No running terminal found.', 'WarningMsg'}}, false, {})
   end
 end, { silent = true, desc = 'Move to tab with running terminal' })
+
+-- :TermTab — open a bash login shell in a new tab (ensures PATH is fully initialised)
+vim.api.nvim_create_user_command('TermTab', function()
+  vim.cmd('tabnew')
+  vim.fn.termopen({ 'bash', '-l' })
+  vim.cmd('startinsert')
+end, { desc = 'Open terminal in a new tab (bash login shell)' })

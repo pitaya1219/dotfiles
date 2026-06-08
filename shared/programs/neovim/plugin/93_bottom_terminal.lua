@@ -104,10 +104,3 @@ end
 vim.keymap.set({ 'n', 't' }, '<M-j>', M.toggle, { desc = 'Toggle bottom terminal' })
 -- macOS fallback: Option+j sends ∆ (U+2206) in Terminal.app and other apps that don't remap Option as Meta
 vim.keymap.set({ 'n', 't' }, '∆', M.toggle, { desc = 'Toggle bottom terminal (macOS)' })
-
--- :TermTab — open a bash login shell in a new tab (ensures PATH is fully initialised)
-vim.api.nvim_create_user_command('TermTab', function()
-  vim.cmd('tabnew')
-  vim.fn.termopen({ 'bash', '-l' })
-  vim.cmd('startinsert')
-end, { desc = 'Open terminal in a new tab (bash login shell)' })
