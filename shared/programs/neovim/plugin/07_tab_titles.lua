@@ -8,6 +8,7 @@ local M = {}
 
 local custom_tab_names = {}
 local custom_buf_names = {}
+local last_focused = {} -- [tabpage handle] = os.time()
 
 local function tabnr_to_handle(tabnr)
   local handles = vim.api.nvim_list_tabpages()
@@ -15,6 +16,49 @@ local function tabnr_to_handle(tabnr)
     if vim.api.nvim_tabpage_get_number(handle) == tabnr then
       return handle
     end
+  end
+end
+
+local function dim_color(color, factor)
+  local r = math.min(255, math.max(0, math.floor(math.floor(color / 0x10000) * factor)))
+  local g = math.min(255, math.max(0, math.floor(math.floor((color % 0x10000) / 0x100) * factor)))
+  local b = math.min(255, math.max(0, math.floor((color % 0x100) * factor)))
+  return r * 0x10000 + g * 0x100 + b
+end
+
+local function setup_dim_highlights()
+  local base = vim.api.nvim_get_hl(0, { name = 'TabLine', link = false })
+  local bg = base.bg
+  local fg = base.fg
+
+  local hl1 = { bg = bg }
+  local hl2 = { bg = bg }
+  if fg then
+    hl1.fg = dim_color(fg, 0.65)
+    hl2.fg = dim_color(fg, 0.4)
+  end
+
+  vim.api.nvim_set_hl(0, 'TabLineOld1', hl1)
+  vim.api.nvim_set_hl(0, 'TabLineOld2', hl2)
+end
+
+local function get_tab_highlight(i, current_tab, tab_handle)
+  if i == current_tab then
+    return '%#TabLineSel#'
+  end
+  if not last_focused[tab_handle] then
+    return '%#TabLineOld2#'
+  end
+  local now = os.time()
+  local focused = last_focused[tab_handle]
+  local nd = os.date('*t', now)
+  local fd = os.date('*t', focused)
+  if nd.year == fd.year and nd.yday == fd.yday then
+    return '%#TabLine#'
+  elseif (now - focused) < 7 * 86400 then
+    return '%#TabLineOld1#'
+  else
+    return '%#TabLineOld2#'
   end
 end
 
@@ -206,12 +250,8 @@ function M.tabline()
       title = title:sub(1, 27) .. "..."
     end
 
-    local highlight
-    if i == current_tab then
-      highlight = '%#TabLineSel#'
-    else
-      highlight = '%#TabLine#'
-    end
+    local tab_handle = tabnr_to_handle(i)
+    local highlight = get_tab_highlight(i, current_tab, tab_handle)
 
     -- %{i}T marks the clickable region for tab i (enables mouse/touch tap)
     local marker = i == current_tab and '◆ ' or '  '
@@ -242,6 +282,13 @@ function M.setup()
 
   vim.o.tabline = '%!TabLine()'
 
+  vim.api.nvim_create_autocmd('TabEnter', {
+    callback = function()
+      local handle = vim.api.nvim_get_current_tabpage()
+      last_focused[handle] = os.time()
+    end,
+  })
+
   vim.api.nvim_create_autocmd({'TabEnter', 'TabNew', 'BufEnter', 'TermOpen'}, {
     pattern = '*',
     callback = function()
@@ -260,7 +307,18 @@ function M.setup()
           custom_tab_names[h] = nil
         end
       end
+      for h in pairs(last_focused) do
+        if not valid[h] then
+          last_focused[h] = nil
+        end
+      end
     end
+  })
+
+  vim.api.nvim_create_autocmd('ColorScheme', {
+    callback = function()
+      setup_dim_highlights()
+    end,
   })
 
   vim.api.nvim_create_autocmd('BufWipeout', {
@@ -280,6 +338,8 @@ function M.setup()
     local new_name = vim.fn.input('Tab name: ', current)
     M.set_tab_name(tabnr, new_name)
   end, { silent = true, desc = 'Rename current tab' })
+
+  setup_dim_highlights()
 end
 
 _G.tab_titles = M
