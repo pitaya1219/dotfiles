@@ -214,7 +214,8 @@ function M.tabline()
     end
 
     -- %{i}T marks the clickable region for tab i (enables mouse/touch tap)
-    table.insert(result, string.format('%%%dT%s %d:%s %%T ', i, highlight, i, title))
+    local marker = i == current_tab and '◆ ' or '  '
+    table.insert(result, string.format('%%%dT%s %s%d:%s %%T ', i, highlight, marker, i, title))
   end
 
   table.insert(result, '%#TabLineFill#%T')
