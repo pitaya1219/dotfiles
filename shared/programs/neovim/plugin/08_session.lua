@@ -39,7 +39,9 @@ local function named_file(name)
 end
 
 local function sidecar_path(session_path)
-  return session_path:gsub('%.vim$', '.terminal.json')
+  -- Extra parens discard gsub's second return value (count) so callers
+  -- receive exactly one string and don't accidentally pass it as a flag.
+  return (session_path:gsub('%.vim$', '.terminal.json'))
 end
 
 local function has_real_files()
