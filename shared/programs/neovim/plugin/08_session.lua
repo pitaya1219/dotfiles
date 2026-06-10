@@ -1,28 +1,30 @@
 -- Session management: CWD-based auto-sessions + named global sessions
 --
 -- Storage layout:
---   stdpath('data')/sessions/<escaped-cwd>.vim   -- CWD sessions (auto)
---   stdpath('data')/sessions/named/<name>.vim    -- named sessions (manual)
+--   stdpath('data')/sessions/<escaped-cwd>.vim            -- CWD sessions (auto)
+--   stdpath('data')/sessions/<escaped-cwd>.terminal.json  -- terminal sidecar
+--   stdpath('data')/sessions/named/<name>.vim             -- named sessions (manual)
+--   stdpath('data')/sessions/named/<name>.terminal.json   -- terminal sidecar
 --
 -- Commands:
 --   :SessionSave [name]     no name → CWD session; name → named session
 --   :SessionRestore [name]  no name → CWD session; name → named session
 --   :SessionDelete [name]   no name → CWD session; name → named session
---   :SessionList            floating picker for named sessions
+--   :SessionList            floating picker for all sessions
 --
 -- Keymaps:
 --   <leader>sess   save CWD session
 --   <leader>sesr   restore CWD session
 --   <leader>sesd   delete CWD session
 --   <leader>sesS   save named session (prompts for name)
---   <leader>sesl   named session picker (list / restore / delete)
+--   <leader>sesl   session picker (CWD + named)
 
 local session_dir = vim.fn.stdpath('data') .. '/sessions'
 local named_dir   = session_dir .. '/named'
 
 vim.opt.sessionoptions = { 'buffers', 'curdir', 'tabpages', 'winsize', 'folds' }
 
--- ─── internal helpers ────────────────────────────────────────────────────────
+-- ─── helpers ─────────────────────────────────────────────────────────────────
 
 local function escape_name(s)
   return s:gsub('[/\\:*?"<>|%s]', '_')
@@ -34,6 +36,10 @@ end
 
 local function named_file(name)
   return named_dir .. '/' .. escape_name(name) .. '.vim'
+end
+
+local function sidecar_path(session_path)
+  return session_path:gsub('%.vim$', '.terminal.json')
 end
 
 local function has_real_files()
@@ -67,18 +73,6 @@ local function restore_listed(bufs)
   end
 end
 
-local function do_save(path, dir)
-  vim.fn.mkdir(dir or session_dir, 'p')
-  local hidden = hide_terminal_bufs()
-  local ok, err = pcall(vim.cmd, 'mksession! ' .. vim.fn.fnameescape(path))
-  restore_listed(hidden)
-  return ok, err
-end
-
-local function do_restore(path)
-  return pcall(vim.cmd, 'source ' .. vim.fn.fnameescape(path))
-end
-
 local function named_session_names(arglead)
   local files = vim.fn.glob(named_dir .. '/*.vim', false, true)
   local names = {}
@@ -89,6 +83,140 @@ local function named_session_names(arglead)
     end
   end
   return names
+end
+
+-- ─── terminal sidecar: save ──────────────────────────────────────────────────
+
+local function collect_terminal_info()
+  local seen_bufs = {}
+  local terminals = {}
+  local tab_count = vim.fn.tabpagenr('$')
+
+  for i = 1, tab_count do
+    local tab_bufs = vim.fn.tabpagebuflist(i)
+    for _, buf in ipairs(tab_bufs) do
+      if not seen_bufs[buf]
+        and vim.api.nvim_buf_is_valid(buf)
+        and vim.bo[buf].buftype == 'terminal' then
+        seen_bufs[buf] = true
+        table.insert(terminals, {
+          tab        = i,
+          type       = vim.b[buf].terminal_type or 'bash',
+          cwd        = vim.b[buf].terminal_cwd or vim.fn.getcwd(),
+          session_id = vim.b[buf].terminal_session_id,
+        })
+      end
+    end
+  end
+  return terminals
+end
+
+local function save_terminal_sidecar(session_path, terminals)
+  local path = sidecar_path(session_path)
+  if #terminals == 0 then
+    vim.fn.delete(path)
+    return
+  end
+  local f = io.open(path, 'w')
+  if f then
+    f:write(vim.fn.json_encode(terminals))
+    f:close()
+  end
+end
+
+-- ─── terminal sidecar: restore ───────────────────────────────────────────────
+
+local function open_terminal_entry(entry)
+  local cwd        = entry.cwd or vim.fn.getcwd()
+  local session_id = entry.session_id
+  local term_type  = entry.type or 'bash'
+
+  vim.cmd('tabnew')
+  local buf = vim.api.nvim_get_current_buf()
+
+  if term_type == 'claude' then
+    local cmd = 'eval "$(direnv export bash)" && claude'
+    if session_id and session_id ~= '' then
+      cmd = cmd .. ' --resume ' .. vim.fn.shellescape(session_id)
+    end
+    cmd = 'cd ' .. vim.fn.shellescape(cwd) .. ' && ' .. cmd
+    vim.b[buf].terminal_type = 'claude'
+    vim.b[buf].terminal_cwd  = cwd
+    -- claude requires single-width ambiguous chars to render correctly
+    vim.opt.ambiwidth = 'single'
+    pcall(function()
+      vim.opt.cellwidths = { { 0x2500, 0x257f, 1 }, { 0x2100, 0x214d, 1 } }
+    end)
+    vim.fn.termopen(cmd)
+
+  elseif term_type == 'vibe' then
+    local cmd = 'eval "$(direnv export bash)" && vibe'
+    if session_id and session_id ~= '' then
+      cmd = cmd .. ' --resume ' .. vim.fn.shellescape(session_id)
+    end
+    cmd = 'cd ' .. vim.fn.shellescape(cwd) .. ' && ' .. cmd
+    vim.b[buf].terminal_type = 'vibe'
+    vim.b[buf].terminal_cwd  = cwd
+    vim.fn.termopen(cmd)
+
+  else
+    -- plain bash
+    if vim.fn.isdirectory(cwd) == 1 then
+      vim.cmd('lcd ' .. vim.fn.fnameescape(cwd))
+    end
+    vim.b[buf].terminal_cwd = cwd
+    vim.fn.termopen({ 'bash', '-l' })
+  end
+
+  vim.cmd('startinsert')
+end
+
+local function restore_terminal_sidecar(session_path)
+  local path = sidecar_path(session_path)
+  if vim.fn.filereadable(path) == 0 then return end
+  local f = io.open(path, 'r')
+  if not f then return end
+  local content = f:read('*a')
+  f:close()
+  if not content or content == '' then return end
+
+  local ok, terminals = pcall(vim.fn.json_decode, content)
+  if not ok or type(terminals) ~= 'table' then return end
+
+  for _, entry in ipairs(terminals) do
+    open_terminal_entry(entry)
+  end
+
+  if _G.tab_titles then
+    vim.schedule(function() _G.tab_titles.update_all_tab_titles() end)
+  end
+end
+
+-- ─── core save / restore ─────────────────────────────────────────────────────
+
+local function do_save(path, dir)
+  vim.fn.mkdir(dir or session_dir, 'p')
+  local terminals = collect_terminal_info()
+  local hidden    = hide_terminal_bufs()
+  local ok, err   = pcall(vim.cmd, 'mksession! ' .. vim.fn.fnameescape(path))
+  restore_listed(hidden)
+  if ok then
+    save_terminal_sidecar(path, terminals)
+  end
+  return ok, err
+end
+
+local function do_restore(path)
+  local ok, err = pcall(vim.cmd, 'source ' .. vim.fn.fnameescape(path))
+  if ok then
+    vim.schedule(function() restore_terminal_sidecar(path) end)
+  end
+  return ok, err
+end
+
+local function do_delete(path)
+  vim.fn.delete(path)
+  vim.fn.delete(sidecar_path(path))
 end
 
 -- ─── CWD sessions ────────────────────────────────────────────────────────────
@@ -126,7 +254,7 @@ local function delete_cwd()
     vim.notify('Session: no saved session for this directory.', vim.log.levels.WARN)
     return
   end
-  vim.fn.delete(path)
+  do_delete(path)
   vim.notify('Session deleted (cwd).', vim.log.levels.INFO)
 end
 
@@ -165,7 +293,7 @@ local function delete_named(name)
     vim.notify('Session "' .. name .. '" not found.', vim.log.levels.WARN)
     return
   end
-  vim.fn.delete(path)
+  do_delete(path)
   vim.notify('Session "' .. name .. '" deleted.', vim.log.levels.INFO)
 end
 
@@ -198,16 +326,16 @@ local function pick_session()
   local width = math.max(50, math.floor(vim.o.columns * 0.5))
   local height = math.min(#entries + 2, 15)
   local win = vim.api.nvim_open_win(buf, true, {
-    relative    = 'editor',
-    width       = width,
-    height      = height,
-    col         = (vim.o.columns - width) / 2,
-    row         = (vim.o.lines - height) / 2,
-    style       = 'minimal',
-    border      = 'rounded',
-    title       = ' Sessions ',
-    title_pos   = 'center',
-    zindex      = 100,
+    relative  = 'editor',
+    width     = width,
+    height    = height,
+    col       = (vim.o.columns - width) / 2,
+    row       = (vim.o.lines - height) / 2,
+    style     = 'minimal',
+    border    = 'rounded',
+    title     = ' Sessions ',
+    title_pos = 'center',
+    zindex    = 100,
   })
 
   local function update_display()
@@ -222,12 +350,8 @@ local function pick_session()
   end
 
   local function close()
-    if vim.api.nvim_win_is_valid(win) then
-      vim.api.nvim_win_close(win, true)
-    end
-    if vim.api.nvim_buf_is_valid(buf) then
-      vim.api.nvim_buf_delete(buf, { force = true })
-    end
+    if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+    if vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
   end
 
   vim.keymap.set('n', 'j', function()
@@ -240,15 +364,8 @@ local function pick_session()
     update_display()
   end, { buffer = buf })
 
-  vim.keymap.set('n', 'g', function()
-    current_idx = 1
-    update_display()
-  end, { buffer = buf })
-
-  vim.keymap.set('n', 'G', function()
-    current_idx = #entries
-    update_display()
-  end, { buffer = buf })
+  vim.keymap.set('n', 'g', function() current_idx = 1; update_display() end, { buffer = buf })
+  vim.keymap.set('n', 'G', function() current_idx = #entries; update_display() end, { buffer = buf })
 
   vim.keymap.set('n', '<CR>', function()
     local entry = entries[current_idx]
@@ -266,7 +383,7 @@ local function pick_session()
   vim.keymap.set('n', 'd', function()
     local entry = entries[current_idx]
     if not entry then return end
-    vim.fn.delete(entry.path)
+    do_delete(entry.path)
     local label = entry.label
     table.remove(entries, current_idx)
     if #entries == 0 then
@@ -328,6 +445,7 @@ vim.api.nvim_create_autocmd('VimEnter', {
       local path = cwd_file()
       if vim.fn.filereadable(path) == 1 then
         pcall(vim.cmd, 'source ' .. vim.fn.fnameescape(path))
+        vim.schedule(function() restore_terminal_sidecar(path) end)
       end
     end
   end,
@@ -335,8 +453,8 @@ vim.api.nvim_create_autocmd('VimEnter', {
 
 -- ─── keymaps ─────────────────────────────────────────────────────────────────
 
-vim.keymap.set('n', '<leader>sess', save_cwd,          { silent = true, desc = 'Save CWD session' })
-vim.keymap.set('n', '<leader>sesr', restore_cwd,       { silent = true, desc = 'Restore CWD session' })
-vim.keymap.set('n', '<leader>sesd', delete_cwd,        { silent = true, desc = 'Delete CWD session' })
-vim.keymap.set('n', '<leader>sesS', save_named,        { silent = true, desc = 'Save named session (prompt)' })
-vim.keymap.set('n', '<leader>sesl', pick_session,       { silent = true, desc = 'Session picker (CWD + named)' })
+vim.keymap.set('n', '<leader>sess', save_cwd,   { silent = true, desc = 'Save CWD session' })
+vim.keymap.set('n', '<leader>sesr', restore_cwd, { silent = true, desc = 'Restore CWD session' })
+vim.keymap.set('n', '<leader>sesd', delete_cwd,  { silent = true, desc = 'Delete CWD session' })
+vim.keymap.set('n', '<leader>sesS', save_named,  { silent = true, desc = 'Save named session (prompt)' })
+vim.keymap.set('n', '<leader>sesl', pick_session, { silent = true, desc = 'Session picker (CWD + named)' })
