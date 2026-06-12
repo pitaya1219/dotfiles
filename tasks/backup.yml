@@ -39,3 +39,24 @@ tasks:
     desc: Dry run for pcloud backup
     cmd:
       task: sync:up:pcloud:test
+
+  backup:ls:
+    desc: List backup destination contents (alias for sync:ls)
+    requires:
+      vars: [REMOTE, DIST_DIR]
+    cmd:
+      task: sync:ls
+
+  backup:ls:encrypted:
+    desc: List encrypted backup destination contents
+    requires:
+      vars: [ENCRYPT_SUBDIR]
+    cmd:
+      task: sync:ls:encrypted
+
+  backup:ls:pcloud:
+    desc: List pcloud encrypted backup destination contents
+    requires:
+      vars: [ENCRYPT_SUBDIR]
+    cmd:
+      task: sync:ls:pcloud

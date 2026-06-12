@@ -264,3 +264,44 @@ tasks:
       task: bisync:pcloud
       vars:
         CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+
+  # ──────── Inspect remote ────────
+
+  ls:
+    desc: List remote contents (rclone ls)
+    requires:
+      vars: [REMOTE, DIST_DIR]
+    cmd: >-
+      {{.RCLONE_BIN | replace "~" "$HOME"}} ls
+      "{{.REMOTE}}{{.DIST_DIR}}"
+      {{.CLI_ARGS}}
+
+  ls:encrypted:
+    desc: List encrypted remote contents
+    requires:
+      vars: [ENCRYPT_SUBDIR]
+    cmd:
+      task: ls
+      vars:
+        REMOTE: ':crypt:'
+        DIST_DIR: '{{.ENCRYPT_SUBDIR}}'
+    env:
+      RCLONE_CRYPT_PASSWORD:
+        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password)"'
+      RCLONE_CRYPT_PASSWORD2:
+        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password2)"'
+      RCLONE_CRYPT_REMOTE: '{{.RCLONE_CRYPT_REMOTE | default ""}}'
+      RCLONE_CRYPT_FILENAME_ENCRYPTION: '{{.RCLONE_CRYPT_FILENAME_ENCRYPTION | default "standard"}}'
+      RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION: '{{.RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION | default "true"}}'
+
+  ls:pcloud:
+    desc: List pcloud encrypted remote contents
+    requires:
+      vars: [ENCRYPT_SUBDIR]
+    cmd:
+      task: ls:encrypted
+    env:
+      RCLONE_PCLOUD_TOKEN:
+        sh: passage show rclone/pcloud/${USER}/token
+      RCLONE_PCLOUD_HOSTNAME: 'eapi.pcloud.com'
+      RCLONE_CRYPT_REMOTE: ':pcloud:{{.PARENT_DIR}}'
