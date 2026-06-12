@@ -72,9 +72,9 @@ impl App {
     pub fn build_file_tree(&mut self) -> Result<()> {
         self.file_items.clear();
 
-        // Load only immediate children of the graph root; expand on demand
+        // Collect directories and .md files from the graph root
         let walker = WalkDir::new(&self.graph_path)
-            .max_depth(1)
+            .max_depth(6)
             .sort_by_file_name()
             .into_iter()
             .filter_entry(|e| {
@@ -90,7 +90,13 @@ impl App {
             let is_dir = entry.file_type().is_dir();
             let is_md = path.extension().map_or(false, |e| e == "md");
 
-            if entry.depth() == 0 || (!is_dir && !is_md) {
+            if !is_dir && !is_md {
+                continue;
+            }
+
+            // depth relative to graph root
+            let depth = entry.depth();
+            if depth == 0 {
                 continue;
             }
 
@@ -104,9 +110,9 @@ impl App {
             self.file_items.push(FileItem {
                 path,
                 name,
-                depth: 0,
+                depth: depth - 1,
                 is_dir,
-                is_expanded: false,
+                is_expanded: depth == 1,
             });
         }
 
