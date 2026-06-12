@@ -19,6 +19,17 @@ vars:
   BACKUP_TIMESTAMP: '{{now | date "20060102"}}'
   BACKUP_LOG_FILE: '{{.BACKUP_LOG_DIR}}/backup-{{.BACKUP_TIMESTAMP}}.log'
   RCLONE_BIN: '{{.RCLONE_BIN | default "rclone"}}'
+  # Built from comma-separated EXCLUDE var: "foo,bar" → --exclude 'foo' --exclude 'bar'
+  # Usage: task sync:up ... EXCLUDE='*.tmp,node_modules/**'
+  EXCLUDE_ARGS:
+    sh: |
+      if [ -z "{{.EXCLUDE}}" ]; then echo ""; exit 0; fi
+      IFS=',' read -ra PATTERNS <<< "{{.EXCLUDE}}"
+      args=""
+      for p in "${PATTERNS[@]}"; do
+        [ -n "$p" ] && args+="--exclude '$p' "
+      done
+      printf '%s' "${args% }"
 
 tasks:
   default:
@@ -63,6 +74,11 @@ tasks:
       - chmod +x ~/.shortcuts/logseq-sync
 
   # ──────── Generic rclone sync ────────
+  # Variable naming convention (from the user's perspective):
+  #   SOURCE_DIR  — local directory (source in `up`, destination in `down`)
+  #   DIST_DIR    — subdirectory on the remote (destination in `up`, source in `down`)
+  #   REMOTE      — rclone remote prefix (e.g. ":pcloud:", ":crypt:")
+  #   EXCLUDE     — comma-separated exclude patterns (e.g. "*.tmp,node_modules/**")
 
   up:
     desc: Sync local → remote (rclone sync)
@@ -73,6 +89,7 @@ tasks:
       - >-
         {{.RCLONE_BIN | replace "~" "$HOME"}} sync
         "{{.SOURCE_DIR}}" "{{.REMOTE}}{{.DIST_DIR}}"
+        {{.EXCLUDE_ARGS}}
         --log-file="{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
         --log-level INFO
         {{.CLI_ARGS}}
@@ -86,6 +103,7 @@ tasks:
       - >-
         {{.RCLONE_BIN | replace "~" "$HOME"}} sync
         "{{.REMOTE}}{{.DIST_DIR}}" "{{.SOURCE_DIR}}"
+        {{.EXCLUDE_ARGS}}
         --log-file="{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
         --log-level INFO
         {{.CLI_ARGS}}
@@ -99,18 +117,28 @@ tasks:
       - >-
         {{.RCLONE_BIN | replace "~" "$HOME"}} bisync
         "{{.SOURCE_DIR}}" "{{.REMOTE}}{{.DIST_DIR}}"
+        {{.EXCLUDE_ARGS}}
         --log-file="{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
         --log-level INFO
         {{.CLI_ARGS}}
 
   up:with-removed:
-    desc: Sync local → remote, saving deleted files to a timestamped dir
+    desc: Sync local → remote, saving deleted remote files to a timestamped dir
     requires:
       vars: [SOURCE_DIR, DIST_DIR, REMOTE]
     cmd:
       task: up
       vars:
         CLI_ARGS: '--backup-dir="{{.REMOTE}}{{.DIST_DIR | trimSuffix "/"}}_removed_{{now | date "20060102150405"}}" {{.CLI_ARGS}}'
+
+  down:with-removed:
+    desc: Sync remote → local, saving overwritten local files to a timestamped dir
+    requires:
+      vars: [SOURCE_DIR, DIST_DIR, REMOTE]
+    cmd:
+      task: down
+      vars:
+        CLI_ARGS: '--backup-dir="{{.SOURCE_DIR | trimSuffix "/"}}_removed_{{now | date "20060102150405"}}" {{.CLI_ARGS}}'
 
   up:test:
     desc: Dry run for sync up
@@ -133,15 +161,20 @@ tasks:
       vars:
         CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
 
+  # env: vars are not inherited via cmd.task, so encrypted/pcloud tasks call
+  # their base task via shell subprocess to ensure RCLONE_* env propagates.
+
   up:encrypted:
     desc: Sync local → remote with rclone crypt encryption
     requires:
       vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
-    cmd:
-      task: up
-      vars:
-        REMOTE: ':crypt:'
-        DIST_DIR: '{{.ENCRYPT_SUBDIR}}'
+    cmd: |
+      task sync:up \
+        SOURCE_DIR='{{.SOURCE_DIR}}' \
+        DIST_DIR='{{.ENCRYPT_SUBDIR}}' \
+        REMOTE=':crypt:' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- {{.CLI_ARGS}}
     env:
       RCLONE_CRYPT_PASSWORD:
         sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password)"'
@@ -155,11 +188,13 @@ tasks:
     desc: Sync remote → local with rclone crypt decryption
     requires:
       vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
-    cmd:
-      task: down
-      vars:
-        REMOTE: ':crypt:'
-        DIST_DIR: '{{.ENCRYPT_SUBDIR}}'
+    cmd: |
+      task sync:down \
+        SOURCE_DIR='{{.SOURCE_DIR}}' \
+        DIST_DIR='{{.ENCRYPT_SUBDIR}}' \
+        REMOTE=':crypt:' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- {{.CLI_ARGS}}
     env:
       RCLONE_CRYPT_PASSWORD:
         sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password)"'
@@ -173,11 +208,13 @@ tasks:
     desc: Bidirectional sync with rclone crypt encryption
     requires:
       vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
-    cmd:
-      task: bisync
-      vars:
-        REMOTE: ':crypt:'
-        DIST_DIR: '{{.ENCRYPT_SUBDIR}}'
+    cmd: |
+      task sync:bisync \
+        SOURCE_DIR='{{.SOURCE_DIR}}' \
+        DIST_DIR='{{.ENCRYPT_SUBDIR}}' \
+        REMOTE=':crypt:' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- {{.CLI_ARGS}}
     env:
       RCLONE_CRYPT_PASSWORD:
         sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password)"'
@@ -189,31 +226,41 @@ tasks:
 
   up:encrypted:test:
     desc: Dry run for encrypted sync up
-    cmd:
-      task: up:encrypted
-      vars:
-        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+    cmd: |
+      task sync:up:encrypted \
+        SOURCE_DIR='{{.SOURCE_DIR}}' \
+        ENCRYPT_SUBDIR='{{.ENCRYPT_SUBDIR}}' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- --dry-run {{.CLI_ARGS}}
 
   down:encrypted:test:
     desc: Dry run for encrypted sync down
-    cmd:
-      task: down:encrypted
-      vars:
-        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+    cmd: |
+      task sync:down:encrypted \
+        SOURCE_DIR='{{.SOURCE_DIR}}' \
+        ENCRYPT_SUBDIR='{{.ENCRYPT_SUBDIR}}' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- --dry-run {{.CLI_ARGS}}
 
   bisync:encrypted:test:
     desc: Dry run for encrypted bisync
-    cmd:
-      task: bisync:encrypted
-      vars:
-        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+    cmd: |
+      task sync:bisync:encrypted \
+        SOURCE_DIR='{{.SOURCE_DIR}}' \
+        ENCRYPT_SUBDIR='{{.ENCRYPT_SUBDIR}}' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- --dry-run {{.CLI_ARGS}}
 
   up:pcloud:
     desc: Sync local → remote with pcloud encrypted storage
     requires:
       vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
-    cmd:
-      task: up:encrypted
+    cmd: |
+      task sync:up:encrypted \
+        SOURCE_DIR='{{.SOURCE_DIR}}' \
+        ENCRYPT_SUBDIR='{{.ENCRYPT_SUBDIR}}' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- {{.CLI_ARGS}}
     env:
       RCLONE_PCLOUD_TOKEN:
         sh: passage show rclone/pcloud/${USER}/token
@@ -224,8 +271,12 @@ tasks:
     desc: Sync remote → local from pcloud encrypted storage
     requires:
       vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
-    cmd:
-      task: down:encrypted
+    cmd: |
+      task sync:down:encrypted \
+        SOURCE_DIR='{{.SOURCE_DIR}}' \
+        ENCRYPT_SUBDIR='{{.ENCRYPT_SUBDIR}}' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- {{.CLI_ARGS}}
     env:
       RCLONE_PCLOUD_TOKEN:
         sh: passage show rclone/pcloud/${USER}/token
@@ -236,8 +287,12 @@ tasks:
     desc: Bidirectional sync with pcloud encrypted storage
     requires:
       vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
-    cmd:
-      task: bisync:encrypted
+    cmd: |
+      task sync:bisync:encrypted \
+        SOURCE_DIR='{{.SOURCE_DIR}}' \
+        ENCRYPT_SUBDIR='{{.ENCRYPT_SUBDIR}}' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- {{.CLI_ARGS}}
     env:
       RCLONE_PCLOUD_TOKEN:
         sh: passage show rclone/pcloud/${USER}/token
@@ -246,24 +301,33 @@ tasks:
 
   up:pcloud:test:
     desc: Dry run for pcloud sync up
-    cmd:
-      task: up:pcloud
-      vars:
-        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+    cmd: |
+      task sync:up:pcloud \
+        SOURCE_DIR='{{.SOURCE_DIR}}' \
+        ENCRYPT_SUBDIR='{{.ENCRYPT_SUBDIR}}' \
+        PARENT_DIR='{{.PARENT_DIR}}' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- --dry-run {{.CLI_ARGS}}
 
   down:pcloud:test:
     desc: Dry run for pcloud sync down
-    cmd:
-      task: down:pcloud
-      vars:
-        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+    cmd: |
+      task sync:down:pcloud \
+        SOURCE_DIR='{{.SOURCE_DIR}}' \
+        ENCRYPT_SUBDIR='{{.ENCRYPT_SUBDIR}}' \
+        PARENT_DIR='{{.PARENT_DIR}}' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- --dry-run {{.CLI_ARGS}}
 
   bisync:pcloud:test:
     desc: Dry run for pcloud bisync
-    cmd:
-      task: bisync:pcloud
-      vars:
-        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+    cmd: |
+      task sync:bisync:pcloud \
+        SOURCE_DIR='{{.SOURCE_DIR}}' \
+        ENCRYPT_SUBDIR='{{.ENCRYPT_SUBDIR}}' \
+        PARENT_DIR='{{.PARENT_DIR}}' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- --dry-run {{.CLI_ARGS}}
 
   # ──────── Inspect remote ────────
 
@@ -274,17 +338,19 @@ tasks:
     cmd: >-
       {{.RCLONE_BIN | replace "~" "$HOME"}} ls
       "{{.REMOTE}}{{.DIST_DIR}}"
+      {{.EXCLUDE_ARGS}}
       {{.CLI_ARGS}}
 
   ls:encrypted:
     desc: List encrypted remote contents
     requires:
       vars: [ENCRYPT_SUBDIR]
-    cmd:
-      task: ls
-      vars:
-        REMOTE: ':crypt:'
-        DIST_DIR: '{{.ENCRYPT_SUBDIR}}'
+    cmd: |
+      task sync:ls \
+        REMOTE=':crypt:' \
+        DIST_DIR='{{.ENCRYPT_SUBDIR}}' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- {{.CLI_ARGS}}
     env:
       RCLONE_CRYPT_PASSWORD:
         sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password)"'
@@ -298,8 +364,11 @@ tasks:
     desc: List pcloud encrypted remote contents
     requires:
       vars: [ENCRYPT_SUBDIR]
-    cmd:
-      task: ls:encrypted
+    cmd: |
+      task sync:ls:encrypted \
+        ENCRYPT_SUBDIR='{{.ENCRYPT_SUBDIR}}' \
+        EXCLUDE='{{.EXCLUDE}}' \
+        -- {{.CLI_ARGS}}
     env:
       RCLONE_PCLOUD_TOKEN:
         sh: passage show rclone/pcloud/${USER}/token
