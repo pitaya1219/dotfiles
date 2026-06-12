@@ -97,6 +97,7 @@ fn event_loop(
                     KeyCode::Enter | KeyCode::Char('l') => {
                         app.open_selected()?;
                     }
+                    KeyCode::Char('h') => app.collapse_or_jump_parent(),
                     _ => {}
                 },
                 Focus::Content => match key.code {

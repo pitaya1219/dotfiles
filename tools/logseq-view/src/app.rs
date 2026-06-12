@@ -72,9 +72,9 @@ impl App {
     pub fn build_file_tree(&mut self) -> Result<()> {
         self.file_items.clear();
 
-        // Collect directories and .md files from the graph root
+        // Load only immediate children of the graph root; expand on demand
         let walker = WalkDir::new(&self.graph_path)
-            .max_depth(6)
+            .max_depth(1)
             .sort_by_file_name()
             .into_iter()
             .filter_entry(|e| {
@@ -90,13 +90,7 @@ impl App {
             let is_dir = entry.file_type().is_dir();
             let is_md = path.extension().map_or(false, |e| e == "md");
 
-            if !is_dir && !is_md {
-                continue;
-            }
-
-            // depth relative to graph root
-            let depth = entry.depth();
-            if depth == 0 {
+            if entry.depth() == 0 || (!is_dir && !is_md) {
                 continue;
             }
 
@@ -110,9 +104,9 @@ impl App {
             self.file_items.push(FileItem {
                 path,
                 name,
-                depth: depth - 1,
+                depth: 0,
                 is_dir,
-                is_expanded: depth == 1,
+                is_expanded: false,
             });
         }
 
@@ -214,6 +208,37 @@ impl App {
     }
 
     // --- Navigation ---
+
+    pub fn collapse_or_jump_parent(&mut self) {
+        let Some(item) = self.file_items.get(self.browser_selected) else {
+            return;
+        };
+
+        if item.is_dir && item.is_expanded {
+            // collapse this directory
+            let idx = self.browser_selected;
+            let depth = self.file_items[idx].depth;
+            self.file_items[idx].is_expanded = false;
+            let mut end = idx + 1;
+            while end < self.file_items.len() && self.file_items[end].depth > depth {
+                end += 1;
+            }
+            self.file_items.drain(idx + 1..end);
+        } else {
+            // jump to parent directory
+            let depth = item.depth;
+            if depth == 0 {
+                return;
+            }
+            let idx = self.browser_selected;
+            for i in (0..idx).rev() {
+                if self.file_items[i].depth < depth {
+                    self.browser_selected = i;
+                    break;
+                }
+            }
+        }
+    }
 
     pub fn browser_down(&mut self) {
         if self.browser_selected + 1 < self.file_items.len() {
