@@ -1,6 +1,7 @@
 *.swp
 *.swo
 .aider*
+tools/*/target/
 
 # Claude Code local settings
 .claude/*
