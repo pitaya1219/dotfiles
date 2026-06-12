@@ -3,12 +3,12 @@
 set -euo pipefail
 
 # Logseq Cloud Sync Script
-# Syncs Logseq folder with pcloud using rclone-secure
+# Syncs Logseq folder with pcloud using rclone with no config (environment variables)
 
 # Configuration
 LOGSEQ_LOCAL="${LOGSEQ_LOCAL:-$HOME/logseq}"
 LOGSEQ_REMOTE="${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}"
-RCLONE_BIN="${RCLONE_BIN:-$HOME/.local/bin/rclone-secure}"
+RCLONE_BIN="${RCLONE_BIN:-rclone}"
 LOG_FILE="${LOG_FILE:-$HOME/.local/share/logseq-sync.log}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/.local/share/logseq-backups}"
 
@@ -23,6 +23,47 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
+
+# Setup rclone environment variables for no-config mode
+# These configure the pcloud and pcloud-crypt remotes via environment variables
+setup_rclone_env() {
+    # Only setup if not already configured (check if pcloud remote is defined)
+    if [[ -z "${RCLONE_CONFIG_PCLOUD_TYPE:-}" ]]; then
+        # Check if passage is available
+        if command -v passage &>/dev/null; then
+            local user="${USER}"
+            local profile_name="${RCLONE_PROFILE:-$user}"
+            
+            # Export pcloud remote configuration
+            export RCLONE_CONFIG_PCLOUD_TYPE="pcloud"
+            export RCLONE_CONFIG_PCLOUD_HOSTNAME="eapi.pcloud.com"
+            
+            # Get token from passage
+            if [[ -n "$(passage show rclone/pcloud/${profile_name}/token 2>/dev/null)" ]]; then
+                export RCLONE_CONFIG_PCLOUD_TOKEN="$(passage show rclone/pcloud/${profile_name}/token)"
+            fi
+            
+            # Export pcloud-crypt remote configuration
+            export RCLONE_CONFIG_PCLOUD_CRYPT_TYPE="crypt"
+            export RCLONE_CONFIG_PCLOUD_CRYPT_REMOTE="pcloud:"
+            export RCLONE_CONFIG_PCLOUD_CRYPT_FILENAME_ENCRYPTION="standard"
+            export RCLONE_CONFIG_PCLOUD_CRYPT_DIRECTORY_NAME_ENCRYPTION="true"
+            
+            # Get and obscure passwords from passage
+            if command -v rclone &>/dev/null; then
+                local password="$(passage show rclone/crypt/${profile_name}/password 2>/dev/null)"
+                local password2="$(passage show rclone/crypt/${profile_name}/password2 2>/dev/null)"
+                
+                if [[ -n "$password" ]]; then
+                    export RCLONE_CONFIG_PCLOUD_CRYPT_PASSWORD="$($RCLONE_BIN obscure "$password")"
+                fi
+                if [[ -n "$password2" ]]; then
+                    export RCLONE_CONFIG_PCLOUD_CRYPT_PASSWORD2="$($RCLONE_BIN obscure "$password2")"
+                fi
+            fi
+        fi
+    fi
+}
 
 # Helper functions
 log_info() {
@@ -253,8 +294,11 @@ restore_conflicts() {
 
 # Validate prerequisites
 check_prerequisites() {
-    if [[ ! -x "$RCLONE_BIN" ]]; then
-        log_error "rclone-secure not found at $RCLONE_BIN"
+    # Setup rclone environment variables if not already set
+    setup_rclone_env
+    
+    if ! command -v rclone &>/dev/null; then
+        log_error "rclone not found. Please install rclone."
         exit 1
     fi
 
@@ -451,7 +495,7 @@ show_usage() {
     cat << EOF
 Usage: $0 [direction]
 
-Sync Logseq folder with cloud storage using rclone-secure
+Sync Logseq folder with cloud storage using rclone with no config
 
 Arguments:
   direction    Sync direction: up, down, or bidirectional (default: bidirectional)
@@ -459,9 +503,15 @@ Arguments:
 Environment Variables:
   LOGSEQ_LOCAL    Local Logseq directory (default: ~/logseq)
   LOGSEQ_REMOTE   Remote path (default: pcloud-crypt:/logseq)
-  RCLONE_BIN      Path to rclone-secure (default: ~/.local/bin/rclone-secure)
+  RCLONE_BIN      Path to rclone binary (default: rclone)
+  RCLONE_PROFILE  Profile name for passage secrets (default: \$USER)
   LOG_FILE        Log file path (default: ~/.local/share/logseq-sync.log)
   BACKUP_DIR      Backup directory (default: ~/.local/share/logseq-backups)
+
+Required Secrets (via passage):
+  rclone/pcloud/<profile>/token
+  rclone/crypt/<profile>/password
+  rclone/crypt/<profile>/password2
 
 Examples:
   $0              # Bidirectional sync

@@ -72,7 +72,7 @@ setup_macos() {
         <key>LOGSEQ_REMOTE</key>
         <string>${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}</string>
         <key>RCLONE_BIN</key>
-        <string>${HOME}/.local/bin/rclone-secure</string>
+        <string>rclone</string>
     </dict>
     <key>StartInterval</key>
     <integer>${LOGSEQ_SYNC_INTERVAL}</integer>
@@ -125,7 +125,7 @@ exec 2>&1
 
 export LOGSEQ_LOCAL="${LOGSEQ_LOCAL:-\$HOME/storage/shared/logseq}"
 export LOGSEQ_REMOTE="${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}"
-export RCLONE_BIN="/data/data/com.termux/files/usr/bin/rclone-secure"
+export RCLONE_BIN="rclone"
 
 # Create notify wrapper
 NOTIFY_WRAPPER="$NOTIFY_WRAPPER_PATH"
