@@ -15,7 +15,7 @@ vars:
       else
         echo "bash ./scripts/logseq-sync-schedule.sh"
       fi
-  BACKUP_LOG_DIR: '{{.BACKUP_LOG_DIR | default "~/.local/share/backups/logs"}}'
+  BACKUP_LOG_DIR: '{{.BACKUP_LOG_DIR | default "~/.local/share/task/sync/logs"}}'
   BACKUP_TIMESTAMP: '{{now | date "20060102"}}'
   BACKUP_LOG_FILE: '{{.BACKUP_LOG_DIR}}/backup-{{.BACKUP_TIMESTAMP}}.log'
   RCLONE_BIN: '{{.RCLONE_BIN | default "rclone"}}'
@@ -80,14 +80,14 @@ tasks:
     vars:
       EXCLUDE_ARGS: '{{if .EXCLUDE}}{{range splitList "," .EXCLUDE}}--exclude "{{.}}" {{end}}{{end}}'
     cmds:
-      - mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}"
       - >-
+        mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}" &&
         {{.RCLONE_BIN | replace "~" "$HOME"}} sync
         "{{.SOURCE_DIR}}" "{{.REMOTE}}{{.DIST_DIR}}"
         {{.EXCLUDE_ARGS}}
-        --log-file="{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
         --log-level INFO
         {{.CLI_ARGS}}
+        2>&1 | tee -a "{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
 
   down:
     desc: Sync remote → local (rclone sync)
@@ -96,14 +96,14 @@ tasks:
     vars:
       EXCLUDE_ARGS: '{{if .EXCLUDE}}{{range splitList "," .EXCLUDE}}--exclude "{{.}}" {{end}}{{end}}'
     cmds:
-      - mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}"
       - >-
+        mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}" &&
         {{.RCLONE_BIN | replace "~" "$HOME"}} sync
         "{{.REMOTE}}{{.DIST_DIR}}" "{{.SOURCE_DIR}}"
         {{.EXCLUDE_ARGS}}
-        --log-file="{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
         --log-level INFO
         {{.CLI_ARGS}}
+        2>&1 | tee -a "{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
 
   bisync:
     desc: Bidirectional sync (rclone bisync)
@@ -112,8 +112,8 @@ tasks:
     vars:
       EXCLUDE_ARGS: '{{if .EXCLUDE}}{{range splitList "," .EXCLUDE}}--exclude "{{.}}" {{end}}{{end}}'
     cmds:
-      - mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}"
       - >-
+        mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}" &&
         {{.RCLONE_BIN | replace "~" "$HOME"}} bisync
         "{{.SOURCE_DIR}}" "{{.REMOTE}}{{.DIST_DIR}}"
         {{.EXCLUDE_ARGS}}
@@ -123,9 +123,9 @@ tasks:
         --conflict-resolve newer
         --conflict-loser pathname
         --conflict-suffix 'conflict-{DateOnly}-'
-        --log-file="{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
         --log-level INFO
         {{.CLI_ARGS}}
+        2>&1 | tee -a "{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
 
   up:with-removed:
     desc: Sync local → remote, saving deleted remote files to a timestamped dir
