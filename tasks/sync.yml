@@ -19,17 +19,6 @@ vars:
   BACKUP_TIMESTAMP: '{{now | date "20060102"}}'
   BACKUP_LOG_FILE: '{{.BACKUP_LOG_DIR}}/backup-{{.BACKUP_TIMESTAMP}}.log'
   RCLONE_BIN: '{{.RCLONE_BIN | default "rclone"}}'
-  # Built from comma-separated EXCLUDE var: "foo,bar" → --exclude 'foo' --exclude 'bar'
-  # Usage: task sync:up ... EXCLUDE='*.tmp,node_modules/**'
-  EXCLUDE_ARGS:
-    sh: |
-      if [ -z "{{.EXCLUDE}}" ]; then echo ""; exit 0; fi
-      IFS=',' read -ra PATTERNS <<< "{{.EXCLUDE}}"
-      args=""
-      for p in "${PATTERNS[@]}"; do
-        [ -n "$p" ] && args+="--exclude '$p' "
-      done
-      printf '%s' "${args% }"
 
 tasks:
   default:
@@ -79,11 +68,22 @@ tasks:
   #   DIST_DIR    — subdirectory on the remote (destination in `up`, source in `down`)
   #   REMOTE      — rclone remote prefix (e.g. ":pcloud:", ":crypt:")
   #   EXCLUDE     — comma-separated exclude patterns (e.g. "*.tmp,node_modules/**")
+  #
+  # EXCLUDE_ARGS is defined per-task (not globally) because global vars:sh: cannot
+  # access CLI-passed variables at evaluation time.
 
   up:
     desc: Sync local → remote (rclone sync)
     requires:
       vars: [SOURCE_DIR, DIST_DIR, REMOTE]
+    vars:
+      EXCLUDE_ARGS:
+        sh: |
+          if [ -z "{{.EXCLUDE}}" ]; then echo ""; exit 0; fi
+          IFS=',' read -ra PATTERNS <<< "{{.EXCLUDE}}"
+          args=""
+          for p in "${PATTERNS[@]}"; do [ -n "$p" ] && args+="--exclude '$p' "; done
+          printf '%s' "${args% }"
     cmds:
       - mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}"
       - >-
@@ -98,6 +98,14 @@ tasks:
     desc: Sync remote → local (rclone sync)
     requires:
       vars: [SOURCE_DIR, DIST_DIR, REMOTE]
+    vars:
+      EXCLUDE_ARGS:
+        sh: |
+          if [ -z "{{.EXCLUDE}}" ]; then echo ""; exit 0; fi
+          IFS=',' read -ra PATTERNS <<< "{{.EXCLUDE}}"
+          args=""
+          for p in "${PATTERNS[@]}"; do [ -n "$p" ] && args+="--exclude '$p' "; done
+          printf '%s' "${args% }"
     cmds:
       - mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}"
       - >-
@@ -112,12 +120,26 @@ tasks:
     desc: Bidirectional sync (rclone bisync)
     requires:
       vars: [SOURCE_DIR, DIST_DIR, REMOTE]
+    vars:
+      EXCLUDE_ARGS:
+        sh: |
+          if [ -z "{{.EXCLUDE}}" ]; then echo ""; exit 0; fi
+          IFS=',' read -ra PATTERNS <<< "{{.EXCLUDE}}"
+          args=""
+          for p in "${PATTERNS[@]}"; do [ -n "$p" ] && args+="--exclude '$p' "; done
+          printf '%s' "${args% }"
     cmds:
       - mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}"
       - >-
         {{.RCLONE_BIN | replace "~" "$HOME"}} bisync
         "{{.SOURCE_DIR}}" "{{.REMOTE}}{{.DIST_DIR}}"
         {{.EXCLUDE_ARGS}}
+        --resilient
+        --recover
+        --create-empty-src-dirs
+        --conflict-resolve newer
+        --conflict-loser pathname
+        --conflict-suffix 'conflict-{DateOnly}-'
         --log-file="{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
         --log-level INFO
         {{.CLI_ARGS}}
@@ -335,6 +357,14 @@ tasks:
     desc: List remote contents (rclone ls)
     requires:
       vars: [REMOTE, DIST_DIR]
+    vars:
+      EXCLUDE_ARGS:
+        sh: |
+          if [ -z "{{.EXCLUDE}}" ]; then echo ""; exit 0; fi
+          IFS=',' read -ra PATTERNS <<< "{{.EXCLUDE}}"
+          args=""
+          for p in "${PATTERNS[@]}"; do [ -n "$p" ] && args+="--exclude '$p' "; done
+          printf '%s' "${args% }"
     cmd: >-
       {{.RCLONE_BIN | replace "~" "$HOME"}} ls
       "{{.REMOTE}}{{.DIST_DIR}}"
