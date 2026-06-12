@@ -69,21 +69,16 @@ tasks:
   #   REMOTE      — rclone remote prefix (e.g. ":pcloud:", ":crypt:")
   #   EXCLUDE     — comma-separated exclude patterns (e.g. "*.tmp,node_modules/**")
   #
-  # EXCLUDE_ARGS is defined per-task (not globally) because global vars:sh: cannot
-  # access CLI-passed variables at evaluation time.
+  # EXCLUDE_ARGS is defined per-task using a pure template (sprig splitList) to
+  # avoid shell compatibility issues (read -ra is bash-only) while still seeing
+  # CLI-passed EXCLUDE vars at task evaluation time.
 
   up:
     desc: Sync local → remote (rclone sync)
     requires:
       vars: [SOURCE_DIR, DIST_DIR, REMOTE]
     vars:
-      EXCLUDE_ARGS:
-        sh: |
-          if [ -z "{{.EXCLUDE}}" ]; then echo ""; exit 0; fi
-          IFS=',' read -ra PATTERNS <<< "{{.EXCLUDE}}"
-          args=""
-          for p in "${PATTERNS[@]}"; do [ -n "$p" ] && args+="--exclude '$p' "; done
-          printf '%s' "${args% }"
+      EXCLUDE_ARGS: '{{if .EXCLUDE}}{{range splitList "," .EXCLUDE}}--exclude "{{.}}" {{end}}{{end}}'
     cmds:
       - mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}"
       - >-
@@ -99,13 +94,7 @@ tasks:
     requires:
       vars: [SOURCE_DIR, DIST_DIR, REMOTE]
     vars:
-      EXCLUDE_ARGS:
-        sh: |
-          if [ -z "{{.EXCLUDE}}" ]; then echo ""; exit 0; fi
-          IFS=',' read -ra PATTERNS <<< "{{.EXCLUDE}}"
-          args=""
-          for p in "${PATTERNS[@]}"; do [ -n "$p" ] && args+="--exclude '$p' "; done
-          printf '%s' "${args% }"
+      EXCLUDE_ARGS: '{{if .EXCLUDE}}{{range splitList "," .EXCLUDE}}--exclude "{{.}}" {{end}}{{end}}'
     cmds:
       - mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}"
       - >-
@@ -121,13 +110,7 @@ tasks:
     requires:
       vars: [SOURCE_DIR, DIST_DIR, REMOTE]
     vars:
-      EXCLUDE_ARGS:
-        sh: |
-          if [ -z "{{.EXCLUDE}}" ]; then echo ""; exit 0; fi
-          IFS=',' read -ra PATTERNS <<< "{{.EXCLUDE}}"
-          args=""
-          for p in "${PATTERNS[@]}"; do [ -n "$p" ] && args+="--exclude '$p' "; done
-          printf '%s' "${args% }"
+      EXCLUDE_ARGS: '{{if .EXCLUDE}}{{range splitList "," .EXCLUDE}}--exclude "{{.}}" {{end}}{{end}}'
     cmds:
       - mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}"
       - >-
@@ -358,13 +341,7 @@ tasks:
     requires:
       vars: [REMOTE, DIST_DIR]
     vars:
-      EXCLUDE_ARGS:
-        sh: |
-          if [ -z "{{.EXCLUDE}}" ]; then echo ""; exit 0; fi
-          IFS=',' read -ra PATTERNS <<< "{{.EXCLUDE}}"
-          args=""
-          for p in "${PATTERNS[@]}"; do [ -n "$p" ] && args+="--exclude '$p' "; done
-          printf '%s' "${args% }"
+      EXCLUDE_ARGS: '{{if .EXCLUDE}}{{range splitList "," .EXCLUDE}}--exclude "{{.}}" {{end}}{{end}}'
     cmd: >-
       {{.RCLONE_BIN | replace "~" "$HOME"}} ls
       "{{.REMOTE}}{{.DIST_DIR}}"
