@@ -2,7 +2,7 @@
 name: daily-report
 description: Generate a personal daily activity report from configured sources (GitHub, Slack, Asana, session directories)
 user-invocable: true
-version: 2.0.0
+version: 2.1.0
 ---
 
 Generate a daily activity report by reading `~/.agent/daily-report.json` to determine which sources to collect from.
@@ -63,10 +63,30 @@ Note channels active in and key topics discussed.
 
 ### Asana (`sources.asana`)
 
-Use `mcp__claude_ai_Asana__asana_search_tasks`:
-- Updated today: `modified_on=TODAY`, `assignee_any=me`, `completed=false`
-- Completed today: `completed_on=TODAY`, `assignee_any=me`
-- `opt_fields`: `name,memberships.section.name,projects.name`
+**Step A — Get own user GID** (needed for comment filtering):
+
+Call `mcp__claude_ai_Asana__asana_get_user` (no arguments → returns authenticated user). Save `data.gid` as `MY_GID`.
+
+**Step B — Assigned tasks**:
+
+Use `mcp__claude_ai_Asana__asana_search_tasks` in parallel:
+- Updated today: `modified_on=TODAY`, `assignee_any=me`, `completed=false`, `opt_fields=name,memberships.section.name,projects.name`
+- Completed today: `completed_on=TODAY`, `assignee_any=me`, `opt_fields=name,projects.name`
+
+Collect resulting task GIDs as `assigned_gids`.
+
+**Step C — Comment activity on non-assigned tasks**:
+
+Call `mcp__claude_ai_Asana__asana_search_tasks` with `followers_any=me`, `modified_on=TODAY`, `completed=false`, `opt_fields=name,projects.name`, `limit=50`.
+
+From the results, exclude tasks already in `assigned_gids`. For each remaining task, call `mcp__claude_ai_Asana__asana_get_stories_for_task` (run lookups in parallel) with `opt_fields=created_by.gid,text,type,created_at`.
+
+A task counts as "Commented" if it has at least one story where:
+- `type == "comment"`
+- `created_by.gid == MY_GID`
+- `created_at` starts with TODAY (UTC date prefix, e.g. `2026-06-12`)
+
+For matching tasks, record: task name, project name, and first 80 chars of the earliest matching comment.
 
 ### Session Directories (`sources.sessions`)
 
@@ -106,6 +126,9 @@ done
 
 ### Completed
 - [x] task
+
+### Commented
+- task name (project) — "comment preview…"
 
 ## Agent Sessions
 ### session-XXXX
