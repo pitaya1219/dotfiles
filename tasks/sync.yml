@@ -15,6 +15,10 @@ vars:
       else
         echo "bash ./scripts/logseq-sync-schedule.sh"
       fi
+  BACKUP_LOG_DIR: '{{.BACKUP_LOG_DIR | default "~/.local/share/backups/logs"}}'
+  BACKUP_TIMESTAMP: '{{now | date "20060102"}}'
+  BACKUP_LOG_FILE: '{{.BACKUP_LOG_DIR}}/backup-{{.BACKUP_TIMESTAMP}}.log'
+  RCLONE_BIN: '{{.RCLONE_BIN | default "rclone"}}'
 
 tasks:
   default:
@@ -57,3 +61,206 @@ tasks:
         cd $HOME/dotfiles && task sync:logseq
         EOF
       - chmod +x ~/.shortcuts/logseq-sync
+
+  # ──────── Generic rclone sync ────────
+
+  up:
+    desc: Sync local → remote (rclone sync)
+    requires:
+      vars: [SOURCE_DIR, DIST_DIR, REMOTE]
+    cmds:
+      - mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}"
+      - >-
+        {{.RCLONE_BIN | replace "~" "$HOME"}} sync
+        "{{.SOURCE_DIR}}" "{{.REMOTE}}{{.DIST_DIR}}"
+        --log-file="{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
+        --log-level INFO
+        {{.CLI_ARGS}}
+
+  down:
+    desc: Sync remote → local (rclone sync)
+    requires:
+      vars: [SOURCE_DIR, DIST_DIR, REMOTE]
+    cmds:
+      - mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}"
+      - >-
+        {{.RCLONE_BIN | replace "~" "$HOME"}} sync
+        "{{.REMOTE}}{{.DIST_DIR}}" "{{.SOURCE_DIR}}"
+        --log-file="{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
+        --log-level INFO
+        {{.CLI_ARGS}}
+
+  bisync:
+    desc: Bidirectional sync (rclone bisync)
+    requires:
+      vars: [SOURCE_DIR, DIST_DIR, REMOTE]
+    cmds:
+      - mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}"
+      - >-
+        {{.RCLONE_BIN | replace "~" "$HOME"}} bisync
+        "{{.SOURCE_DIR}}" "{{.REMOTE}}{{.DIST_DIR}}"
+        --log-file="{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
+        --log-level INFO
+        {{.CLI_ARGS}}
+
+  up:with-removed:
+    desc: Sync local → remote, saving deleted files to a timestamped dir
+    requires:
+      vars: [SOURCE_DIR, DIST_DIR, REMOTE]
+    cmd:
+      task: up
+      vars:
+        CLI_ARGS: '--backup-dir="{{.REMOTE}}{{.DIST_DIR | trimSuffix "/"}}_removed_{{now | date "20060102150405"}}" {{.CLI_ARGS}}'
+
+  up:test:
+    desc: Dry run for sync up
+    cmd:
+      task: up
+      vars:
+        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+
+  down:test:
+    desc: Dry run for sync down
+    cmd:
+      task: down
+      vars:
+        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+
+  bisync:test:
+    desc: Dry run for bisync
+    cmd:
+      task: bisync
+      vars:
+        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+
+  up:encrypted:
+    desc: Sync local → remote with rclone crypt encryption
+    requires:
+      vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
+    cmd:
+      task: up
+      vars:
+        REMOTE: ':crypt:'
+        DIST_DIR: '{{.ENCRYPT_SUBDIR}}'
+    env:
+      RCLONE_CRYPT_PASSWORD:
+        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password)"'
+      RCLONE_CRYPT_PASSWORD2:
+        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password2)"'
+      RCLONE_CRYPT_REMOTE: '{{.RCLONE_CRYPT_REMOTE | default ""}}'
+      RCLONE_CRYPT_FILENAME_ENCRYPTION: '{{.RCLONE_CRYPT_FILENAME_ENCRYPTION | default "standard"}}'
+      RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION: '{{.RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION | default "true"}}'
+
+  down:encrypted:
+    desc: Sync remote → local with rclone crypt decryption
+    requires:
+      vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
+    cmd:
+      task: down
+      vars:
+        REMOTE: ':crypt:'
+        DIST_DIR: '{{.ENCRYPT_SUBDIR}}'
+    env:
+      RCLONE_CRYPT_PASSWORD:
+        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password)"'
+      RCLONE_CRYPT_PASSWORD2:
+        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password2)"'
+      RCLONE_CRYPT_REMOTE: '{{.RCLONE_CRYPT_REMOTE | default ""}}'
+      RCLONE_CRYPT_FILENAME_ENCRYPTION: '{{.RCLONE_CRYPT_FILENAME_ENCRYPTION | default "standard"}}'
+      RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION: '{{.RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION | default "true"}}'
+
+  bisync:encrypted:
+    desc: Bidirectional sync with rclone crypt encryption
+    requires:
+      vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
+    cmd:
+      task: bisync
+      vars:
+        REMOTE: ':crypt:'
+        DIST_DIR: '{{.ENCRYPT_SUBDIR}}'
+    env:
+      RCLONE_CRYPT_PASSWORD:
+        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password)"'
+      RCLONE_CRYPT_PASSWORD2:
+        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password2)"'
+      RCLONE_CRYPT_REMOTE: '{{.RCLONE_CRYPT_REMOTE | default ""}}'
+      RCLONE_CRYPT_FILENAME_ENCRYPTION: '{{.RCLONE_CRYPT_FILENAME_ENCRYPTION | default "standard"}}'
+      RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION: '{{.RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION | default "true"}}'
+
+  up:encrypted:test:
+    desc: Dry run for encrypted sync up
+    cmd:
+      task: up:encrypted
+      vars:
+        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+
+  down:encrypted:test:
+    desc: Dry run for encrypted sync down
+    cmd:
+      task: down:encrypted
+      vars:
+        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+
+  bisync:encrypted:test:
+    desc: Dry run for encrypted bisync
+    cmd:
+      task: bisync:encrypted
+      vars:
+        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+
+  up:pcloud:
+    desc: Sync local → remote with pcloud encrypted storage
+    requires:
+      vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
+    cmd:
+      task: up:encrypted
+    env:
+      RCLONE_PCLOUD_TOKEN:
+        sh: passage show rclone/pcloud/${USER}/token
+      RCLONE_PCLOUD_HOSTNAME: 'eapi.pcloud.com'
+      RCLONE_CRYPT_REMOTE: ':pcloud:{{.PARENT_DIR}}'
+
+  down:pcloud:
+    desc: Sync remote → local from pcloud encrypted storage
+    requires:
+      vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
+    cmd:
+      task: down:encrypted
+    env:
+      RCLONE_PCLOUD_TOKEN:
+        sh: passage show rclone/pcloud/${USER}/token
+      RCLONE_PCLOUD_HOSTNAME: 'eapi.pcloud.com'
+      RCLONE_CRYPT_REMOTE: ':pcloud:{{.PARENT_DIR}}'
+
+  bisync:pcloud:
+    desc: Bidirectional sync with pcloud encrypted storage
+    requires:
+      vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
+    cmd:
+      task: bisync:encrypted
+    env:
+      RCLONE_PCLOUD_TOKEN:
+        sh: passage show rclone/pcloud/${USER}/token
+      RCLONE_PCLOUD_HOSTNAME: 'eapi.pcloud.com'
+      RCLONE_CRYPT_REMOTE: ':pcloud:{{.PARENT_DIR}}'
+
+  up:pcloud:test:
+    desc: Dry run for pcloud sync up
+    cmd:
+      task: up:pcloud
+      vars:
+        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+
+  down:pcloud:test:
+    desc: Dry run for pcloud sync down
+    cmd:
+      task: down:pcloud
+      vars:
+        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+
+  bisync:pcloud:test:
+    desc: Dry run for pcloud bisync
+    cmd:
+      task: bisync:pcloud
+      vars:
+        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'

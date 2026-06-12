@@ -1,123 +1,41 @@
 version: '3'
 
-# Generic backup tasks
-# These can be used for any directory, not just logseq
-
-vars:
-  # Default values for backup tasks
-  BACKUP_LOG_DIR: '{{.BACKUP_LOG_DIR | default "~/.local/share/backups/logs"}}'
-  BACKUP_TIMESTAMP: '{{now | date "20060102"}}'
-  BACKUP_LOG_FILE: '{{.BACKUP_LOG_DIR}}/backup-{{.BACKUP_TIMESTAMP}}.log'
-
-  # rclone binary path (can be overridden)
-  RCLONE_BIN: '{{.RCLONE_BIN | default "rclone"}}'
+# Aliases for sync:up variants — kept for backward compatibility.
+# For down/bisync variants, use sync:down:* and sync:bisync:* directly.
 
 tasks:
-  # Generic backup task - can be used for any source directory
-  # Usage: task backup SOURCE_DIR=/path/to/source DIST_DIR=/path/to/dest REMOTE=:remote:
   backup:
-    desc: Perform a generic backup using rclone sync
-    vars:
-      EXCLUDE: '{{.EXCLUDE | default ""}}'
-      BACKUP_REMOVED_FILE: '{{.BACKUP_REMOVED_FILE | default "0"}}'
+    desc: Sync local → remote (alias for sync:up)
     requires:
-      vars:
-        - name: SOURCE_DIR
-        - name: DIST_DIR
-        - name: REMOTE
-    cmd: |
-      bash << 'EOF'
-      mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}"
-      exec > >(tee -a "{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}") 2>&1
-      
-      # Build exclude arguments
-      EXCLUDE_ARGS=""
-      if [ -n "{{.EXCLUDE}}" ]; then
-        IFS=',' read -ra EXCLUDE_PATTERNS <<< "{{.EXCLUDE}}"
-        for i in "${!EXCLUDE_PATTERNS[@]}"; do
-          [ $i -gt 0 ] && EXCLUDE_ARGS+=" "
-          EXCLUDE_ARGS+="--exclude='${EXCLUDE_PATTERNS[$i]}'"
-        done
-      fi
-      
-      # Build backup dir argument
-      BACKUP_DIR_ARG=""
-      if [ "{{.BACKUP_REMOVED_FILE}}" = "1" ]; then
-        BACKUP_DIR_ARG="--backup-dir={{.REMOTE}}{{.DIST_DIR | trimSuffix "/"}}_removed_$(date +%Y%m%d%H%M%S)"
-      fi
-      
-      {{.RCLONE_BIN | replace "~" "$HOME"}} sync '{{.SOURCE_DIR}}' '{{.REMOTE}}{{.DIST_DIR}}' $EXCLUDE_ARGS $BACKUP_DIR_ARG {{.CLI_ARGS}}
-      EOF
+      vars: [SOURCE_DIR, DIST_DIR, REMOTE]
+    cmd:
+      task: sync:up
 
   backup:test:
-    desc: Dry run for generic backup
+    desc: Dry run for backup (alias for sync:up:test)
     cmd:
-      task: backup
-      vars:
-        CLI_ARGS: "--dry-run {{.CLI_ARGS}}"
+      task: sync:up:test
 
-  # Generic encrypted backup task
-  # Uses environment variables for encryption settings:
-  # - RCLONE_CRYPT_PASSWORD
-  # - RCLONE_CRYPT_PASSWORD2
-  # - RCLONE_CRYPT_REMOTE
-  # - RCLONE_CRYPT_FILENAME_ENCRYPTION
-  # - RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION
   backup:encrypted:
-    desc: Perform an encrypted backup using rclone
-    vars:
-      PARENT_DIR: '{{.PARENT_DIR| default ""}}'
-      EXCLUDE: '{{.EXCLUDE | default ""}}'
+    desc: Encrypted backup (alias for sync:up:encrypted)
     requires:
-      vars:
-        - name: ENCRYPT_SUBDIR
-        - name: SOURCE_DIR
-    cmd: |
-      task backup \
-        REMOTE=':crypt:' \
-        DIST_DIR='{{.ENCRYPT_SUBDIR}}' \
-        SOURCE_DIR='{{.SOURCE_DIR}}' \
-        EXCLUDE='{{.EXCLUDE}}' \
-        BACKUP_REMOVED_FILE='{{.BACKUP_REMOVED_FILE}}' \
-        -- {{.CLI_ARGS}}
-    env:
-      RCLONE_CRYPT_PASSWORD:
-        sh: |
-          {{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password)"
-      RCLONE_CRYPT_PASSWORD2:
-        sh: |
-          {{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password2)"
-      RCLONE_CRYPT_REMOTE: '{{.RCLONE_CRYPT_REMOTE | default ""}}'
-      RCLONE_CRYPT_FILENAME_ENCRYPTION: '{{.RCLONE_CRYPT_FILENAME_ENCRYPTION | default "standard"}}'
-      RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION: '{{.RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION | default "true"}}'
+      vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
+    cmd:
+      task: sync:up:encrypted
 
   backup:encrypted:test:
     desc: Dry run for encrypted backup
     cmd:
-      task: backup:encrypted
-      vars:
-        CLI_ARGS: "--dry-run {{.CLI_ARGS}}"
+      task: sync:up:encrypted:test
 
   backup:pcloud:
-    desc: Perform an encrypted backup with pcloud
-    cmd: |
-      task backup:encrypted \
-        PARENT_DIR='{{.PARENT_DIR}}' \
-        ENCRYPT_SUBDIR='{{.ENCRYPT_SUBDIR}}' \
-        SOURCE_DIR='{{.SOURCE_DIR}}' \
-        EXCLUDE='{{.EXCLUDE}}' \
-        BACKUP_REMOVED_FILE='{{.BACKUP_REMOVED_FILE}}' \
-        -- {{.CLI_ARGS}}
-    env:
-      RCLONE_PCLOUD_TOKEN: 
-        sh: passage show rclone/pcloud/${USER}/token
-      RCLONE_PCLOUD_HOSTNAME: 'eapi.pcloud.com'
-      RCLONE_CRYPT_REMOTE: ':pcloud:{{.PARENT_DIR}}'
-
+    desc: Encrypted backup to pcloud (alias for sync:up:pcloud)
+    requires:
+      vars: [SOURCE_DIR, ENCRYPT_SUBDIR]
+    cmd:
+      task: sync:up:pcloud
 
   backup:pcloud:test:
-    desc: Dry run for encrypted backup with pcloud
+    desc: Dry run for pcloud backup
     cmd:
-      task: backup:pcloud
-      vars:
-        CLI_ARGS: "--dry-run {{.CLI_ARGS}}"
+      task: sync:up:pcloud:test
