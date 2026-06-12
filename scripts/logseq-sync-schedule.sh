@@ -70,9 +70,9 @@ setup_macos() {
         <key>LOGSEQ_LOCAL</key>
         <string>${LOGSEQ_LOCAL:-$HOME/logseq}</string>
         <key>LOGSEQ_REMOTE</key>
-        <string>${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}</string>
+        <string>${LOGSEQ_REMOTE:-app/logseq}</string>
         <key>RCLONE_BIN</key>
-        <string>${HOME}/.local/bin/rclone-secure</string>
+        <string>rclone</string>
     </dict>
     <key>StartInterval</key>
     <integer>${LOGSEQ_SYNC_INTERVAL}</integer>
@@ -124,8 +124,8 @@ setup_termux() {
 exec 2>&1
 
 export LOGSEQ_LOCAL="${LOGSEQ_LOCAL:-\$HOME/storage/shared/logseq}"
-export LOGSEQ_REMOTE="${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}"
-export RCLONE_BIN="/data/data/com.termux/files/usr/bin/rclone-secure"
+export LOGSEQ_REMOTE="${LOGSEQ_REMOTE:-app/logseq}"
+export RCLONE_BIN="rclone"
 
 # Create notify wrapper
 NOTIFY_WRAPPER="$NOTIFY_WRAPPER_PATH"
@@ -212,7 +212,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Environment="LOGSEQ_LOCAL=${LOGSEQ_LOCAL:-$HOME/logseq}"
-Environment="LOGSEQ_REMOTE=${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}"
+Environment="LOGSEQ_REMOTE=${LOGSEQ_REMOTE:-app/logseq}"
 ExecStart=$SYNC_SCRIPT bidirectional
 StandardOutput=journal
 StandardError=journal
@@ -254,7 +254,7 @@ setup_cron() {
     local INTERVAL_MIN=$((SYNC_INTERVAL / 60))
 
     # Add cron entry if not exists
-    local CRON_ENTRY="*/$INTERVAL_MIN * * * * LOGSEQ_LOCAL=${LOGSEQ_LOCAL:-$HOME/logseq} LOGSEQ_REMOTE=${LOGSEQ_REMOTE:-pcloud-crypt:/logseq} $SYNC_SCRIPT bidirectional >/dev/null 2>&1"
+    local CRON_ENTRY="*/$INTERVAL_MIN * * * * LOGSEQ_LOCAL=${LOGSEQ_LOCAL:-$HOME/logseq} LOGSEQ_REMOTE=${LOGSEQ_REMOTE:-app/logseq} $SYNC_SCRIPT bidirectional >/dev/null 2>&1"
 
     if crontab -l 2>/dev/null | grep -F "$SYNC_SCRIPT" &>/dev/null; then
         log_warn "Cron entry already exists"

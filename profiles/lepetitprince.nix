@@ -29,7 +29,6 @@
           ../shared/programs/tmux.nix
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
-          ./lepetitprince/rclone/config.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "lepetitprince")
           ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "lepetitprince")
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "lepetitprince")

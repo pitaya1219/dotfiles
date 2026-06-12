@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
-
 # Logseq Cloud Sync Script
-# Syncs Logseq folder with pcloud using rclone-secure
+# Wrapper for sync:*:pcloud tasks - translates LOGSEQ_* variables to sync task variables
+
+set -euo pipefail
 
 # Configuration
 LOGSEQ_LOCAL="${LOGSEQ_LOCAL:-$HOME/logseq}"
-LOGSEQ_REMOTE="${LOGSEQ_REMOTE:-pcloud-crypt:/logseq}"
-RCLONE_BIN="${RCLONE_BIN:-$HOME/.local/bin/rclone-secure}"
+LOGSEQ_REMOTE="${LOGSEQ_REMOTE:-app/logseq}"
 LOG_FILE="${LOG_FILE:-$HOME/.local/share/logseq-sync.log}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/.local/share/logseq-backups}"
 
@@ -39,39 +38,6 @@ log_error() {
 
 timestamp() {
     date '+%Y-%m-%d %H:%M:%S'
-}
-
-# Check if Logseq is running
-check_logseq_running() {
-    if pgrep -f "Logseq" > /dev/null 2>&1; then
-        log_warn "Logseq is currently running!"
-        echo ""
-        read -p "Continue sync anyway? This may cause conflicts. [y/N] " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Sync cancelled. Please close Logseq and try again."
-            exit 0
-        fi
-    fi
-}
-
-# Create backup before sync
-create_backup() {
-    local backup_date=$(date '+%Y%m%d_%H%M%S')
-    local backup_path="$BACKUP_DIR/$backup_date"
-
-    mkdir -p "$backup_path"
-
-    log_info "Creating backup: $backup_path"
-
-    # Backup journals directory (most likely to have conflicts)
-    if [[ -d "$LOGSEQ_LOCAL/journals" ]]; then
-        cp -r "$LOGSEQ_LOCAL/journals" "$backup_path/" 2>/dev/null || true
-    fi
-
-    # Keep only last 5 backups
-    cd "$BACKUP_DIR"
-    ls -t | tail -n +6 | xargs rm -rf 2>/dev/null || true
 }
 
 # Create conflict page in Logseq
@@ -251,10 +217,27 @@ restore_conflicts() {
     done
 }
 
-# Validate prerequisites
+# Create backup before sync
+create_backup() {
+    local backup_date=$(date '+%Y%m%d_%H%M%S')
+    local backup_path="$BACKUP_DIR/$backup_date"
+
+    mkdir -p "$backup_path"
+    log_info "Creating backup: $backup_path"
+
+    # Backup journals directory (most likely to have conflicts)
+    if [[ -d "$LOGSEQ_LOCAL/journals" ]]; then
+        cp -r "$LOGSEQ_LOCAL/journals" "$backup_path/" 2>/dev/null || true
+    fi
+
+    # Keep only last 5 backups
+    (cd "$BACKUP_DIR" && ls -t | tail -n +6 | xargs rm -rf 2>/dev/null) || true
+}
+
+# Check prerequisites
 check_prerequisites() {
-    if [[ ! -x "$RCLONE_BIN" ]]; then
-        log_error "rclone-secure not found at $RCLONE_BIN"
+    if ! command -v task &>/dev/null; then
+        log_error "task command not found. Please install Task: https://taskfile.dev"
         exit 1
     fi
 
@@ -268,161 +251,54 @@ check_prerequisites() {
     mkdir -p "$BACKUP_DIR"
 }
 
-# Sync function
+# Main sync function
 sync_logseq() {
     local direction="${1:-bidirectional}"
     shift || true
 
-    echo "$(timestamp) - Starting sync ($direction)" >> "$LOG_FILE"
+    # Map LOGSEQ_* variables to sync task variables
+    local SOURCE_DIR="$LOGSEQ_LOCAL"
+    local ENCRYPT_SUBDIR="/${LOGSEQ_REMOTE#/}"
+    local PARENT_DIR=""  # pcloud root directory
 
-    # Check for running Logseq
-    # check_logseq_running
+    echo "$(timestamp) - Starting sync ($direction) for $LOGSEQ_LOCAL -> $ENCRYPT_SUBDIR" >> "$LOG_FILE"
+    log_info "Starting sync ($direction): $LOGSEQ_LOCAL -> $ENCRYPT_SUBDIR"
 
-    # Create backup before bidirectional sync
-    if [[ "$direction" == "bidirectional" ]] || [[ "$direction" == "bi" ]]; then
-        create_backup
-    fi
-
-    # Check if --dry-run is present
-    local has_dryrun=false
-    for arg in "$@"; do
-        [[ "$arg" == "--dry-run" ]] && has_dryrun=true && break
-    done
-
-    local sync_status=0
+    # Common exclude patterns for Logseq
+    local exclude="\.git/**,node_modules/**,\.DS_Store,logseq\/.recycle/**"
 
     case "$direction" in
         up|upload)
-            log_info "Syncing local → cloud..."
-            set +e
-            if $has_dryrun; then
-                "$RCLONE_BIN" sync "$LOGSEQ_LOCAL" "$LOGSEQ_REMOTE" \
-                    --exclude '.git/**' \
-                    --exclude 'node_modules/**' \
-                    --exclude '.DS_Store' \
-                    --exclude 'logseq/.recycle/**' \
-                    --progress \
-                    "$@" 2>&1 | tee -a "$LOG_FILE"
-                sync_status=${PIPESTATUS[0]}
-            else
-                "$RCLONE_BIN" sync "$LOGSEQ_LOCAL" "$LOGSEQ_REMOTE" \
-                    --exclude '.git/**' \
-                    --exclude 'node_modules/**' \
-                    --exclude '.DS_Store' \
-                    --exclude 'logseq/.recycle/**' \
-                    --progress \
-                    --log-file="$LOG_FILE" \
-                    --log-level INFO \
-                    "$@"
-                sync_status=$?
-            fi
-            set -e
+            log_info "Syncing local -> cloud (upload)..."
+            exec task sync:up:pcloud \
+                SOURCE_DIR="$SOURCE_DIR" \
+                ENCRYPT_SUBDIR="$ENCRYPT_SUBDIR" \
+                PARENT_DIR="$PARENT_DIR" \
+                EXCLUDE="$exclude" \
+                -- "$@"
             ;;
         down|download)
-            log_info "Syncing cloud → local..."
-            set +e
-            if $has_dryrun; then
-                "$RCLONE_BIN" sync "$LOGSEQ_REMOTE" "$LOGSEQ_LOCAL" \
-                    --exclude '.git/**' \
-                    --exclude 'node_modules/**' \
-                    --exclude '.DS_Store' \
-                    --exclude 'logseq/.recycle/**' \
-                    --progress \
-                    "$@" 2>&1 | tee -a "$LOG_FILE"
-                sync_status=${PIPESTATUS[0]}
-            else
-                "$RCLONE_BIN" sync "$LOGSEQ_REMOTE" "$LOGSEQ_LOCAL" \
-                    --exclude '.git/**' \
-                    --exclude 'node_modules/**' \
-                    --exclude '.DS_Store' \
-                    --exclude 'logseq/.recycle/**' \
-                    --progress \
-                    --log-file="$LOG_FILE" \
-                    --log-level INFO \
-                    "$@"
-                sync_status=$?
-            fi
-            set -e
+            log_info "Syncing cloud -> local (download)..."
+            exec task sync:down:pcloud \
+                DIST_DIR="$SOURCE_DIR" \
+                ENCRYPT_SUBDIR="$ENCRYPT_SUBDIR" \
+                PARENT_DIR="$PARENT_DIR" \
+                EXCLUDE="$exclude" \
+                -- "$@"
             ;;
         bidirectional|bi)
-            log_info "Syncing bidirectional (cloud ↔ local)..."
+            # Create backup before bidirectional sync
+            create_backup
 
-            # Check if --resync is in arguments
-            local has_resync=false
-            for arg in "$@"; do
-                [[ "$arg" == "--resync" ]] && has_resync=true && break
-            done
+            log_info "Syncing bidirectional (cloud <-> local)..."
+            task sync:bisync:pcloud \
+                SOURCE_DIR="$SOURCE_DIR" \
+                ENCRYPT_SUBDIR="$ENCRYPT_SUBDIR" \
+                PARENT_DIR="$PARENT_DIR" \
+                EXCLUDE="$exclude" \
+                -- "$@"
 
-            if ! $has_resync; then
-                # Check if bisync listings exist
-                BISYNC_CACHE="$HOME/.cache/rclone/bisync"
-                LOCAL_EXPANDED="${LOGSEQ_LOCAL/#\~/$HOME}"
-                LOCAL_ABSOLUTE="$(cd "$LOCAL_EXPANDED" && pwd)"
-                LISTING_PREFIX="$(echo "$LOCAL_ABSOLUTE" | sed 's|/|_|g' | sed 's|^_||')..$(echo "$LOGSEQ_REMOTE" | sed 's|:|_|g; s|/|_|g')"
-
-                if [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path1.lst" ]] || [[ ! -f "$BISYNC_CACHE/${LISTING_PREFIX}.path2.lst" ]]; then
-                    log_error "First sync detected. Bisync requires initialization with --resync flag."
-                    echo ""
-                    echo "Run one of the following commands to initialize:"
-                    echo "  1. Upload local to cloud:  $0 up"
-                    echo "  2. Download cloud to local: $0 down"
-                    echo "  3. Force resync (WARNING: may overwrite conflicts):"
-                    echo ""
-                    echo "     Preview changes first (dry-run):"
-                    echo "     $RCLONE_BIN bisync \"$LOGSEQ_LOCAL\" \"$LOGSEQ_REMOTE\" --resync --dry-run"
-                    echo ""
-                    echo "     Apply the sync:"
-                    echo "     $RCLONE_BIN bisync \"$LOGSEQ_LOCAL\" \"$LOGSEQ_REMOTE\" --resync"
-                    echo ""
-
-                    if [[ -n "$NOTIFY_SCRIPT" ]] && [[ -x "$NOTIFY_SCRIPT" ]]; then
-                        local notify_msg="Init required. Options:
-1. task sync:logseq -- up
-2. task sync:logseq -- down
-3. --resync (check dry-run first!)
-Log: ${LOG_FILE:-~/.local/share/logseq-sync.log}"
-                        "$NOTIFY_SCRIPT" "Logseq Sync: Init Required" "$notify_msg" "high" || true
-                    fi
-
-                    exit 1
-                fi
-            fi
-
-            set +e
-            if $has_dryrun; then
-                "$RCLONE_BIN" bisync "$LOGSEQ_LOCAL" "$LOGSEQ_REMOTE" \
-                    --exclude '.git/**' \
-                    --exclude 'node_modules/**' \
-                    --exclude '.DS_Store' \
-                    --exclude 'logseq/.recycle/**' \
-                    --resilient \
-                    --recover \
-                    --create-empty-src-dirs \
-                    --conflict-resolve newer \
-                    --conflict-loser pathname \
-                    --conflict-suffix "conflict-{DateOnly}-" \
-                    "$@" 2>&1 | tee -a "$LOG_FILE"
-                sync_status=${PIPESTATUS[0]}
-            else
-                "$RCLONE_BIN" bisync "$LOGSEQ_LOCAL" "$LOGSEQ_REMOTE" \
-                    --exclude '.git/**' \
-                    --exclude 'node_modules/**' \
-                    --exclude '.DS_Store' \
-                    --exclude 'logseq/.recycle/**' \
-                    --resilient \
-                    --recover \
-                    --create-empty-src-dirs \
-                    --conflict-resolve newer \
-                    --conflict-loser pathname \
-                    --conflict-suffix "conflict-{DateOnly}-" \
-                    --log-file="$LOG_FILE" \
-                    --log-level INFO \
-                    "$@"
-                sync_status=$?
-            fi
-            set -e
-
-            # Check for and handle conflicts
+            # Check for and handle conflicts after bisync
             restore_conflicts
             ;;
         *)
@@ -430,20 +306,6 @@ Log: ${LOG_FILE:-~/.local/share/logseq-sync.log}"
             exit 1
             ;;
     esac
-
-    if [[ $sync_status -eq 0 ]]; then
-        log_info "Sync completed successfully"
-        echo "$(timestamp) - Sync completed" >> "$LOG_FILE"
-    else
-        log_error "Sync failed"
-        echo "$(timestamp) - Sync failed" >> "$LOG_FILE"
-
-        if [[ -n "$NOTIFY_SCRIPT" ]] && [[ -x "$NOTIFY_SCRIPT" ]]; then
-            "$NOTIFY_SCRIPT" "Logseq Sync Failed" "Failed to sync with cloud. Check log: ${LOG_FILE:-~/.local/share/logseq-sync.log}" "high" || true
-        fi
-
-        exit 1
-    fi
 }
 
 # Show usage
@@ -451,27 +313,24 @@ show_usage() {
     cat << EOF
 Usage: $0 [direction]
 
-Sync Logseq folder with cloud storage using rclone-secure
+Sync Logseq folder with pcloud encrypted storage using sync:*:pcloud tasks
 
 Arguments:
   direction    Sync direction: up, down, or bidirectional (default: bidirectional)
 
 Environment Variables:
   LOGSEQ_LOCAL    Local Logseq directory (default: ~/logseq)
-  LOGSEQ_REMOTE   Remote path (default: pcloud-crypt:/logseq)
-  RCLONE_BIN      Path to rclone-secure (default: ~/.local/bin/rclone-secure)
+  LOGSEQ_REMOTE   Remote path relative to pcloud root (default: app/logseq)
   LOG_FILE        Log file path (default: ~/.local/share/logseq-sync.log)
   BACKUP_DIR      Backup directory (default: ~/.local/share/logseq-backups)
 
 Examples:
   $0              # Bidirectional sync
-  $0 up           # Upload local → cloud
-  $0 down         # Download cloud → local
+  $0 up           # Upload local -> cloud
+  $0 down         # Download cloud -> local
 
-Backups:
-  Automatic backups are created before bidirectional syncs
-  Location: $BACKUP_DIR
-  Last 5 backups are kept
+First Sync:
+  Run '$0 up' first to upload local files to cloud before bidirectional sync.
 
 EOF
 }
