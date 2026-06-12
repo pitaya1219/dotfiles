@@ -74,7 +74,7 @@ tasks:
   # CLI-passed EXCLUDE vars at task evaluation time.
 
   up:
-    desc: Sync local → remote (rclone sync, deleted remote files saved to backup dir)
+    desc: Sync local → remote (rclone sync)
     requires:
       vars: [SOURCE_DIR, DIST_DIR, REMOTE]
     vars:
@@ -85,13 +85,21 @@ tasks:
         {{.RCLONE_BIN | replace "~" "$HOME"}} sync
         "{{.SOURCE_DIR}}" "{{.REMOTE}}{{.DIST_DIR}}"
         {{.EXCLUDE_ARGS}}
-        --backup-dir="{{.REMOTE}}{{.DIST_DIR | trimSuffix "/"}}_removed_{{now | date "20060102150405"}}"
         --log-level INFO
         {{.CLI_ARGS}}
         2>&1 | tee -a "{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
 
+  up:safe:
+    desc: Sync local → remote, saving deleted remote files to a timestamped backup dir
+    requires:
+      vars: [SOURCE_DIR, DIST_DIR, REMOTE]
+    cmd:
+      task: up
+      vars:
+        CLI_ARGS: '--backup-dir="{{.REMOTE}}{{.DIST_DIR | trimSuffix "/"}}_removed_{{now | date "20060102150405"}}" {{.CLI_ARGS}}'
+
   down:
-    desc: Sync remote → local (rclone sync, deleted local files saved to backup dir)
+    desc: Sync remote → local (rclone sync)
     requires:
       vars: [SOURCE_DIR, DIST_DIR, REMOTE]
     vars:
@@ -102,10 +110,18 @@ tasks:
         {{.RCLONE_BIN | replace "~" "$HOME"}} sync
         "{{.REMOTE}}{{.DIST_DIR}}" "{{.SOURCE_DIR}}"
         {{.EXCLUDE_ARGS}}
-        --backup-dir="{{.SOURCE_DIR | trimSuffix "/"}}_removed_{{now | date "20060102150405"}}"
         --log-level INFO
         {{.CLI_ARGS}}
         2>&1 | tee -a "{{.BACKUP_LOG_FILE | replace "~" "$HOME"}}"
+
+  down:safe:
+    desc: Sync remote → local, saving deleted local files to a timestamped backup dir
+    requires:
+      vars: [SOURCE_DIR, DIST_DIR, REMOTE]
+    cmd:
+      task: down
+      vars:
+        CLI_ARGS: '--backup-dir="{{.SOURCE_DIR | trimSuffix "/"}}_removed_{{now | date "20060102150405"}}" {{.CLI_ARGS}}'
 
   bisync:
     desc: Bidirectional sync (rclone bisync)
