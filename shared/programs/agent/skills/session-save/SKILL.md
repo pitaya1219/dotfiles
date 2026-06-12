@@ -106,7 +106,7 @@ Invoke `Skill(logseq-write)` with `--create-page` to create a dedicated session 
 
 ```
 $ARGUMENTS: "Session: <oneline-summary>" --create-page --format markdown \
-  --prop "tags=<agent-type>-session" \
+  --prop "tags=#<agent-type>-session" \
   --prop "date=[[<YYYY-MM-DD>]]" \
   --prop "repository=<repo-name-or-empty>" \
   --prop "git-branch=<branch-name-or-empty>" \
