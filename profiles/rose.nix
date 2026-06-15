@@ -8,6 +8,11 @@
     };
     modules = extraModules ++ [
       ({ config, pkgs, lib, ... }: {
+        dotfiles.agent.logseq = {
+          url = { command = "passage show logseq/http-api/host"; };
+          token = { command = "passage show logseq/http-api/claude-code/token"; };
+        };
+
         imports = [
           ../shared/activations/huggingface_hub.nix
           ../shared/activations/rootless-docker.nix
