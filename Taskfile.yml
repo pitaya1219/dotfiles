@@ -13,9 +13,6 @@ includes:
   nix: ./tasks/nix.yml
   proot: ./tasks/proot.yml
   sync: ./tasks/sync.yml
-  backup:
-    taskfile: ./tasks/backup.yml
-    flatten: true
   boot: ./tasks/boot.yml
  
 tasks:
