@@ -2,7 +2,7 @@
 name: dive-pr
 description: Set up a local workspace for reviewing a PR — clone branch, install deps, open nvim in tmux
 user-invocable: true
-version: 1.2.3
+version: 1.2.4
 ---
 
 # Dive PR Skill
@@ -193,6 +193,31 @@ Multiple package managers can coexist in one repo — run every one that matches
 | `Cargo.toml` | Cargo | `cargo fetch` |
 
 If no files match, skip installation and proceed to Phase 6.
+
+### Post-install: ruff version fixup (TEMPORARY WORKAROUND)
+
+> **TODO**: Remove this step once the project upgrades ruff to ≥ 0.4.0 in its `pyproject.toml`.
+>
+> **Background**: `@yaegassy/coc-ruff` starts `ruff server` without `--preview`, but ruff < 0.4.0
+> requires `--preview` for the native LSP server. The server crashes immediately, causing
+> "ruff native server client: couldn't create connection to server" (-32097) in nvim.
+
+After any Python dependency install, if `.venv/bin/ruff` is present and its version is below 0.4.0,
+upgrade ruff in-place so the native server works. This diverges from `poetry.lock` intentionally
+(review-only environment — no production impact).
+
+```bash
+if [ -f "$REPO_DIR/.venv/bin/ruff" ]; then
+  RUFF_VER=$("$REPO_DIR/.venv/bin/ruff" --version 2>/dev/null | awk '{print $2}')
+  python3 -c "
+v = tuple(int(x) for x in '${RUFF_VER}'.split('.')[:2])
+exit(0 if v >= (0, 4) else 1)
+" 2>/dev/null || {
+    echo "[dive-pr] ruff ${RUFF_VER} < 0.4.0 detected — upgrading for coc-ruff native server compatibility (temporary workaround)"
+    "$REPO_DIR/.venv/bin/pip" install -q -U ruff
+  }
+fi
+```
 
 ---
 
