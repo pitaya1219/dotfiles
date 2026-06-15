@@ -20,6 +20,7 @@
             github = { user = "pitaya1219"; };
             slack = { user_id = "U05BARN5R98"; user_name = "r-shibuya"; };
             asana = true;
+            logseq = true;
             sessions = { dir = "~/agent-sessions"; };
           };
           output = { logseq = true; };

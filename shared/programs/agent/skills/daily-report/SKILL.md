@@ -2,7 +2,7 @@
 name: daily-report
 description: Generate a personal daily activity report from configured sources (GitHub, Slack, Asana, session directories)
 user-invocable: true
-version: 3.0.0
+version: 3.1.0
 ---
 
 Generate a daily activity report by reading `~/.agent/daily-report.json` to determine which sources to collect from. Paths below (`scripts/`, `references/`, `assets/`) are relative to this skill's own directory.
@@ -22,12 +22,18 @@ Today's date: run `date +%Y-%m-%d`.
 
 For each **enabled** source, run its collector. Skip any source whose config key is absent/false.
 
-| Source   | Enabled when                  | Collector                              |
-|----------|-------------------------------|----------------------------------------|
-| GitHub   | `sources.github` present      | `bash scripts/collect-github.sh`       |
-| Slack    | `sources.slack` present       | follow `references/slack.md`           |
-| Asana    | `sources.asana` is true       | follow `references/asana.md`           |
-| Sessions | `sources.sessions.dir` present| `bash scripts/collect-sessions.sh`     |
+| Source          | Enabled when                   | Collector                                      |
+|-----------------|--------------------------------|------------------------------------------------|
+| GitHub          | `sources.github` present       | `bash scripts/collect-github.sh`               |
+| Slack           | `sources.slack` present        | follow `references/slack.md`                   |
+| Asana           | `sources.asana` is true        | follow `references/asana.md`                   |
+| Sessions (local) | `sources.sessions.dir` present | `bash scripts/collect-sessions.sh`             |
+| Sessions (Logseq)| `sources.logseq` is true       | `bash scripts/collect-logseq-sessions.sh`      |
+
+**Sessions collection note:**
+`collect-sessions.sh` lists local session directories modified today (requires `sources.sessions.dir`).
+`collect-logseq-sessions.sh` queries Logseq for `Session: *` pages created today (requires `sources.logseq = true`); exits silently if `~/.agent/logseq.json` is absent or Logseq is unreachable.
+When both produce output, **prefer the Logseq data** for the session summary (it contains the full narrative written by `session-save`); use the local directory listing only to note any sessions not yet saved to Logseq.
 
 ## Step 3: Output
 

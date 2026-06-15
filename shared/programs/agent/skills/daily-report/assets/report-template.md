@@ -28,7 +28,18 @@
 - task name (project) — "comment preview…"
 
 ## Agent Sessions
-### session-XXXX
+
+<!-- If Logseq sessions data is available, use the rich format below.
+     Otherwise fall back to the local directory listing. -->
+
+### Session: <title>
+- **Objective**: ...
+- **Repository**: repo @ branch
+- **PR**: https://...
+- **Status**: completed
+- **Model**: claude-sonnet-4-x
+
+### session-XXXX (local only, not yet in Logseq)
 - Files: ...
 - Purpose: ...
 
