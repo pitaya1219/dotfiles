@@ -8,7 +8,7 @@ vim.opt.encoding = "utf-8"
 
 -- Configure about appearance
 vim.opt.wrap = false
-vim.opt.ambiwidth = "double"
+vim.opt.ambiwidth = "single"
 vim.opt.foldmethod = "syntax"
 vim.opt.background = "dark"
 vim.opt.termguicolors = true
