@@ -5,7 +5,7 @@
 {
   nixpkgs.config.allowUnfreePredicate = pkg:
     let
-      basePackages = [ "claude-code" ];
+      basePackages = [ "claude-code" "specs.nvim" ];
       allPackages = basePackages ++ additionalPackages;
     in
     builtins.elem (lib.getName pkg) allPackages;
