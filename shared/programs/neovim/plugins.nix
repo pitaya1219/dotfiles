@@ -73,6 +73,8 @@ in
 
     # UI enhancements
     nvim-notify
+    nui-nvim
+    noice-nvim
     traces-vim
     
     # Color schemes

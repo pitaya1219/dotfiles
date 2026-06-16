@@ -1,5 +1,7 @@
 -- Neovim Options Configuration
 
+vim.g.have_nerd_font = true
+
 -- Configure about file
 vim.opt.fileencodings = "utf-8,sjis"
 vim.opt.encoding = "utf-8"
