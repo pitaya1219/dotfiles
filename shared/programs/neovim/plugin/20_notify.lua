@@ -3,7 +3,8 @@ if not ok then return end
 
 local stages_util = require("notify.stages.util")
 
--- 右下から出現し、右上へ上昇、そこでフェードアウトするカスタムステージ
+vim.g.notify_rise_frequency = 0.01
+
 local rise_from_bottom = function(direction)
   return {
     function(state)
@@ -30,7 +31,7 @@ local rise_from_bottom = function(direction)
         col = { vim.opt.columns:get() },
         row = {
           stages_util.slot_after_previous(win, state.open_windows, direction),
-          frequency = 0.01,
+          frequency = vim.g.notify_rise_frequency,
           damping = 1,
         },
       }
@@ -77,6 +78,15 @@ notify.setup({
 })
 
 vim.notify = notify
+
+-- :NotifySpeed <frequency>  例: :NotifySpeed 0.05
+vim.api.nvim_create_user_command("NotifySpeed", function(args)
+  local freq = tonumber(args.args)
+  if freq then
+    vim.g.notify_rise_frequency = freq
+    vim.api.nvim_echo({ { ("notify speed → %s"):format(freq), "Normal" } }, false, {})
+  end
+end, { nargs = 1, desc = "Set notification rise frequency" })
 
 vim.keymap.set("n", "<leader>notic", function()
   notify.dismiss({ silent = true, pending = true })
