@@ -4,6 +4,7 @@ if not ok then return end
 local stages_util = require("notify.stages.util")
 
 vim.g.notify_rise_frequency = 0.01
+vim.g.notify_paused = false
 
 local rise_from_bottom = function(direction)
   return {
@@ -26,6 +27,15 @@ local rise_from_bottom = function(direction)
       }
     end,
     function(state, win)
+      if vim.g.notify_paused then
+        local ok_c, conf = pcall(vim.api.nvim_win_get_config, win)
+        local cur_row = ok_c and conf.row or stages_util.slot_after_previous(win, state.open_windows, direction)
+        return {
+          opacity = { 100 },
+          col = { vim.opt.columns:get() },
+          row = { cur_row, frequency = 10, complete = function() return false end },
+        }
+      end
       return {
         opacity = { 100 },
         col = { vim.opt.columns:get() },
@@ -79,7 +89,6 @@ notify.setup({
 
 vim.notify = notify
 
--- :NotifySpeed <frequency>  例: :NotifySpeed 0.05
 vim.api.nvim_create_user_command("NotifySpeed", function(args)
   local freq = tonumber(args.args)
   if freq then
@@ -88,7 +97,13 @@ vim.api.nvim_create_user_command("NotifySpeed", function(args)
   end
 end, { nargs = 1, desc = "Set notification rise frequency" })
 
+vim.api.nvim_create_user_command("NotifyPause", function()
+  vim.g.notify_paused = not vim.g.notify_paused
+  vim.api.nvim_echo({ { vim.g.notify_paused and "notify paused" or "notify resumed", "Normal" } }, false, {})
+end, { desc = "Toggle notification animation pause" })
+
 vim.keymap.set("n", "<leader>notic", function()
   notify.dismiss({ silent = true, pending = true })
 end, { desc = "Dismiss all notifications" })
 vim.keymap.set("n", "<leader>notih", notify.history, { desc = "Notification history" })
+vim.keymap.set("n", "<leader>notip", "<Cmd>NotifyPause<CR>", { desc = "Toggle notification pause" })
