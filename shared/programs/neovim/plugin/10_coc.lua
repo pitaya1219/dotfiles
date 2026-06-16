@@ -36,17 +36,39 @@ vim.keymap.set("i", "<c-b>", function()
   return vim.fn["coc#float#has_scroll"]() == 1 and vim.fn["coc#float#scroll"](0) or "<Left>"
 end, { silent = true, nowait = true, expr = true })
 
-vim.keymap.set("n", "<leader>cocact", ":CocAction<cr>")
-vim.keymap.set("n", "<leader>cocdia", ":CocDiagnostics<cr>")
+-- Telescope picker for CoC multi-location actions
+local function coc_tel(ext_action, fallback_action)
+  return function()
+    local ext = require("telescope").extensions.coc
+    if ext then
+      ext[ext_action]()
+    else
+      vim.fn.CocActionAsync(fallback_action)
+    end
+  end
+end
+
+vim.keymap.set("n", "<leader>cocact", function()
+  local ext = require("telescope").extensions.coc
+  if ext then ext.code_actions() else vim.cmd("CocAction") end
+end)
+vim.keymap.set("n", "<leader>cocdia", function()
+  local ext = require("telescope").extensions.coc
+  if ext then ext.diagnostics() else vim.cmd("CocDiagnostics") end
+end)
 vim.keymap.set("n", "<leader>coch", ":call CocActionAsync('doHover')<cr>")
-vim.keymap.set("n", "<leader>cocdef", ":call CocActionAsync('jumpDefinition')<cr>")
+vim.keymap.set("n", "<leader>cocdef", coc_tel("definitions", "jumpDefinition"))
 vim.keymap.set("n", "<leader>cocform", ":call CocActionAsync('format')<cr>")
 vim.keymap.set("n", "<leader>cocfix", "<Plug>(coc-fix-current)")
 vim.keymap.set("n", "<leader>coclens", "<Plug>(coc-codelens-action)")
-vim.keymap.set("n", "<leader>cocuse", ":call CocActionAsync('jumpUsed')<cr>")
+vim.keymap.set("n", "<leader>cocuse", coc_tel("references", "jumpUsed"))
 vim.keymap.set("n", "<leader>cocren", ":call CocActionAsync('rename')<cr>")
-vim.keymap.set("n", "<leader>cocref", ":call CocActionAsync('jumpReference')<cr>")
+vim.keymap.set("n", "<leader>cocref", coc_tel("references", "jumpReference"))
 vim.keymap.set("n", "<leader>coce", "<Cmd>CocCommand explorer<CR>")
+vim.keymap.set("n", "<leader>cocsym", function()
+  local ext = require("telescope").extensions.coc
+  if ext then ext.workspace_symbols() end
+end, { desc = "CoC workspace symbols" })
 vim.keymap.set("x", "<leader>cocform", "<Plug>(coc-format-selected)")
 vim.keymap.set("x", "<leader>cocact", "<Plug>(coc-codeaction-selected)")
 

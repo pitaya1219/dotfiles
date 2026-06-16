@@ -74,6 +74,9 @@ in
     # UI enhancements
     nvim-notify
     traces-vim
+    plenary-nvim
+    telescope-nvim
+    telescope-coc-nvim
     
     # Color schemes
     everforest
