@@ -41,21 +41,24 @@ local function coc_tel(ext_action, fallback_action)
   return function()
     local ext = require("telescope").extensions.coc
     if ext then
-      ext[ext_action]({})
+      ext[ext_action](require("telescope.themes").get_ivy({ layout_config = { height = 0.4 } }))
     else
       vim.fn.CocActionAsync(fallback_action)
     end
   end
 end
 
-vim.keymap.set("n", "<leader>cocact", function()
+local function coc_tel_ivy(ext_action, fallback_cmd)
   local ext = require("telescope").extensions.coc
-  if ext then ext.code_actions({}) else vim.cmd("CocAction") end
-end)
-vim.keymap.set("n", "<leader>cocdia", function()
-  local ext = require("telescope").extensions.coc
-  if ext then ext.diagnostics({}) else vim.cmd("CocDiagnostics") end
-end)
+  if ext then
+    ext[ext_action](require("telescope.themes").get_ivy({ layout_config = { height = 0.4 } }))
+  else
+    vim.cmd(fallback_cmd)
+  end
+end
+
+vim.keymap.set("n", "<leader>cocact", function() coc_tel_ivy("code_actions", "CocAction") end)
+vim.keymap.set("n", "<leader>cocdia", function() coc_tel_ivy("diagnostics", "CocDiagnostics") end)
 vim.keymap.set("n", "<leader>coch", ":call CocActionAsync('doHover')<cr>")
 vim.keymap.set("n", "<leader>cocdef", coc_tel("definitions", "jumpDefinition"))
 vim.keymap.set("n", "<leader>cocform", ":call CocActionAsync('format')<cr>")
@@ -66,8 +69,7 @@ vim.keymap.set("n", "<leader>cocren", ":call CocActionAsync('rename')<cr>")
 vim.keymap.set("n", "<leader>cocref", coc_tel("references", "jumpReference"))
 vim.keymap.set("n", "<leader>coce", "<Cmd>CocCommand explorer<CR>")
 vim.keymap.set("n", "<leader>cocsym", function()
-  local ext = require("telescope").extensions.coc
-  if ext then ext.workspace_symbols({}) end
+  coc_tel_ivy("workspace_symbols", "CocList symbols")
 end, { desc = "CoC workspace symbols" })
 vim.keymap.set("x", "<leader>cocform", "<Plug>(coc-format-selected)")
 vim.keymap.set("x", "<leader>cocact", "<Plug>(coc-codeaction-selected)")
