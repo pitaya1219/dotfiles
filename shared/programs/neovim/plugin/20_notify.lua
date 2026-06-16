@@ -3,11 +3,14 @@ if not ok then return end
 
 local stages_util = require("notify.stages.util")
 
+-- 動的に変更可能なグローバル設定
 vim.g.notify_rise_frequency = 0.01
 vim.g.notify_paused = false
+vim.g.notify_hidden = false
 
 local rise_from_bottom = function(direction)
   return {
+    -- Stage 1: 下部に opacity=0 で初期配置
     function(state)
       local next_height = state.message.height + 2
       if not stages_util.available_slot(state.open_windows, next_height, direction) then
@@ -26,18 +29,20 @@ local rise_from_bottom = function(direction)
         opacity = 0,
       }
     end,
+    -- Stage 2: 上昇 (paused 中は現在位置で静止、hidden 中は透明のまま上昇)
     function(state, win)
+      local target_opacity = vim.g.notify_hidden and 0 or 100
       if vim.g.notify_paused then
         local ok_c, conf = pcall(vim.api.nvim_win_get_config, win)
         local cur_row = ok_c and conf.row or stages_util.slot_after_previous(win, state.open_windows, direction)
         return {
-          opacity = { 100 },
+          opacity = { target_opacity },
           col = { vim.opt.columns:get() },
           row = { cur_row, frequency = 10, complete = function() return false end },
         }
       end
       return {
-        opacity = { 100 },
+        opacity = { target_opacity },
         col = { vim.opt.columns:get() },
         row = {
           stages_util.slot_after_previous(win, state.open_windows, direction),
@@ -46,8 +51,11 @@ local rise_from_bottom = function(direction)
         },
       }
     end,
+    -- Stage 3: 右上で静止 (hidden 中は透明のまま待機)
     function(state, win)
+      local target_opacity = vim.g.notify_hidden and 0 or 100
       return {
+        opacity = { target_opacity },
         col = { vim.opt.columns:get() },
         time = true,
         row = {
@@ -57,6 +65,7 @@ local rise_from_bottom = function(direction)
         },
       }
     end,
+    -- Stage 4: フェードアウト
     function(state, win)
       return {
         opacity = {
@@ -89,6 +98,7 @@ notify.setup({
 
 vim.notify = notify
 
+-- :NotifySpeed <frequency>  例: :NotifySpeed 0.05
 vim.api.nvim_create_user_command("NotifySpeed", function(args)
   local freq = tonumber(args.args)
   if freq then
@@ -97,13 +107,22 @@ vim.api.nvim_create_user_command("NotifySpeed", function(args)
   end
 end, { nargs = 1, desc = "Set notification rise frequency" })
 
+-- :NotifyPause  でトグル
 vim.api.nvim_create_user_command("NotifyPause", function()
   vim.g.notify_paused = not vim.g.notify_paused
   vim.api.nvim_echo({ { vim.g.notify_paused and "notify paused" or "notify resumed", "Normal" } }, false, {})
 end, { desc = "Toggle notification animation pause" })
 
+-- :NotifyHide  でトグル (アニメーション継続・透明化)
+vim.api.nvim_create_user_command("NotifyHide", function()
+  vim.g.notify_hidden = not vim.g.notify_hidden
+  vim.api.nvim_echo({ { vim.g.notify_hidden and "notify hidden" or "notify visible", "Normal" } }, false, {})
+end, { desc = "Toggle notification visibility (animation continues)" })
+
+-- Keymaps
 vim.keymap.set("n", "<leader>notic", function()
   notify.dismiss({ silent = true, pending = true })
 end, { desc = "Dismiss all notifications" })
 vim.keymap.set("n", "<leader>notih", notify.history, { desc = "Notification history" })
 vim.keymap.set("n", "<leader>notip", "<Cmd>NotifyPause<CR>", { desc = "Toggle notification pause" })
+vim.keymap.set("n", "<leader>notiv", "<Cmd>NotifyHide<CR>", { desc = "Toggle notification visibility" })
