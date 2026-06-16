@@ -76,6 +76,9 @@ in
     nui-nvim
     noice-nvim
     traces-vim
+    lualine-nvim
+    nvim-treesitter-context
+    specs-nvim
     
     # Color schemes
     everforest
