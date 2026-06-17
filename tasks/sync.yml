@@ -8,7 +8,7 @@ vars:
   LOGSEQ_SYNC_CMD:
     sh: |
       if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
-        echo "RCLONE_BIN=rclone NOTIFY_SCRIPT=./scripts/notify.sh bash <(sed '1s|^#!/usr/bin/env bash\$|#!/data/data/com.termux/files/usr/bin/bash|' ./scripts/logseq-sync.sh)"
+        echo "NOTIFY_SCRIPT=./scripts/notify.sh bash <(sed '1s|^#!/usr/bin/env bash\$|#!/data/data/com.termux/files/usr/bin/bash|' ./scripts/logseq-sync.sh)"
       else
         echo "bash ./scripts/logseq-sync.sh"
       fi
@@ -22,7 +22,6 @@ vars:
   BACKUP_LOG_DIR: '{{.BACKUP_LOG_DIR | default "~/.local/share/task/sync/logs"}}'
   BACKUP_TIMESTAMP: '{{now | date "20060102"}}'
   BACKUP_LOG_FILE: '{{.BACKUP_LOG_DIR}}/backup-{{.BACKUP_TIMESTAMP}}.log'
-  RCLONE_BIN: '{{.RCLONE_BIN | default "rclone"}}'
 
 tasks:
   default:
@@ -86,7 +85,7 @@ tasks:
     cmds:
       - >-
         mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}" &&
-        {{.RCLONE_BIN | replace "~" "$HOME"}} sync
+        rclone sync
         "{{.SOURCE_DIR}}" "{{.REMOTE}}{{.DIST_DIR}}"
         {{.EXCLUDE_ARGS}}
         --log-level INFO
@@ -111,7 +110,7 @@ tasks:
     cmds:
       - >-
         mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}" &&
-        {{.RCLONE_BIN | replace "~" "$HOME"}} sync
+        rclone sync
         "{{.REMOTE}}{{.SOURCE_DIR}}" "{{.DIST_DIR}}"
         {{.EXCLUDE_ARGS}}
         --log-level INFO
@@ -136,7 +135,7 @@ tasks:
     cmds:
       - >-
         mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}" &&
-        {{.RCLONE_BIN | replace "~" "$HOME"}} bisync
+        rclone bisync
         "{{.SOURCE_DIR}}" "{{.REMOTE}}{{.DIST_DIR}}"
         {{.EXCLUDE_ARGS}}
         --resilient
@@ -186,9 +185,9 @@ tasks:
         -- {{.CLI_ARGS}}
     env:
       RCLONE_CRYPT_PASSWORD:
-        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password)"'
+        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password)"'
       RCLONE_CRYPT_PASSWORD2:
-        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password2)"'
+        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password2)"'
       RCLONE_CRYPT_REMOTE: '{{.RCLONE_CRYPT_REMOTE | default ""}}'
       RCLONE_CRYPT_FILENAME_ENCRYPTION: '{{.RCLONE_CRYPT_FILENAME_ENCRYPTION | default "standard"}}'
       RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION: '{{.RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION | default "true"}}'
@@ -206,9 +205,9 @@ tasks:
         -- {{.CLI_ARGS}}
     env:
       RCLONE_CRYPT_PASSWORD:
-        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password)"'
+        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password)"'
       RCLONE_CRYPT_PASSWORD2:
-        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password2)"'
+        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password2)"'
       RCLONE_CRYPT_REMOTE: '{{.RCLONE_CRYPT_REMOTE | default ""}}'
       RCLONE_CRYPT_FILENAME_ENCRYPTION: '{{.RCLONE_CRYPT_FILENAME_ENCRYPTION | default "standard"}}'
       RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION: '{{.RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION | default "true"}}'
@@ -226,9 +225,9 @@ tasks:
         -- {{.CLI_ARGS}}
     env:
       RCLONE_CRYPT_PASSWORD:
-        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password)"'
+        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password)"'
       RCLONE_CRYPT_PASSWORD2:
-        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password2)"'
+        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password2)"'
       RCLONE_CRYPT_REMOTE: '{{.RCLONE_CRYPT_REMOTE | default ""}}'
       RCLONE_CRYPT_FILENAME_ENCRYPTION: '{{.RCLONE_CRYPT_FILENAME_ENCRYPTION | default "standard"}}'
       RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION: '{{.RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION | default "true"}}'
@@ -393,7 +392,7 @@ tasks:
     vars:
       EXCLUDE_ARGS: '{{if .EXCLUDE}}{{range splitList "," .EXCLUDE}}--exclude "{{.}}" {{end}}{{end}}'
     cmd: >-
-      {{.RCLONE_BIN | replace "~" "$HOME"}} ls
+      rclone ls
       "{{.REMOTE}}{{.DIST_DIR}}"
       {{.EXCLUDE_ARGS}}
       {{.CLI_ARGS}}
@@ -410,9 +409,9 @@ tasks:
         -- {{.CLI_ARGS}}
     env:
       RCLONE_CRYPT_PASSWORD:
-        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password)"'
+        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password)"'
       RCLONE_CRYPT_PASSWORD2:
-        sh: '{{.RCLONE_BIN | replace "~" "$HOME"}} obscure "$(passage show rclone/crypt/${USER}/password2)"'
+        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password2)"'
       RCLONE_CRYPT_REMOTE: '{{.RCLONE_CRYPT_REMOTE | default ""}}'
       RCLONE_CRYPT_FILENAME_ENCRYPTION: '{{.RCLONE_CRYPT_FILENAME_ENCRYPTION | default "standard"}}'
       RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION: '{{.RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION | default "true"}}'

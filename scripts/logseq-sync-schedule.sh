@@ -71,8 +71,7 @@ setup_macos() {
         <string>${LOGSEQ_LOCAL:-$HOME/logseq}</string>
         <key>LOGSEQ_REMOTE</key>
         <string>${LOGSEQ_REMOTE:-app/logseq}</string>
-        <key>RCLONE_BIN</key>
-        <string>rclone</string>
+
     </dict>
     <key>StartInterval</key>
     <integer>${LOGSEQ_SYNC_INTERVAL}</integer>
@@ -125,7 +124,6 @@ exec 2>&1
 
 export LOGSEQ_LOCAL="${LOGSEQ_LOCAL:-\$HOME/storage/shared/logseq}"
 export LOGSEQ_REMOTE="${LOGSEQ_REMOTE:-app/logseq}"
-export RCLONE_BIN="rclone"
 
 # Create notify wrapper
 NOTIFY_WRAPPER="$NOTIFY_WRAPPER_PATH"

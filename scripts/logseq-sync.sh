@@ -5,17 +5,20 @@
 
 set -euo pipefail
 
+# Calculate SCRIPT_DIR before changing directory
+if [[ -z "${NOTIFY_SCRIPT:-}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    NOTIFY_SCRIPT="$SCRIPT_DIR/notify.sh"
+fi
+
+# Change to dotfiles directory to ensure Taskfile is found
+cd "${DOTFILES_DIR:-$HOME/dotfiles}"
+
 # Configuration
 LOGSEQ_LOCAL="${LOGSEQ_LOCAL:-$HOME/logseq}"
 LOGSEQ_REMOTE="${LOGSEQ_REMOTE:-app/logseq}"
 LOG_FILE="${LOG_FILE:-$HOME/.local/share/logseq-sync.log}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/.local/share/logseq-backups}"
-
-# Scripts
-if [[ -z "${NOTIFY_SCRIPT:-}" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    NOTIFY_SCRIPT="$SCRIPT_DIR/notify.sh"
-fi
 
 # Color output
 RED='\033[0;31m'
@@ -258,19 +261,19 @@ sync_logseq() {
 
     # Map LOGSEQ_* variables to sync task variables
     local SOURCE_DIR="$LOGSEQ_LOCAL"
-    local ENCRYPT_SUBDIR="/${LOGSEQ_REMOTE#/}"
+    local ENCRYPT_SUBDIR="${LOGSEQ_REMOTE}"
     local PARENT_DIR=""  # pcloud root directory
 
     echo "$(timestamp) - Starting sync ($direction) for $LOGSEQ_LOCAL -> $ENCRYPT_SUBDIR" >> "$LOG_FILE"
     log_info "Starting sync ($direction): $LOGSEQ_LOCAL -> $ENCRYPT_SUBDIR"
 
     # Common exclude patterns for Logseq
-    local exclude="\.git/**,node_modules/**,\.DS_Store,logseq\/.recycle/**"
+    local exclude=".git/**,node_modules/**,\.DS_Store,logseq/.recycle/**"
 
     case "$direction" in
         up|upload)
             log_info "Syncing local -> cloud (upload)..."
-            exec task sync:up:pcloud \
+            task sync:up:pcloud \
                 SOURCE_DIR="$SOURCE_DIR" \
                 ENCRYPT_SUBDIR="$ENCRYPT_SUBDIR" \
                 PARENT_DIR="$PARENT_DIR" \
@@ -279,7 +282,7 @@ sync_logseq() {
             ;;
         down|download)
             log_info "Syncing cloud -> local (download)..."
-            exec task sync:down:pcloud \
+            task sync:down:pcloud \
                 DIST_DIR="$SOURCE_DIR" \
                 ENCRYPT_SUBDIR="$ENCRYPT_SUBDIR" \
                 PARENT_DIR="$PARENT_DIR" \
@@ -303,9 +306,19 @@ sync_logseq() {
             ;;
         *)
             log_error "Invalid direction: $direction. Use: up, down, or bidirectional"
-            exit 1
+            return 1
             ;;
     esac
+
+    # Check result and notify on failure
+    local sync_result=$?
+    if [[ $sync_result -ne 0 ]]; then
+        log_error "Sync failed with exit code $sync_result"
+        if [[ -n "$NOTIFY_SCRIPT" ]] && [[ -x "$NOTIFY_SCRIPT" ]]; then
+            "$NOTIFY_SCRIPT" "Logseq Sync Failed" "Sync $direction failed with exit code $sync_result" "high" || true
+        fi
+        return $sync_result
+    fi
 }
 
 # Show usage
