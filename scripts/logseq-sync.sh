@@ -288,33 +288,60 @@ sync_logseq() {
     case "$direction" in
         up|upload)
             log_info "Syncing local -> cloud (upload)..."
+            set +e
             task sync:up:pcloud \
                 SOURCE_DIR="$SOURCE_DIR" \
                 ENCRYPT_SUBDIR="$ENCRYPT_SUBDIR" \
                 PARENT_DIR="$PARENT_DIR" \
                 EXCLUDE="$exclude" \
                 -- "$@"
+            local sync_result=$?
+            set -e
             ;;
         down|download)
             log_info "Syncing cloud -> local (download)..."
+            set +e
             task sync:down:pcloud \
                 DIST_DIR="$SOURCE_DIR" \
                 ENCRYPT_SUBDIR="$ENCRYPT_SUBDIR" \
                 PARENT_DIR="$PARENT_DIR" \
                 EXCLUDE="$exclude" \
                 -- "$@"
+            local sync_result=$?
+            set -e
             ;;
         bidirectional|bi)
             # Create backup before bidirectional sync
             create_backup
 
             log_info "Syncing bidirectional (cloud <-> local)..."
-            task sync:bisync:pcloud \
-                SOURCE_DIR="$SOURCE_DIR" \
-                ENCRYPT_SUBDIR="$ENCRYPT_SUBDIR" \
-                PARENT_DIR="$PARENT_DIR" \
-                EXCLUDE="$exclude" \
-                -- "$@"
+            
+            # Check for first-time bisync (need --resync flag if no tracking files exist)
+            local remote_path=":crypt:${ENCRYPT_SUBDIR}"
+            local needs_resync=false
+            if ! rclone ls "${remote_path}.lst" &>/dev/null; then
+                log_warn "First-time bisync detected. Adding --resync flag."
+                needs_resync=true
+            fi
+            
+            set +e
+            if $needs_resync; then
+                task sync:bisync:pcloud \
+                    SOURCE_DIR="$SOURCE_DIR" \
+                    ENCRYPT_SUBDIR="$ENCRYPT_SUBDIR" \
+                    PARENT_DIR="$PARENT_DIR" \
+                    EXCLUDE="$exclude" \
+                    -- --resync "$@"
+            else
+                task sync:bisync:pcloud \
+                    SOURCE_DIR="$SOURCE_DIR" \
+                    ENCRYPT_SUBDIR="$ENCRYPT_SUBDIR" \
+                    PARENT_DIR="$PARENT_DIR" \
+                    EXCLUDE="$exclude" \
+                    -- "$@"
+            fi
+            local sync_result=$?
+            set -e
 
             # Check for and handle conflicts after bisync
             restore_conflicts
@@ -326,7 +353,6 @@ sync_logseq() {
     esac
 
     # Check result and notify on failure
-    local sync_result=$?
     if [[ $sync_result -ne 0 ]]; then
         log_error "Sync failed with exit code $sync_result"
         if [[ -n "$NOTIFY_SCRIPT" ]] && [[ -x "$NOTIFY_SCRIPT" ]]; then
