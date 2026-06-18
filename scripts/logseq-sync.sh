@@ -118,14 +118,26 @@ create_conflict_page() {
 
 # Restore from conflict files
 restore_conflicts() {
-    local journals_dir="$LOGSEQ_LOCAL/journals"
+    # Directories to check for conflict files
+    local dirs=("$LOGSEQ_LOCAL/journals" "$LOGSEQ_LOCAL/pages")
+    local all_conflicts=""
 
-    if [[ ! -d "$journals_dir" ]]; then
+    # Collect conflict files from all directories
+    for dir in "${dirs[@]}"; do
+        if [[ -d "$dir" ]]; then
+            local dir_conflicts=$(find "$dir" -name "*.conflict*" 2>/dev/null || true)
+            if [[ -n "$dir_conflicts" ]]; then
+                all_conflicts="${all_conflicts}${dir_conflicts}$(echo '')"
+            fi
+        fi
+    done
+
+    if [[ -z "$all_conflicts" ]]; then
         return
     fi
 
     # Find conflict files
-    local conflicts=$(find "$journals_dir" -name "*.conflict*" 2>/dev/null || true)
+    local conflicts="$all_conflicts"
 
     if [[ -z "$conflicts" ]]; then
         return
@@ -137,7 +149,7 @@ restore_conflicts() {
 
     # Send notification about conflicts
     if [[ -n "$NOTIFY_SCRIPT" ]] && [[ -x "$NOTIFY_SCRIPT" ]]; then
-        local conflict_count=$(echo "$conflicts" | wc -l | tr -d ' ')
+        local conflict_count=$(echo "$conflicts" | grep -c . || echo "0")
         "$NOTIFY_SCRIPT" "Logseq Sync: Conflicts Detected" "Found $conflict_count conflict file(s). Check pages with #conflict tag in Logseq." "high" || true
     fi
 
@@ -228,10 +240,13 @@ create_backup() {
     mkdir -p "$backup_path"
     log_info "Creating backup: $backup_path"
 
-    # Backup journals directory (most likely to have conflicts)
-    if [[ -d "$LOGSEQ_LOCAL/journals" ]]; then
-        cp -r "$LOGSEQ_LOCAL/journals" "$backup_path/" 2>/dev/null || true
-    fi
+    # Backup directories that may have conflicts
+    local dirs_to_backup=("journals" "pages")
+    for dir in "${dirs_to_backup[@]}"; do
+        if [[ -d "$LOGSEQ_LOCAL/$dir" ]]; then
+            cp -r "$LOGSEQ_LOCAL/$dir" "$backup_path/" 2>/dev/null || true
+        fi
+    done
 
     # Keep only last 5 backups
     (cd "$BACKUP_DIR" && ls -t | tail -n +6 | xargs rm -rf 2>/dev/null) || true
