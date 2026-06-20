@@ -5,66 +5,14 @@ env:
     sh: 'echo "${RCLONE_CONFIG:-/dev/null}"'
 
 vars:
-  LOGSEQ_SYNC_CMD:
-    sh: |
-      if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
-        echo "NOTIFY_SCRIPT=./scripts/notify.sh bash <(sed '1s|^#!/usr/bin/env bash\$|#!/data/data/com.termux/files/usr/bin/bash|' ./scripts/logseq-sync.sh)"
-      else
-        echo "bash ./scripts/logseq-sync.sh"
-      fi
-  LOGSEQ_SCHEDULE_CMD:
-    sh: |
-      if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
-        echo "bash <(sed '1s|^#!/usr/bin/env bash\$|#!/data/data/com.termux/files/usr/bin/bash|' ./scripts/logseq-sync-schedule.sh)"
-      else
-        echo "bash ./scripts/logseq-sync-schedule.sh"
-      fi
   BACKUP_LOG_DIR: '{{.BACKUP_LOG_DIR | default "~/.local/share/task/sync/logs"}}'
   BACKUP_TIMESTAMP: '{{now | date "20060102"}}'
   BACKUP_LOG_FILE: '{{.BACKUP_LOG_DIR}}/backup-{{.BACKUP_TIMESTAMP}}.log'
 
+includes:
+  logseq: ./sync/logseq.yml
+
 tasks:
-  default:
-    desc: Show logseq sync help
-    cmds:
-      - "{{.LOGSEQ_SYNC_CMD}} --help"
-
-  logseq:
-    desc: Sync logseq folder with cloud (default bidirectional)
-    cmds:
-      - '{{.LOGSEQ_SYNC_CMD}} {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}bidirectional{{end}}'
-
-  logseq:setup:
-    desc: Setup automatic logseq sync scheduling
-    cmds:
-      - "{{.LOGSEQ_SCHEDULE_CMD}} setup"
-
-  logseq:status:
-    desc: Show logseq sync scheduling status
-    cmds:
-      - "{{.LOGSEQ_SCHEDULE_CMD}} status"
-
-  logseq:remove:
-    desc: Remove logseq sync scheduling
-    cmds:
-      - "{{.LOGSEQ_SCHEDULE_CMD}} remove"
-
-  logseq:shortcut:
-    desc: Install termux-shortcut for logseq sync
-    preconditions:
-      - sh: '[ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]'
-        msg: "This task only runs in Termux environment"
-    cmds:
-      - mkdir -p ~/.shortcuts
-      - |
-        cat > ~/.shortcuts/logseq-sync <<'EOF'
-        #!/data/data/com.termux/files/usr/bin/bash
-        export LOGSEQ_LOCAL='{{.LOGSEQ_LOCAL}}'
-        export LOGSEQ_REMOTE='{{.LOGSEQ_REMOTE}}'
-        cd $HOME/dotfiles && task sync:logseq
-        EOF
-      - chmod +x ~/.shortcuts/logseq-sync
-
   # ──────── Generic rclone sync ────────
   # Variable naming convention — always SOURCE → DIST (from → to):
   #   up:   SOURCE_DIR = local dir, DIST_DIR = remote subdir

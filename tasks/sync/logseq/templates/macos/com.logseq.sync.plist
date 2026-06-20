@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.logseq.sync</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__DOTFILES_DIR__/bin/task</string>
+        <string>sync:logseq</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>__HOME__/.nix-profile/bin:__PATH__</string>
+        <key>LOGSEQ_LOCAL</key>
+        <string>__LOGSEQ_LOCAL__</string>
+        <key>LOGSEQ_REMOTE</key>
+        <string>__LOGSEQ_REMOTE__</string>
+        <key>DOTFILES_DIR</key>
+        <string>__DOTFILES_DIR__</string>
+    </dict>
+    <key>StartInterval</key>
+    <integer>__LOGSEQ_SYNC_INTERVAL__</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>__LOG_FILE__</string>
+    <key>StandardErrorPath</key>
+    <string>__LOG_FILE_ERROR__</string>
+</dict>
+</plist>

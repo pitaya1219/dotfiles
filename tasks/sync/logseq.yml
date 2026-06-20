@@ -1,0 +1,548 @@
+version: '3'
+
+env:
+  LOGSEQ_LOCAL: '{{if .LOGSEQ_LOCAL}}{{.LOGSEQ_LOCAL}}{{else}}{{env "HOME"}}/logseq{{end}}'
+  LOGSEQ_REMOTE: '{{.LOGSEQ_REMOTE | default "app/logseq"}}'
+  LOG_FILE: '{{if .LOG_FILE}}{{.LOG_FILE}}{{else}}{{env "HOME"}}/.local/share/logseq-sync.log{{end}}'
+  BACKUP_DIR: '{{if .BACKUP_DIR}}{{.BACKUP_DIR}}{{else}}{{env "HOME"}}/.local/share/logseq-backups{{end}}'
+  EXCLUDE: '{{.EXCLUDE | default ".git/**,node_modules/**,\\.DS_Store,logseq/.recycle/**"}}'
+
+vars:
+  BACKUP_LOG_DIR: '{{if .BACKUP_LOG_DIR}}{{.BACKUP_LOG_DIR}}{{else}}~/.local/share/task/sync/logs{{end}}'
+  BACKUP_TIMESTAMP: '{{now | date "20060102"}}'
+  BACKUP_LOG_FILE: '{{.BACKUP_LOG_DIR}}/backup-{{.BACKUP_TIMESTAMP}}.log'
+
+tasks:
+  default:
+    desc: Sync logseq folder with cloud (bidirectional)
+    aliases: [bi]
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        # Backup first
+        task :sync:logseq:backup
+        
+        # Check if resync needed
+        if task sync:ls:pcloud ENCRYPT_SUBDIR="{{.LOGSEQ_REMOTE}}.lst" >/dev/null 2>&1; then
+            RESYNC=""
+        else
+            RESYNC="--resync"
+        fi
+        
+        export LOGSEQ_LOCAL="{{.LOGSEQ_LOCAL}}"
+        export LOGSEQ_REMOTE="{{.LOGSEQ_REMOTE}}"
+        export LOG_FILE="{{.LOG_FILE}}"
+        
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Starting bidirectional sync" >> "$LOG_FILE"
+        set +e
+        task sync:bisync:pcloud SOURCE_DIR="$LOGSEQ_LOCAL" ENCRYPT_SUBDIR="$LOGSEQ_REMOTE" PARENT_DIR="" EXCLUDE="{{.EXCLUDE}}" -- $RESYNC {{.CLI_ARGS}}
+        SYNC_RESULT=$?
+        set -e
+        
+        if [[ ${SYNC_RESULT:-0} -ne 0 ]]; then
+            echo "Sync failed with exit code ${SYNC_RESULT:-0}" >> "$LOG_FILE"
+            task :sync:logseq:notify TITLE="Logseq Sync Failed" MESSAGE="Sync failed" PRIORITY="high"
+            exit ${SYNC_RESULT:-0}
+        fi
+        
+        # Conflict resolution - skip during dry-run
+        if [[ "{{.CLI_ARGS}}" != *--dry-run* ]]; then
+            task :sync:logseq:conflict
+        fi
+        INNEREOF
+
+  test:
+    desc: Dry run for bidirectional sync
+    cmd:
+      task: default
+      vars:
+        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'
+
+  up:
+    desc: Sync logseq folder with cloud (local -> cloud)
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        export LOGSEQ_LOCAL="{{.LOGSEQ_LOCAL}}"
+        export LOGSEQ_REMOTE="{{.LOGSEQ_REMOTE}}"
+        echo "Starting upload sync" >> "{{.LOG_FILE}}"
+        set +e
+        task sync:up:pcloud SOURCE_DIR="$LOGSEQ_LOCAL" ENCRYPT_SUBDIR="$LOGSEQ_REMOTE" PARENT_DIR="" EXCLUDE="{{.EXCLUDE}}" -- {{.CLI_ARGS}}
+        SYNC_RESULT=$?
+        set -e
+        if [[ $SYNC_RESULT -ne 0 ]]; then
+            task :sync:logseq:notify TITLE="Logseq Sync Failed" MESSAGE="Upload failed" PRIORITY="high"
+            exit $SYNC_RESULT
+        fi
+        INNEREOF
+
+  down:
+    desc: Sync logseq folder with cloud (cloud -> local)
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        export LOGSEQ_LOCAL="{{.LOGSEQ_LOCAL}}"
+        export LOGSEQ_REMOTE="{{.LOGSEQ_REMOTE}}"
+        echo "Starting download sync" >> "{{.LOG_FILE}}"
+        set +e
+        task sync:down:pcloud DIST_DIR="$LOGSEQ_LOCAL" ENCRYPT_SUBDIR="$LOGSEQ_REMOTE" PARENT_DIR="" EXCLUDE="{{.EXCLUDE}}" -- {{.CLI_ARGS}}
+        SYNC_RESULT=$?
+        set -e
+        if [[ $SYNC_RESULT -ne 0 ]]; then
+            task :sync:logseq:notify TITLE="Logseq Sync Failed" MESSAGE="Download failed" PRIORITY="high"
+            exit $SYNC_RESULT
+        fi
+        INNEREOF
+
+  backup:
+    desc: Create backup of logseq journals and pages before sync
+    preconditions:
+      - sh: 'test -d "{{.LOGSEQ_LOCAL}}"'
+        msg: "LOGSEQ_LOCAL directory not found: {{.LOGSEQ_LOCAL}}"
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        mkdir -p "{{.BACKUP_DIR}}"
+        BACKUP_DATE=$(date '+%Y%m%d_%H%M%S')
+        BACKUP_PATH="{{.BACKUP_DIR}}/$BACKUP_DATE"
+        mkdir -p "$BACKUP_PATH"
+        for dir in journals pages; do
+            if [[ -d "{{.LOGSEQ_LOCAL}}/$dir" ]]; then
+                cp -r "{{.LOGSEQ_LOCAL}}/$dir" "$BACKUP_PATH/" 2>/dev/null || true
+            fi
+        done
+        (cd "{{.BACKUP_DIR}}" && ls -t | tail -n +6 | xargs rm -rf 2>/dev/null) || true
+        INNEREOF
+
+  conflict:
+    desc: Restore from conflict files and create conflict pages
+    preconditions:
+      - sh: 'test -d "{{.LOGSEQ_LOCAL}}"'
+        msg: "LOGSEQ_LOCAL directory not found: {{.LOGSEQ_LOCAL}}"
+      - sh: 'test "$(bash -c "echo \${BASH_VERSINFO[0]}")" -ge 4'
+        msg: "bash >= 4 required for conflict resolution"
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        LOGSEQ_LOCAL="{{.LOGSEQ_LOCAL}}"
+        ALL_CONFLICTS=$(find "$LOGSEQ_LOCAL/journals" "$LOGSEQ_LOCAL/pages" -name "*.conflict*" 2>/dev/null || true)
+        if [[ -z "$ALL_CONFLICTS" ]]; then exit 0; fi
+        echo "Processing conflict files:"
+        echo "$ALL_CONFLICTS"
+        declare -A conflict_groups
+        while IFS= read -r conflict_file; do
+            [[ -z "$conflict_file" ]] && continue
+            base_file="${conflict_file%%.conflict*}"
+            [[ "$base_file" != *.md ]] && base_file="${base_file}.md"
+            if [[ -z "${conflict_groups[$base_file]:-}" ]]; then
+                conflict_groups[$base_file]="$conflict_file"
+            else
+                conflict_groups[$base_file]="${conflict_groups[$base_file]}|$conflict_file"
+            fi
+        done <<< "$ALL_CONFLICTS"
+        HAS_CONFLICTS=false
+        for base_file in "${!conflict_groups[@]}"; do
+            IFS='|' read -ra conflict_array <<< "${conflict_groups[$base_file]}"
+            has_diff=false
+            if [[ -f "$base_file" ]] && [[ -f "${conflict_array[0]}" ]]; then
+                diff -q "$base_file" "${conflict_array[0]}" >/dev/null 2>&1 || has_diff=true
+            elif [[ ! -f "$base_file" ]] || [[ ! -f "${conflict_array[0]}" ]]; then
+                has_diff=true
+            fi
+            if $has_diff; then
+                HAS_CONFLICTS=true
+                basename=$(basename "$base_file" .md)
+                date_str=$(echo "$basename" | tr '_' '-')
+                mkdir -p "$LOGSEQ_LOCAL/pages"
+                conflict_page="$LOGSEQ_LOCAL/pages/conflict-${date_str}.md"
+                timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+                {
+                    echo "tags:: #conflict"
+                    echo "created:: $timestamp"
+                    echo ""
+                    echo "# Conflict detected: [[${basename}]]"
+                    echo ""
+                    echo "Multiple versions found during sync."
+                    if [[ -f "$base_file" ]] && [[ -f "${conflict_array[0]}" ]]; then
+                        echo "## Diff Summary"
+                        echo ""
+                        echo "Legend: removed | added | unchanged"
+                        echo ""
+                        echo '```'
+                        diff -u "${conflict_array[0]}" "$base_file" | tail -n +4
+                        echo ""
+                        echo '```'
+                        echo ""
+                    fi
+                    version=1
+                    if [[ -f "$base_file" ]]; then
+                        echo "## Version $version (Current/Newer)"
+                        echo "- collapsed:: true"
+                        sed 's/^/\t/' "$base_file"
+                        echo ""
+                        version=$((version + 1))
+                    fi
+                    for cf in "${conflict_array[@]}"; do
+                        if [[ -f "$cf" ]]; then
+                            echo "## Version $version (Conflict/Older)"
+                            echo "- collapsed:: true"
+                            sed 's/^/\t/' "$cf"
+                            echo ""
+                            version=$((version + 1))
+                        fi
+                    done
+                    echo "---"
+                    echo "After merging, update and delete this page."
+                } > "$conflict_page"
+            fi
+            for cf in "${conflict_array[@]}"; do
+                [[ -f "$cf" ]] && rm -f "$cf"
+            done
+            if [[ ! -f "$base_file" ]]; then
+                largest=""
+                max_size=0
+                for cf in "${conflict_array[@]}"; do
+                    if [[ -f "$cf" ]]; then
+                        size=$(stat -f%z "$cf" 2>/dev/null || stat -c%s "$cf" 2>/dev/null || echo "0")
+                        [[ $size -gt $max_size ]] && max_size=$size && largest="$cf"
+                    fi
+                done
+                [[ -n "$largest" ]] && cp "$largest" "$base_file"
+            fi
+        done
+        $HAS_CONFLICTS && task :sync:logseq:notify TITLE="Conflicts Detected" MESSAGE="Found conflict files" PRIORITY="high"
+        INNEREOF
+
+  notify:
+    desc: Send OS notification for logseq sync
+    vars:
+      TITLE: '{{.TITLE | default "Logseq Sync"}}'
+      MESSAGE: '{{.MESSAGE | default "Sync operation completed"}}'
+      PRIORITY: '{{.PRIORITY | default "normal"}}'
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        TITLE="{{.TITLE}}"
+        MESSAGE="{{.MESSAGE}}"
+        PRIORITY="{{.PRIORITY}}"
+        if [[ "$(uname)" == "Darwin" ]]; then
+            osascript -e "display notification \"$MESSAGE\" with title \"$TITLE\"" 2>/dev/null || true
+        elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
+            if command -v termux-notification &>/dev/null; then
+                case "$PRIORITY" in
+                    high) termux-notification --title "$TITLE" --content "$MESSAGE" --priority high 2>/dev/null || true ;;
+                    low) termux-notification --title "$TITLE" --content "$MESSAGE" --priority low 2>/dev/null || true ;;
+                    *) termux-notification --title "$TITLE" --content "$MESSAGE" 2>/dev/null || true ;;
+                esac
+            fi
+        elif grep -qi microsoft /proc/version 2>/dev/null || [[ -f /etc/os-release ]]; then
+            if command -v notify-send &>/dev/null; then
+                case "$PRIORITY" in
+                    high) notify-send -u critical "$TITLE" "$MESSAGE" 2>/dev/null || true ;;
+                    low) notify-send -u low "$TITLE" "$MESSAGE" 2>/dev/null || true ;;
+                    *) notify-send "$TITLE" "$MESSAGE" 2>/dev/null || true ;;
+                esac
+            fi
+        fi
+        INNEREOF
+
+  setup:
+    desc: Setup automatic logseq sync scheduling for current platform
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        if [[ "$(uname)" == "Darwin" ]]; then
+            task :sync:logseq:schedule-macos
+        elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
+            task :sync:logseq:schedule-termux
+        elif [[ -d /run/systemd/system ]]; then
+            task :sync:logseq:schedule-systemd
+        else
+            task :sync:logseq:schedule-cron
+        fi
+        INNEREOF
+
+  remove:
+    desc: Remove logseq sync scheduling for current platform
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        if [[ "$(uname)" == "Darwin" ]]; then
+            task :sync:logseq:schedule-macos-remove
+        elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
+            task :sync:logseq:schedule-termux-remove
+        elif [[ -d /run/systemd/system ]]; then
+            task :sync:logseq:schedule-systemd-remove
+        else
+            task :sync:logseq:schedule-cron-remove
+        fi
+        INNEREOF
+
+  status:
+    desc: Show logseq sync scheduling status for current platform
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        if [[ "$(uname)" == "Darwin" ]]; then
+            task :sync:logseq:schedule-macos-status
+        elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
+            task :sync:logseq:schedule-termux-status
+        elif [[ -d /run/systemd/system ]]; then
+            task :sync:logseq:schedule-systemd-status
+        else
+            task :sync:logseq:schedule-cron-status
+        fi
+        INNEREOF
+
+  shortcut:
+    desc: Create Termux shortcut for logseq sync
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        mkdir -p "$HOME/.shortcuts"
+        DOTFILES_DIR="{{.DOTFILES_DIR | default (env "HOME") }}/dotfiles"
+        TEMPLATE="$DOTFILES_DIR/tasks/sync/logseq/templates/termux/logseq-sync-shortcut.sh"
+        OUTPUT="$HOME/.shortcuts/logseq-sync"
+        
+        # Generate shortcut from template with __VAR__ substitution
+        sed "s|__DOTFILES_DIR__|$DOTFILES_DIR|g" "$TEMPLATE" > "$OUTPUT"
+        chmod +x "$OUTPUT"
+        echo "Termux shortcut created at $OUTPUT"
+        INNEREOF
+
+  schedule-macos:
+    desc: Setup macOS launchd agent for logseq sync
+    vars:
+      LOGSEQ_SYNC_INTERVAL: '{{.LOGSEQ_SYNC_INTERVAL | default "1800"}}'
+    cmds:
+      - mkdir -p "$HOME/Library/LaunchAgents"
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        DOTFILES_DIR="{{.DOTFILES_DIR | default (env "HOME") }}/dotfiles"
+        TEMPLATE="$DOTFILES_DIR/tasks/sync/logseq/templates/macos/com.logseq.sync.plist"
+        OUTPUT="$HOME/Library/LaunchAgents/com.logseq.sync.plist"
+        LOG_FILE="{{.LOG_FILE}}"
+        LOG_FILE_ERROR="$(echo "$LOG_FILE" | sed 's/\.log$/-error.log/')"
+        
+        # Generate plist from template with __VAR__ substitution
+        sed "s|__DOTFILES_DIR__|$DOTFILES_DIR|g" "$TEMPLATE" \
+          | sed "s|__HOME__|$HOME|g" \
+          | sed "s|__PATH__|$PATH|g" \
+          | sed "s|__LOGSEQ_LOCAL__|{{.LOGSEQ_LOCAL}}|g" \
+          | sed "s|__LOGSEQ_REMOTE__|{{.LOGSEQ_REMOTE}}|g" \
+          | sed "s|__LOGSEQ_SYNC_INTERVAL__|{{.LOGSEQ_SYNC_INTERVAL}}|g" \
+          | sed "s|__LOG_FILE__|$LOG_FILE|g" \
+          | sed "s|__LOG_FILE_ERROR__|$LOG_FILE_ERROR|g" \
+          > "$OUTPUT"
+        
+        # Load the agent
+        launchctl unload "$OUTPUT" 2>/dev/null || true
+        launchctl load "$OUTPUT"
+        echo "macOS launchd agent loaded: $OUTPUT"
+        INNEREOF
+
+  schedule-macos-status:
+    desc: Show macOS launchd agent status
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        PLIST="$HOME/Library/LaunchAgents/com.logseq.sync.plist"
+        if [[ -f "$PLIST" ]]; then
+            echo "Launchd agent file exists: $PLIST"
+            launchctl list | grep com.logseq.sync || echo "Not loaded"
+        else
+            echo "Launchd agent not configured"
+        fi
+        INNEREOF
+
+  schedule-macos-remove:
+    desc: Remove macOS launchd agent for logseq sync
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        PLIST="$HOME/Library/LaunchAgents/com.logseq.sync.plist"
+        launchctl unload "$PLIST" 2>/dev/null || true
+        rm -f "$PLIST"
+        echo "macOS launchd agent removed"
+        INNEREOF
+
+  schedule-systemd:
+    desc: Setup systemd service and timer for logseq sync
+    vars:
+      LOGSEQ_SYNC_INTERVAL: '{{.LOGSEQ_SYNC_INTERVAL | default "1800"}}'
+    cmds:
+      - mkdir -p "$HOME/.config/systemd/user"
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        DOTFILES_DIR="{{.DOTFILES_DIR | default (env "HOME") }}/dotfiles"
+        TEMPLATE_DIR="$DOTFILES_DIR/tasks/sync/logseq/templates/systemd"
+        LOG_FILE="{{.LOG_FILE}}"
+        
+        # Generate service file
+        sed "s|__DOTFILES_DIR__|$DOTFILES_DIR|g" "$TEMPLATE_DIR/logseq-sync.service" \
+          | sed "s|__HOME__|$HOME|g" \
+          | sed "s|__PATH__|$PATH|g" \
+          | sed "s|__LOGSEQ_LOCAL__|{{.LOGSEQ_LOCAL}}|g" \
+          | sed "s|__LOGSEQ_REMOTE__|{{.LOGSEQ_REMOTE}}|g" \
+          | sed "s|__LOG_FILE__|$LOG_FILE|g" \
+          > "$HOME/.config/systemd/user/logseq-sync.service"
+        
+        # Generate timer file with interval
+        sed "s|__LOGSEQ_SYNC_INTERVAL__|{{.LOGSEQ_SYNC_INTERVAL}}|g" "$TEMPLATE_DIR/logseq-sync.timer" \
+          > "$HOME/.config/systemd/user/logseq-sync.timer"
+        
+        # Reload and enable
+        systemctl --user daemon-reload
+        systemctl --user enable --now logseq-sync.timer
+        echo "systemd timer enabled: logseq-sync.timer"
+        INNEREOF
+
+  schedule-systemd-status:
+    desc: Show systemd timer status
+    cmds:
+      - systemctl --user list-timers | grep logseq-sync || echo "Timer not found"
+      - systemctl --user status logseq-sync.timer 2>/dev/null || true
+
+  schedule-systemd-remove:
+    desc: Remove systemd service and timer
+    cmds:
+      - systemctl --user disable --now logseq-sync.timer 2>/dev/null || true
+      - systemctl --user disable --now logseq-sync.service 2>/dev/null || true
+      - rm -f "$HOME/.config/systemd/user/logseq-sync.service" "$HOME/.config/systemd/user/logseq-sync.timer"
+      - systemctl --user daemon-reload
+      - echo "systemd service and timer removed"
+
+  schedule-cron:
+    desc: Setup cron job for logseq sync
+    vars:
+      LOGSEQ_SYNC_INTERVAL: '{{.LOGSEQ_SYNC_INTERVAL | default "1800"}}'
+    cmds:
+      - mkdir -p "$HOME/.local/share/cron"
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        DOTFILES_DIR="{{.DOTFILES_DIR | default (env "HOME") }}/dotfiles"
+        TEMPLATE="$DOTFILES_DIR/tasks/sync/logseq/templates/cron/logseq-sync.cron"
+        OUTPUT="$HOME/.local/share/cron/logseq-sync"
+        LOG_FILE="{{.LOG_FILE}}"
+        LOG_FILE_ERROR="$(echo "$LOG_FILE" | sed 's/\.log$/-error.log/')"
+        CRON_INTERVAL=$(( ({{.LOGSEQ_SYNC_INTERVAL | default "1800"}} + 59) / 60 ))
+        
+        # Generate cron file from template with __VAR__ substitution
+        sed "s|__DOTFILES_DIR__|$DOTFILES_DIR|g" "$TEMPLATE" \
+          | sed "s|__HOME__|$HOME|g" \
+          | sed "s|__PATH__|$PATH|g" \
+          | sed "s|__LOGSEQ_LOCAL__|{{.LOGSEQ_LOCAL}}|g" \
+          | sed "s|__LOGSEQ_REMOTE__|{{.LOGSEQ_REMOTE}}|g" \
+          | sed "s|__LOG_FILE__|$LOG_FILE|g" \
+          | sed "s|__LOG_FILE_ERROR__|$LOG_FILE_ERROR|g" \
+          | sed "s|__CRON_INTERVAL__|$CRON_INTERVAL|g" \
+          > "$OUTPUT"
+        
+        # Install cron job - preserve existing entries, only replace logseq-sync line
+        # Create temp file with existing crontab + new entry (excluding old logseq-sync)
+        TEMP_CRONTAB=$(mktemp)
+        { crontab -l 2>/dev/null | grep -v "logseq-sync"; cat "$OUTPUT"; } > "$TEMP_CRONTAB"
+        crontab "$TEMP_CRONTAB"
+        rm -f "$TEMP_CRONTAB"
+        echo "Cron job installed"
+        INNEREOF
+
+  schedule-cron-status:
+    desc: Show cron job status
+    cmds:
+      - crontab -l 2>/dev/null | grep logseq-sync || echo "Cron job not found"
+
+  schedule-cron-remove:
+    desc: Remove cron job
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        TEMP_CRONTAB=$(mktemp)
+        crontab -l 2>/dev/null | grep -v "logseq-sync" > "$TEMP_CRONTAB"
+        crontab "$TEMP_CRONTAB"
+        rm -f "$TEMP_CRONTAB" "$HOME/.local/share/cron/logseq-sync"
+        echo "Cron job removed"
+        INNEREOF
+
+  schedule-termux:
+    desc: Setup Termux service for logseq sync
+    vars:
+      LOGSEQ_SYNC_INTERVAL: '{{.LOGSEQ_SYNC_INTERVAL | default "1800"}}'
+    cmds:
+      - mkdir -p "$HOME/.termux/boot"
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        DOTFILES_DIR="{{.DOTFILES_DIR | default (env "HOME") }}/dotfiles"
+        TEMPLATE="$DOTFILES_DIR/tasks/sync/logseq/templates/termux/logseq-sync.sh"
+        OUTPUT="$HOME/.termux/boot/logseq-sync"
+        LOG_FILE="{{.LOG_FILE}}"
+        LOG_FILE_ERROR="$(echo "$LOG_FILE" | sed 's/\.log$/-error.log/')"
+        
+        # Generate boot script from template with __VAR__ substitution
+        sed "s|__DOTFILES_DIR__|$DOTFILES_DIR|g" "$TEMPLATE" \
+          | sed "s|__HOME__|$HOME|g" \
+          | sed "s|__PATH__|$PATH|g" \
+          | sed "s|__LOGSEQ_LOCAL__|{{.LOGSEQ_LOCAL}}|g" \
+          | sed "s|__LOGSEQ_REMOTE__|{{.LOGSEQ_REMOTE}}|g" \
+          | sed "s|__LOG_FILE__|$LOG_FILE|g" \
+          | sed "s|__LOG_FILE_ERROR__|$LOG_FILE_ERROR|g" \
+          > "$OUTPUT"
+        
+        chmod +x "$OUTPUT"
+        
+        # For periodic execution in Termux, also set up cron
+        # Since Termux boot scripts only run at startup
+        if command -v crontab &>/dev/null; then
+            # Create a cron entry for periodic sync (every 30 minutes)
+            CRON_LINE="*/30 * * * * $OUTPUT >> $LOG_FILE 2>> $LOG_FILE_ERROR"
+            TEMP_CRONTAB=$(mktemp)
+            { crontab -l 2>/dev/null | grep -v "logseq-sync"; echo "$CRON_LINE"; } > "$TEMP_CRONTAB"
+            crontab "$TEMP_CRONTAB"
+            rm -f "$TEMP_CRONTAB"
+            echo "Cron job also installed for periodic sync"
+        fi
+        
+        echo "Termux boot script installed: $OUTPUT"
+        INNEREOF
+
+  schedule-termux-status:
+    desc: Show Termux service status
+    cmds:
+      - ls -la "$HOME/.termux/boot/logseq-sync" 2>/dev/null || echo "Boot script not found"
+
+  schedule-termux-remove:
+    desc: Remove Termux service
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        rm -f "$HOME/.termux/boot/logseq-sync"
+        
+        # Also remove cron entry if exists
+        if command -v crontab &>/dev/null; then
+            TEMP_CRONTAB=$(mktemp)
+            crontab -l 2>/dev/null | grep -v "logseq-sync" > "$TEMP_CRONTAB"
+            crontab "$TEMP_CRONTAB"
+            rm -f "$TEMP_CRONTAB"
+            echo "Cron entry removed"
+        fi
+        
+        echo "Termux boot script removed"
+        INNEREOF

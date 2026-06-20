@@ -1,0 +1,17 @@
+[Unit]
+Description=Logseq Sync Service
+Documentation=https://github.com/go-task/task
+
+[Service]
+Type=oneshot
+ExecStart=__DOTFILES_DIR__/bin/task sync:logseq
+Environment=PATH=__HOME__/.nix-profile/bin:__PATH__
+Environment=LOGSEQ_LOCAL=__LOGSEQ_LOCAL__
+Environment=LOGSEQ_REMOTE=__LOGSEQ_REMOTE__
+Environment=DOTFILES_DIR=__DOTFILES_DIR__
+WorkingDirectory=__HOME__
+StandardOutput=append:__LOG_FILE__
+StandardError=append:__LOG_FILE_ERROR__
+
+[Install]
+WantedBy=multi-user.target

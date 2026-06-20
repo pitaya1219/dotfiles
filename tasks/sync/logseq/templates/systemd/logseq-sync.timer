@@ -1,0 +1,11 @@
+[Unit]
+Description=Logseq Sync Timer
+Documentation=https://github.com/go-task/task
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=__LOGSEQ_SYNC_INTERVAL__s
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
