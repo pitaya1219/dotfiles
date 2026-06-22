@@ -70,6 +70,7 @@
             jq
             mistral-vibe
             rclone
+            tailscale
             xlsx2csv
           ];
           file.".config/tmux/override.conf".source = ./r-shibuya/tmux/override.conf;
