@@ -128,7 +128,7 @@ tasks:
     cmds:
       - |
         bash <<'INNEREOF'
-        set -euo pipefail
+        set -uo pipefail
         LOGSEQ_LOCAL="{{.LOGSEQ_LOCAL}}"
         ALL_CONFLICTS=$(find "$LOGSEQ_LOCAL/journals" "$LOGSEQ_LOCAL/pages" -name "*.conflict*" 2>/dev/null || true)
         if [[ -z "$ALL_CONFLICTS" ]]; then exit 0; fi
@@ -174,7 +174,7 @@ tasks:
                         echo "Legend: removed | added | unchanged"
                         echo ""
                         echo '```'
-                        diff -u "${conflict_array[0]}" "$base_file" | tail -n +4
+                        diff -u "${conflict_array[0]}" "$base_file" 2>/dev/null | tail -n +4 || echo "(Could not compute diff)"
                         echo ""
                         echo '```'
                         echo ""
@@ -183,7 +183,7 @@ tasks:
                     if [[ -f "$base_file" ]]; then
                         echo "## Version $version (Current/Newer)"
                         echo "- collapsed:: true"
-                        sed 's/^/\t/' "$base_file"
+                        sed 's/^/\t/' "$base_file" 2>/dev/null || echo "(Could not read file: $base_file)"
                         echo ""
                         version=$((version + 1))
                     fi
@@ -191,7 +191,7 @@ tasks:
                         if [[ -f "$cf" ]]; then
                             echo "## Version $version (Conflict/Older)"
                             echo "- collapsed:: true"
-                            sed 's/^/\t/' "$cf"
+                            sed 's/^/\t/' "$cf" 2>/dev/null || echo "(Could not read file: $cf)"
                             echo ""
                             version=$((version + 1))
                         fi
@@ -201,7 +201,7 @@ tasks:
                 } > "$conflict_page"
             fi
             for cf in "${conflict_array[@]}"; do
-                [[ -f "$cf" ]] && rm -f "$cf"
+                [[ -f "$cf" ]] && rm -f "$cf" 2>/dev/null || true
             done
             if [[ ! -f "$base_file" ]]; then
                 largest=""
@@ -212,7 +212,7 @@ tasks:
                         [[ $size -gt $max_size ]] && max_size=$size && largest="$cf"
                     fi
                 done
-                [[ -n "$largest" ]] && cp "$largest" "$base_file"
+                [[ -n "$largest" ]] && cp "$largest" "$base_file" 2>/dev/null || true
             fi
         done
         $HAS_CONFLICTS && task sync:logseq:notify TITLE="Conflicts Detected" MESSAGE="Found conflict files" PRIORITY="high"
