@@ -77,6 +77,9 @@ in
     noice-nvim
     traces-vim
     lualine-nvim
+    (nvim-treesitter.withPlugins (parsers: with parsers; [
+      lua nix python javascript typescript bash json yaml toml markdown
+    ]))
     nvim-treesitter-context
     specs-nvim
     
