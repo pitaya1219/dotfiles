@@ -1,6 +1,19 @@
 local ok, lualine = pcall(require, "lualine")
 if not ok then return end
 
+-- aquarium colorscheme defines s:colors.bold = "bold," (trailing comma).
+-- This causes E418: Illegal value: bold,,nocombine when lualine tries to set
+-- highlight groups. Patch before setup to strip trailing commas from gui.
+local hl_module = require("lualine.highlight")
+local orig_highlight = hl_module.highlight
+hl_module.highlight = function(name, fg, bg, gui, link)
+  if type(gui) == "string" then
+    gui = gui:gsub(",+", ","):gsub("^,", ""):gsub(",$", "")
+    if gui == "" then gui = nil end
+  end
+  return orig_highlight(name, fg, bg, gui, link)
+end
+
 lualine.setup({
   options = {
     icons_enabled = false,
