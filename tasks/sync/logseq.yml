@@ -21,7 +21,7 @@ tasks:
         bash <<'INNEREOF'
         set -euo pipefail
         # Backup first
-        task :sync:logseq:backup
+        task sync:logseq:_backup
         
         # Check if resync needed
         if task sync:ls:pcloud ENCRYPT_SUBDIR="{{.LOGSEQ_REMOTE}}.lst" >/dev/null 2>&1; then
@@ -42,13 +42,13 @@ tasks:
         
         if [[ ${SYNC_RESULT:-0} -ne 0 ]]; then
             echo "Sync failed with exit code ${SYNC_RESULT:-0}" >> "$LOG_FILE"
-            task :sync:logseq:notify TITLE="Logseq Sync Failed" MESSAGE="Sync failed" PRIORITY="high"
+            task sync:logseq:notify TITLE="Logseq Sync Failed" MESSAGE="Sync failed" PRIORITY="high"
             exit ${SYNC_RESULT:-0}
         fi
         
         # Conflict resolution - skip during dry-run
         if [[ "{{.CLI_ARGS}}" != *--dry-run* ]]; then
-            task :sync:logseq:conflict
+            task sync:logseq:_conflict
         fi
         INNEREOF
 
@@ -73,7 +73,7 @@ tasks:
         SYNC_RESULT=$?
         set -e
         if [[ $SYNC_RESULT -ne 0 ]]; then
-            task :sync:logseq:notify TITLE="Logseq Sync Failed" MESSAGE="Upload failed" PRIORITY="high"
+            task sync:logseq:notify TITLE="Logseq Sync Failed" MESSAGE="Upload failed" PRIORITY="high"
             exit $SYNC_RESULT
         fi
         INNEREOF
@@ -92,13 +92,13 @@ tasks:
         SYNC_RESULT=$?
         set -e
         if [[ $SYNC_RESULT -ne 0 ]]; then
-            task :sync:logseq:notify TITLE="Logseq Sync Failed" MESSAGE="Download failed" PRIORITY="high"
+            task sync:logseq:notify TITLE="Logseq Sync Failed" MESSAGE="Download failed" PRIORITY="high"
             exit $SYNC_RESULT
         fi
         INNEREOF
 
-  backup:
-    desc: Create backup of logseq journals and pages before sync
+  _backup:
+    desc: "[INTERNAL] Create backup of logseq journals and pages - do not call directly"
     preconditions:
       - sh: 'test -d "{{.LOGSEQ_LOCAL}}"'
         msg: "LOGSEQ_LOCAL directory not found: {{.LOGSEQ_LOCAL}}"
@@ -118,8 +118,8 @@ tasks:
         (cd "{{.BACKUP_DIR}}" && ls -t | tail -n +6 | xargs rm -rf 2>/dev/null) || true
         INNEREOF
 
-  conflict:
-    desc: Restore from conflict files and create conflict pages
+  _conflict:
+    desc: "[INTERNAL] Restore from conflict files - do not call directly"
     preconditions:
       - sh: 'test -d "{{.LOGSEQ_LOCAL}}"'
         msg: "LOGSEQ_LOCAL directory not found: {{.LOGSEQ_LOCAL}}"
@@ -215,7 +215,7 @@ tasks:
                 [[ -n "$largest" ]] && cp "$largest" "$base_file"
             fi
         done
-        $HAS_CONFLICTS && task :sync:logseq:notify TITLE="Conflicts Detected" MESSAGE="Found conflict files" PRIORITY="high"
+        $HAS_CONFLICTS && task sync:logseq:notify TITLE="Conflicts Detected" MESSAGE="Found conflict files" PRIORITY="high"
         INNEREOF
 
   notify:
@@ -259,13 +259,13 @@ tasks:
         bash <<'INNEREOF'
         set -euo pipefail
         if [[ "$(uname)" == "Darwin" ]]; then
-            task :sync:logseq:schedule-macos
+            task sync:logseq:schedule-macos
         elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
-            task :sync:logseq:schedule-termux
+            task sync:logseq:schedule-termux
         elif [[ -d /run/systemd/system ]]; then
-            task :sync:logseq:schedule-systemd
+            task sync:logseq:schedule-systemd
         else
-            task :sync:logseq:schedule-cron
+            task sync:logseq:schedule-cron
         fi
         INNEREOF
 
@@ -276,13 +276,13 @@ tasks:
         bash <<'INNEREOF'
         set -euo pipefail
         if [[ "$(uname)" == "Darwin" ]]; then
-            task :sync:logseq:schedule-macos-remove
+            task sync:logseq:schedule-macos-remove
         elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
-            task :sync:logseq:schedule-termux-remove
+            task sync:logseq:schedule-termux-remove
         elif [[ -d /run/systemd/system ]]; then
-            task :sync:logseq:schedule-systemd-remove
+            task sync:logseq:schedule-systemd-remove
         else
-            task :sync:logseq:schedule-cron-remove
+            task sync:logseq:schedule-cron-remove
         fi
         INNEREOF
 
@@ -293,13 +293,13 @@ tasks:
         bash <<'INNEREOF'
         set -euo pipefail
         if [[ "$(uname)" == "Darwin" ]]; then
-            task :sync:logseq:schedule-macos-status
+            task sync:logseq:schedule-macos-status
         elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
-            task :sync:logseq:schedule-termux-status
+            task sync:logseq:schedule-termux-status
         elif [[ -d /run/systemd/system ]]; then
-            task :sync:logseq:schedule-systemd-status
+            task sync:logseq:schedule-systemd-status
         else
-            task :sync:logseq:schedule-cron-status
+            task sync:logseq:schedule-cron-status
         fi
         INNEREOF
 
