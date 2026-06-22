@@ -20,8 +20,13 @@ tasks:
       - |
         bash <<'INNEREOF'
         set -euo pipefail
-        # Backup first
-        task sync:logseq:_backup
+        # Backup first (skip during dry-run)
+        if [[ "{{.CLI_ARGS}}" != *--dry-run* ]]; then
+            task sync:logseq:_backup
+        else
+            echo "$(date '+%Y-%m-%d %H:%M:%S') - Skipping backup (dry-run mode)" >> "${LOG_FILE}"
+            echo "Skipping backup (dry-run mode)"
+        fi
         
         # Check if resync needed
         if task sync:ls:pcloud ENCRYPT_SUBDIR="{{.LOGSEQ_REMOTE}}.lst" >/dev/null 2>&1; then
@@ -49,6 +54,9 @@ tasks:
         # Conflict resolution - skip during dry-run
         if [[ "{{.CLI_ARGS}}" != *--dry-run* ]]; then
             task sync:logseq:_conflict
+        else
+            echo "$(date '+%Y-%m-%d %H:%M:%S') - Skipping conflict resolution (dry-run mode)" >> "${LOG_FILE}"
+            echo "Skipping conflict resolution (dry-run mode)"
         fi
         INNEREOF
 
@@ -130,6 +138,12 @@ tasks:
         bash <<'INNEREOF'
         set -uo pipefail
         LOGSEQ_LOCAL="{{.LOGSEQ_LOCAL}}"
+        
+        # Function to URL-decode strings (for handling rclone URL-encoded filenames)
+        url_decode() {
+            python3 -c "import sys, urllib.parse; print(urllib.parse.unquote(sys.stdin.read().strip()))" <<< "$1"
+        }
+        
         ALL_CONFLICTS=$(find "$LOGSEQ_LOCAL/journals" "$LOGSEQ_LOCAL/pages" -name "*.conflict*" 2>/dev/null || true)
         if [[ -z "$ALL_CONFLICTS" ]]; then exit 0; fi
         echo "Processing conflict files:"
@@ -139,19 +153,32 @@ tasks:
             [[ -z "$conflict_file" ]] && continue
             base_file="${conflict_file%%.conflict*}"
             [[ "$base_file" != *.md ]] && base_file="${base_file}.md"
-            if [[ -z "${conflict_groups[$base_file]:-}" ]]; then
-                conflict_groups[$base_file]="$conflict_file"
+            # URL-decode the base filename to match actual Logseq files
+            base_file_decoded=$(url_decode "$base_file")
+            if [[ -z "${conflict_groups[$base_file_decoded]:-}" ]]; then
+                conflict_groups[$base_file_decoded]="$conflict_file"
             else
-                conflict_groups[$base_file]="${conflict_groups[$base_file]}|$conflict_file"
+                conflict_groups[$base_file_decoded]="${conflict_groups[$base_file_decoded]}|$conflict_file"
             fi
         done <<< "$ALL_CONFLICTS"
         HAS_CONFLICTS=false
         for base_file in "${!conflict_groups[@]}"; do
             IFS='|' read -ra conflict_array <<< "${conflict_groups[$base_file]}"
             has_diff=false
-            if [[ -f "$base_file" ]] && [[ -f "${conflict_array[0]}" ]]; then
-                diff -q "$base_file" "${conflict_array[0]}" >/dev/null 2>&1 || has_diff=true
-            elif [[ ! -f "$base_file" ]] || [[ ! -f "${conflict_array[0]}" ]]; then
+            # base_file is already URL-decoded from the associative array key
+            # This is the name we want to use (decoded version)
+            # But the actual file on disk might be encoded, so we need to check both
+            actual_base="$base_file"
+            if ! [[ -f "$actual_base" ]]; then
+                # Try to find a file with URL-encoded name
+                encoded_base=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$base_file")
+                if [[ -f "$encoded_base" ]]; then
+                    actual_base="$encoded_base"
+                fi
+            fi
+            if [[ -f "$actual_base" ]] && [[ -f "${conflict_array[0]}" ]]; then
+                diff -q "$actual_base" "${conflict_array[0]}" >/dev/null 2>&1 || has_diff=true
+            elif [[ ! -f "$actual_base" ]] || [[ ! -f "${conflict_array[0]}" ]]; then
                 has_diff=true
             fi
             if $has_diff; then
@@ -168,22 +195,22 @@ tasks:
                     echo "# Conflict detected: [[${basename}]]"
                     echo ""
                     echo "Multiple versions found during sync."
-                    if [[ -f "$base_file" ]] && [[ -f "${conflict_array[0]}" ]]; then
+                    if [[ -f "$actual_base" ]] && [[ -f "${conflict_array[0]}" ]]; then
                         echo "## Diff Summary"
                         echo ""
                         echo "Legend: removed | added | unchanged"
                         echo ""
                         echo '```'
-                        diff -u "${conflict_array[0]}" "$base_file" 2>/dev/null | tail -n +4 || echo "(Could not compute diff)"
+                        diff -u "${conflict_array[0]}" "$actual_base" 2>/dev/null | tail -n +4 || echo "(Could not compute diff)"
                         echo ""
                         echo '```'
                         echo ""
                     fi
                     version=1
-                    if [[ -f "$base_file" ]]; then
+                    if [[ -f "$actual_base" ]]; then
                         echo "## Version $version (Current/Newer)"
                         echo "- collapsed:: true"
-                        sed 's/^/\t/' "$base_file" 2>/dev/null || echo "(Could not read file: $base_file)"
+                        sed 's/^/\t/' "$actual_base" 2>/dev/null || echo "(Could not read file: $actual_base)"
                         echo ""
                         version=$((version + 1))
                     fi
@@ -203,7 +230,8 @@ tasks:
             for cf in "${conflict_array[@]}"; do
                 [[ -f "$cf" ]] && rm -f "$cf" 2>/dev/null || true
             done
-            if [[ ! -f "$base_file" ]]; then
+            # If the actual file doesn't exist, copy the largest conflict file to the decoded destination
+            if [[ ! -f "$actual_base" ]]; then
                 largest=""
                 max_size=0
                 for cf in "${conflict_array[@]}"; do
