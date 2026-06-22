@@ -1,7 +1,4 @@
-local ok, ts_configs = pcall(require, "nvim-treesitter.configs")
+local ok, ts = pcall(require, "nvim-treesitter")
 if not ok then return end
 
-ts_configs.setup({
-  highlight = { enable = true },
-  indent = { enable = true },
-})
+ts.setup()
