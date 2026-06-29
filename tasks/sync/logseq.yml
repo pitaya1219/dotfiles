@@ -164,6 +164,15 @@ tasks:
         HAS_CONFLICTS=false
         for base_file in "${!conflict_groups[@]}"; do
             IFS='|' read -ra conflict_array <<< "${conflict_groups[$base_file]}"
+            # If the base file is itself a conflict page, just delete the .conflict files
+            # to break the infinite loop (conflict pages conflicting with themselves)
+            base_basename=$(basename "$base_file")
+            if [[ "$base_basename" == conflict-*.md ]] && [[ "$base_file" == *"/pages/"* ]]; then
+                for cf in "${conflict_array[@]}"; do
+                    [[ -f "$cf" ]] && rm -f "$cf" 2>/dev/null || true
+                done
+                continue
+            fi
             has_diff=false
             # base_file is already URL-decoded from the associative array key
             # This is the name we want to use (decoded version)
