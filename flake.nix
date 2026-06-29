@@ -26,14 +26,57 @@
         neovim-nightly = neovim-nightly-overlay.overlays.default;
         mistral-vibe = mistral-vibe.overlays.default;
 
-        # WORKAROUND: Disable pipx install checks to avoid test suite failures
+        # mistral-vibe overlay modifies neovim-unwrapped and drops the lua passthru
+        # that neovim's wrapper.nix needs. Restore it with luajit (what nixpkgs
+        # neovim is built against). Apply after mistral-vibe in the overlay list.
+        fix-neovim-lua-passthru = final: prev: {
+          neovim-unwrapped = prev.neovim-unwrapped // { lua = final.luajit; };
+          # wrapper.nix reads lua from whatever package is passed as neovim-unwrapped.
+          # When programs.neovim.package = pkgs.neovim (the wrapped package), home-manager
+          # calls wrapNeovimUnstable pkgs.neovim {...} and wrapper.nix does neovim-unwrapped.lua.
+          # pkgs.neovim doesn't expose lua in passthru, so we add it here.
+          neovim = prev.neovim // { lua = final.luajit; };
+        };
+
+        # WORKAROUND: Disable pipx install checks to avoid test suite failures.
         # The test suite has assertion failures in package specifier formatting.
         # This affects all platforms. Should be removed once upstream fixes are available.
-        # Related: test_package_specifier.py failures
         pipx-no-check = final: prev: {
           pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
             (_: pyPrev: {
               pipx = pyPrev.pipx.overrideAttrs (_: { doInstallCheck = false; });
+            })
+          ];
+        };
+
+        # WORKAROUND: proot does not provide dynamic /dev/fd entries for high-numbered
+        # file descriptors. patchelf's setup hook uses bash process substitution
+        # (done < <(find ...)) which requires /dev/fd/N. Create a wrapper that
+        # symlinks the original binary but replaces the hook with a temp-file version.
+        # dontPatchELF skips the broken fixup step when building this wrapper itself.
+        # Apply only to the droid profile via droid.nix overlays.
+        # WORKAROUND: proot-only fix for pipx unpackPhase.
+        # GNU coreutils cp uses fchmodat(AT_FDCWD,"",AT_EMPTY_PATH) to set permissions,
+        # which proot intercepts and returns ENOENT. The default unpackPhase uses
+        # `cp -prd`, triggering this. Override to use tar instead.
+        # Apply only to the droid profile via droid.nix overlays.
+        pipx-proot-unpack = final: prev: {
+          pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
+            (_: pyPrev: {
+              pipx = pyPrev.pipx.overrideAttrs (_: {
+                unpackPhase = ''
+                  runHook preUnpack
+                  mkdir source
+                  tar cf - -C "$src" . | tar xf - -C source
+                  chmod -R u+w source
+                  sourceRoot="source"
+                  runHook postUnpack
+                '';
+                # installShellCompletion passes /dev/fd/N to the install binary.
+                # proot intercepts path syscalls and its /dev/fd only has entries
+                # 0-3, so open("/dev/fd/63") → ENOENT. Skip completions entirely.
+                postInstall = "";
+              });
             })
           ];
         };
