@@ -28,8 +28,9 @@ tasks:
             echo "Skipping backup (dry-run mode)"
         fi
         
-        # Check if resync needed
-        if task sync:ls:pcloud ENCRYPT_SUBDIR="{{.LOGSEQ_REMOTE}}.lst" >/dev/null 2>&1; then
+        # Check if resync needed by looking at local .lst file (rclone stores these locally, not on remote)
+        LST_GLOB="${HOME}/.cache/rclone/bisync/*$(basename "{{.LOGSEQ_LOCAL}}")*.path1.lst"
+        if compgen -G "$LST_GLOB" > /dev/null 2>&1; then
             RESYNC=""
         else
             RESYNC="--resync"
