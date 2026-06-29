@@ -164,13 +164,38 @@ tasks:
         HAS_CONFLICTS=false
         for base_file in "${!conflict_groups[@]}"; do
             IFS='|' read -ra conflict_array <<< "${conflict_groups[$base_file]}"
-            # If the base file is itself a conflict page, just delete the .conflict files
-            # to break the infinite loop (conflict pages conflicting with themselves)
+            # If the base file is itself a conflict page, append the diff to it
+            # rather than creating another conflict page (which would loop forever)
             base_basename=$(basename "$base_file")
             if [[ "$base_basename" == conflict-*.md ]] && [[ "$base_file" == *"/pages/"* ]]; then
-                for cf in "${conflict_array[@]}"; do
-                    [[ -f "$cf" ]] && rm -f "$cf" 2>/dev/null || true
-                done
+                actual_base="$base_file"
+                if ! [[ -f "$actual_base" ]]; then
+                    encoded_base=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$base_file")
+                    [[ -f "$encoded_base" ]] && actual_base="$encoded_base"
+                fi
+                if [[ -f "$actual_base" ]]; then
+                    for cf in "${conflict_array[@]}"; do
+                        if [[ -f "$cf" ]] && ! diff -q "$actual_base" "$cf" >/dev/null 2>&1; then
+                            timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+                            {
+                                echo ""
+                                echo "---"
+                                echo "## Re-conflict detected: $timestamp"
+                                echo ""
+                                echo "Legend: removed | added | unchanged"
+                                echo ""
+                                echo '```'
+                                diff -u "$cf" "$actual_base" 2>/dev/null | tail -n +4 || echo "(Could not compute diff)"
+                                echo '```'
+                            } >> "$actual_base"
+                        fi
+                        [[ -f "$cf" ]] && rm -f "$cf" 2>/dev/null || true
+                    done
+                else
+                    for cf in "${conflict_array[@]}"; do
+                        [[ -f "$cf" ]] && rm -f "$cf" 2>/dev/null || true
+                    done
+                fi
                 continue
             fi
             has_diff=false
