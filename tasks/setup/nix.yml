@@ -32,6 +32,37 @@ tasks:
         else
           echo 'experimental-features = nix-command flakes' >> "{{.NIX_CONF_PATH}}"
         fi
+        for setting in \
+          "substituters = https://cache.nixos.org https://nix-community.cachix.org" \
+          "trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCUSeBs="; do
+          if ! grep -qF "$setting" "{{.NIX_CONF_PATH}}"; then
+            echo "$setting" >> "{{.NIX_CONF_PATH}}"
+            echo "✅ Added setting: $setting"
+          fi
+        done
+        if uname -r 2>/dev/null | grep -qi "proot"; then
+          # post-build-hook cleans /homeless-shelter after each build so the next
+          # build doesn't see it and refuse to start (sandbox=false behaviour).
+          # max-jobs=1 ensures builds are sequential so the hook doesn't race.
+          HOOK="{{.NIX_DIR}}/post-build-hook.sh"
+          if [ ! -f "$HOOK" ]; then
+            printf '#!/bin/sh\nrm -rf /homeless-shelter 2>/dev/null || true\n' > "$HOOK"
+            chmod +x "$HOOK"
+            echo "✅ Created post-build-hook: $HOOK"
+          fi
+          for setting in \
+            "sandbox = false" \
+            "filter-syscalls = false" \
+            "ssl-cert-file = /etc/ssl/certs/ca-certificates.crt" \
+            "post-build-hook = {{.NIX_DIR}}/post-build-hook.sh" \
+            "max-jobs = 1" \
+            "cores = 1"; do
+            if ! grep -qF "$setting" "{{.NIX_CONF_PATH}}"; then
+              echo "$setting" >> "{{.NIX_CONF_PATH}}"
+              echo "✅ Added proot setting: $setting"
+            fi
+          done
+        fi
   home:
     desc: Setup nix home-manager and switch profile
     silent: true
@@ -59,6 +90,14 @@ tasks:
         if [ -n "$profile" ]; then
           if [ -f ~/.nix-profile/etc/profile.d/nix.sh ]; then
             source ~/.nix-profile/etc/profile.d/nix.sh
+          fi
+          if uname -r 2>/dev/null | grep -qi "proot"; then
+            # Nix bundles its own libcurl which may not find system certs in proot.
+            # Point it to the system CA bundle explicitly.
+            export NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+            # Nix sets HOME=/homeless-shelter during sandbox=false builds. If a prior
+            # build failed and left the directory, the next build refuses to proceed.
+            rm -rf /homeless-shelter 2>/dev/null || true
           fi
           nix run home-manager/master -- switch --flake .#"${profile}"
         fi
