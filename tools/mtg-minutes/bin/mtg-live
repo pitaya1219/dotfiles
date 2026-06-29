@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""
+mtg-live — 会議の「相手の声」をリアルタイム文字起こししてターミナルに表示する。
+1on1などで相手の発言をさっと見返す補助用。録音・議事録系 (mtg-minutes) とは独立。
+
+音声経路(初回セットアップが必要):
+    通話アプリの出力 → Multi-Output Device(ヘッドホン + BlackHole 16ch)
+                              │(自分は普通に聞ける)
+                              ▼
+                   BlackHole 16ch を whisper-stream が読む → 字幕
+
+使い方:
+    mtg-live                         # 既定デバイス(BlackHole 16ch)で開始
+    mtg-live --list                  # キャプチャデバイス一覧
+    mtg-live --device "BlackHole 16ch"
+    mtg-live --model turbo           # 精度優先(既定はbase=低遅延)
+    mtg-live --save                  # ~/Documents/mtg-minutes/live/ にログ保存
+    mtg-live --translate             # 相手の発言を英語にライブ翻訳
+
+Ctrl-C で終了。
+"""
+import argparse
+import datetime as dt
+import os
+import re
+import signal
+import subprocess
+import sys
+from pathlib import Path
+
+MODELS = {
+    "base":   Path.home() / ".cache/whisper-cpp/models/ggml-base.bin",
+    "small":  Path.home() / ".cache/whisper-cpp/models/ggml-small.bin",
+    "turbo":  Path.home() / ".cache/whisper-cpp/models/ggml-large-v3-turbo.bin",
+}
+WHISPER_STREAM = "whisper-stream"
+DEFAULT_DEVICE = "BlackHole 16ch"
+LIVE_LOG_DIR = Path.home() / "Documents/mtg-minutes/live"
+
+DEV_RE = re.compile(r"Capture device #(\d+): '([^']*)'")
+
+
+def info(msg):
+    print(f"\033[36m▶\033[0m {msg}", file=sys.stderr)
+
+
+def warn(msg):
+    print(f"\033[33m⚠\033[0m {msg}", file=sys.stderr)
+
+
+def die(msg, code=1):
+    print(f"\033[31m✖\033[0m {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def enumerate_devices(model):
+    """whisper-stream を一瞬起動してキャプチャデバイス一覧を取得 [(idx, name), ...]"""
+    proc = subprocess.Popen(
+        [WHISPER_STREAM, "-m", str(model), "-l", "ja", "-c", "-1"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+    )
+    devices = []
+    try:
+        for line in proc.stderr:
+            m = DEV_RE.search(line)
+            if m:
+                devices.append((int(m.group(1)), m.group(2)))
+            if "attempt to open" in line or "obtained spec" in line:
+                break
+    finally:
+        proc.send_signal(signal.SIGINT)
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    return devices
+
+
+def resolve_device(devices, name):
+    """名前(部分一致・大文字小文字無視)でデバイス番号を解決"""
+    name_l = name.lower()
+    for idx, dname in devices:
+        if name_l in dname.lower():
+            return idx, dname
+    return None, None
+
+
+def main():
+    ap = argparse.ArgumentParser(description="相手の声をリアルタイム文字起こし")
+    ap.add_argument("--list", action="store_true", help="キャプチャデバイス一覧を表示して終了")
+    ap.add_argument("--device", default=DEFAULT_DEVICE, help=f"キャプチャデバイス名 (既定: {DEFAULT_DEVICE})")
+    ap.add_argument("--capture-id", type=int, default=None, help="デバイス番号を直接指定(--deviceより優先)")
+    ap.add_argument("--model", choices=list(MODELS), default="turbo",
+                    help="turbo=高精度(既定/M3で8.5倍速) / small=軽量 / base=最軽量")
+    ap.add_argument("--language", default="ja")
+    ap.add_argument("--step", type=int, default=0, help="0=VAD(発話区切りで確定) / >0=スライディング(ms)")
+    ap.add_argument("--length", type=int, default=10000, help="1チャンクの最大長(ms)")
+    ap.add_argument("--vad-thold", type=float, default=0.6, help="VAD感度(0=厳しい〜1=緩い)")
+    ap.add_argument("--translate", action="store_true", help="英語にライブ翻訳")
+    ap.add_argument("--save", action="store_true", help="字幕ログをファイル保存")
+    args = ap.parse_args()
+
+    model = MODELS[args.model]
+    if not model.exists():
+        die(f"モデルが見つかりません: {model}")
+
+    info("キャプチャデバイスを列挙中…")
+    devices = enumerate_devices(model)
+    if not devices:
+        warn("デバイスを列挙できませんでした(whisper-streamの出力形式変更?)")
+
+    if args.list:
+        print("利用可能なキャプチャデバイス:")
+        for idx, name in devices:
+            mark = "  ← これを使う" if DEFAULT_DEVICE.lower() in name.lower() else ""
+            print(f"  #{idx}: {name}{mark}")
+        if not any(DEFAULT_DEVICE.lower() in n.lower() for _, n in devices):
+            print(f"\n※ '{DEFAULT_DEVICE}' が見つかりません。")
+            print("  brew install --cask blackhole-16ch でインストールし、")
+            print("  Audio MIDI設定で Multi-Output Device(ヘッドホン + BlackHole 16ch)を作成してください。")
+        return
+
+    # デバイス解決
+    if args.capture_id is not None:
+        cap_id, cap_name = args.capture_id, "(手動指定)"
+    else:
+        cap_id, cap_name = resolve_device(devices, args.device)
+        if cap_id is None:
+            warn(f"'{args.device}' が見つかりません。--list で確認するか --capture-id で指定してください。")
+            if devices:
+                warn("検出されたデバイス: " + ", ".join(f"#{i}:{n}" for i, n in devices))
+            die("中止しました。")
+
+    # whisper-stream コマンド構築
+    cmd = [
+        WHISPER_STREAM, "-m", str(model),
+        "-l", args.language,
+        "-c", str(cap_id),
+        "--step", str(args.step),
+        "--length", str(args.length),
+        "--vad-thold", str(args.vad_thold),
+        "-kc",                       # keep context(文脈保持で精度向上)
+    ]
+    if args.translate:
+        cmd.append("--translate")
+
+    info(f"デバイス #{cap_id} ({cap_name}) / モデル {args.model} で開始")
+    info("Ctrl-C で終了")
+    print("\033[2m" + "─" * 60 + "\033[0m", file=sys.stderr)
+
+    if args.save:
+        LIVE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        log = LIVE_LOG_DIR / f"live_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        info(f"ログ保存先: {log}")
+        # stdout を画面とファイルへ
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, bufsize=1)
+        try:
+            with open(log, "w") as f:
+                for line in proc.stdout:
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+                    f.write(line)
+                    f.flush()
+        except KeyboardInterrupt:
+            proc.send_signal(signal.SIGINT)
+            proc.wait()
+    else:
+        # 直接実行(最もクリーンなライブ表示)
+        os.execvp(cmd[0], cmd)
+
+
+if __name__ == "__main__":
+    main()

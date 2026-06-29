@@ -1,0 +1,466 @@
+#!/usr/bin/env python3
+"""
+mtg-minutes — OBS録音から「話者ラベル付き文字起こし」と「議事録」を生成し、
+オプションで Logseq に会議ページを作成する。
+
+音声処理は全てローカル(ffmpeg + whisper.cpp)。Claude に渡すのは最終テキストのみ。
+
+使い方:
+    mtg-minutes RECORDING.mkv [--title "1on1 田中さん"] [options]
+
+前提:
+    - ffmpeg (brew)
+    - whisper-cli (brew install whisper-cpp)
+    - claude CLI (議事録生成。--no-minutes でスキップ可)
+    - Logseq HTTP API (任意。--no-logseq でスキップ)
+
+OBS の 2トラック録音(Track1=自分のマイク / Track2=相手のアプリ音声)を想定。
+トラックが1つしか無い場合は話者ラベルなしで処理する。
+"""
+import argparse
+import datetime as dt
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import urllib.request
+import urllib.error
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# 設定(環境変数 or ~/.config/mtg-minutes/config.json で上書き可)
+# ---------------------------------------------------------------------------
+DEFAULTS = {
+    "model": str(Path.home() / ".cache/whisper-cpp/models/ggml-large-v3-turbo.bin"),
+    "whisper_bin": "whisper-cli",
+    "language": "ja",
+    "self_label": "自分",
+    "other_label": "相手",
+    "logseq_url": "http://127.0.0.1:12315/api",
+    "logseq_token": "",          # configs.edn の :server/tokens から取得しても良い
+    "logseq_page_prefix": "会議録",
+    "claude_bin": "claude",
+    "output_dir": str(Path.home() / "Documents/mtg-minutes"),
+    "attach_audio": True,            # 録音音声をLogseqに添付するか
+    "audio_bitrate": "96k",          # 添付音声(m4a)のビットレート
+    "logseq_assets_dir": "",         # 空ならLogseq APIで現在のグラフから自動取得
+}
+
+
+def load_config():
+    cfg = dict(DEFAULTS)
+    cfg_file = Path.home() / ".config/mtg-minutes/config.json"
+    if cfg_file.exists():
+        try:
+            cfg.update(json.loads(cfg_file.read_text()))
+        except Exception as e:
+            warn(f"config.json の読み込みに失敗: {e}")
+    # 環境変数 (MTG_MODEL, MTG_LOGSEQ_TOKEN, ...) で上書き
+    for k in cfg:
+        env = os.environ.get("MTG_" + k.upper())
+        if env:
+            cfg[k] = env
+    # Logseq トークンが未設定なら configs.edn から拾う
+    if not cfg["logseq_token"]:
+        cfg["logseq_token"] = read_logseq_token()
+    return cfg
+
+
+def read_logseq_token():
+    edn = Path.home() / "Library/Application Support/Logseq/configs.edn"
+    if not edn.exists():
+        return ""
+    m = re.search(r':server/tokens\s*\[\{:value\s*"([^"]+)"', edn.read_text())
+    return m.group(1) if m else ""
+
+
+# ---------------------------------------------------------------------------
+# ユーティリティ
+# ---------------------------------------------------------------------------
+def info(msg):
+    print(f"\033[36m▶\033[0m {msg}", file=sys.stderr)
+
+
+def warn(msg):
+    print(f"\033[33m⚠\033[0m {msg}", file=sys.stderr)
+
+
+def die(msg, code=1):
+    print(f"\033[31m✖\033[0m {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def run(cmd, **kw):
+    return subprocess.run(cmd, check=True, **kw)
+
+
+def ms_to_hms(ms):
+    s = int(ms // 1000)
+    return f"{s//3600:02d}:{(s%3600)//60:02d}:{s%60:02d}"
+
+
+# ---------------------------------------------------------------------------
+# 音声処理
+# ---------------------------------------------------------------------------
+def count_audio_tracks(path):
+    out = run(
+        ["ffprobe", "-v", "error", "-select_streams", "a",
+         "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    return len([l for l in out.splitlines() if l.strip()])
+
+
+def extract_track(src, track_index, dst):
+    """指定オーディオトラックを 16kHz mono WAV に変換"""
+    run([
+        "ffmpeg", "-y", "-i", str(src),
+        "-map", f"0:a:{track_index}",
+        "-ac", "1", "-ar", "16000",
+        "-c:a", "pcm_s16le", str(dst),
+    ], capture_output=True)
+
+
+def transcribe(wav, cfg, tmpdir):
+    """whisper-cli で文字起こし。segments のリスト [{from_ms, text}] を返す"""
+    prefix = str(Path(tmpdir) / (Path(wav).stem + "_out"))
+    run([
+        cfg["whisper_bin"], "-m", cfg["model"], "-f", str(wav),
+        "-l", cfg["language"], "-oj", "-of", prefix, "-np",
+    ], capture_output=True, text=True)
+    data = json.loads(Path(prefix + ".json").read_text())
+    segs = []
+    for t in data.get("transcription", []):
+        text = (t.get("text") or "").strip()
+        if not text:
+            continue
+        segs.append({"from": t["offsets"]["from"], "text": text})
+    return segs
+
+
+# ---------------------------------------------------------------------------
+# マージ & 整形
+# ---------------------------------------------------------------------------
+def merge_segments(tracks):
+    """tracks = [(label, segs), ...] を時系列にマージ"""
+    merged = []
+    for label, segs in tracks:
+        for s in segs:
+            merged.append({"from": s["from"], "label": label, "text": s["text"]})
+    merged.sort(key=lambda x: x["from"])
+    return merged
+
+
+def format_transcript(merged, with_labels):
+    lines = []
+    for s in merged:
+        ts = ms_to_hms(s["from"])
+        if with_labels:
+            lines.append(f"[{ts}] {s['label']}: {s['text']}")
+        else:
+            lines.append(f"[{ts}] {s['text']}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# 議事録生成 (claude -p)
+# ---------------------------------------------------------------------------
+MINUTES_PROMPT = """\
+あなたは優秀な議事録作成アシスタントです。
+以下は会議の文字起こしです(各行は [時刻] 話者: 発言 の形式。話者ラベルが無い場合もあります)。
+これを読み、日本語で簡潔かつ構造化された議事録を Markdown で作成してください。
+
+必ず次のセクションを含めること(該当が無ければ「特になし」と記載):
+
+## 概要
+3〜5行で会議の目的と結論を要約。
+
+## 主要な論点
+- 箇条書きで議論された論点。
+
+## 決定事項
+- 決まったことを箇条書き。
+
+## ToDo / ネクストアクション
+- [ ] 担当者(分かれば) / 内容 / 期限(分かれば)
+
+## 補足・備考
+- 重要な発言や保留事項など。
+
+文字起こしの誤変換と思われる箇所は文脈から自然に補正してよい。
+前置きや後書きは不要。Markdown 本文のみを出力すること。
+
+--- 文字起こしここから ---
+{transcript}
+--- 文字起こしここまで ---
+"""
+
+
+def generate_minutes(transcript, cfg):
+    prompt = MINUTES_PROMPT.format(transcript=transcript)
+    try:
+        res = subprocess.run(
+            [cfg["claude_bin"], "-p"],
+            input=prompt, capture_output=True, text=True, timeout=600,
+        )
+    except FileNotFoundError:
+        warn("claude CLI が見つからないため議事録生成をスキップ")
+        return None
+    if res.returncode != 0:
+        warn(f"claude 実行失敗 (rc={res.returncode}): {res.stderr.strip()[:300]}")
+        return None
+    return res.stdout.strip()
+
+
+# ---------------------------------------------------------------------------
+# Logseq 書き込み
+# ---------------------------------------------------------------------------
+def get_assets_dir(cfg):
+    """Logseqの現在グラフから assets ディレクトリを解決(config優先)"""
+    if cfg["logseq_assets_dir"]:
+        return Path(cfg["logseq_assets_dir"]).expanduser()
+    try:
+        g = logseq_call(cfg, "logseq.App.getCurrentGraph", [])
+        if g and g.get("path"):
+            return Path(g["path"]) / "assets"
+    except Exception as e:
+        warn(f"グラフパス取得に失敗: {e}")
+    return None
+
+
+def make_audio_asset(src, n_tracks, dst, bitrate):
+    """録音の全トラックを1本にミックスして m4a (AAC) に変換"""
+    if n_tracks >= 2:
+        inputs = "".join(f"[0:a:{i}]" for i in range(n_tracks))
+        fc = f"{inputs}amix=inputs={n_tracks}:normalize=0[a]"
+        cmd = ["ffmpeg", "-y", "-i", str(src),
+               "-filter_complex", fc, "-map", "[a]",
+               "-c:a", "aac", "-b:a", bitrate, str(dst)]
+    else:
+        cmd = ["ffmpeg", "-y", "-i", str(src),
+               "-map", "0:a:0", "-c:a", "aac", "-b:a", bitrate, str(dst)]
+    run(cmd, capture_output=True)
+
+
+def logseq_call(cfg, method, args):
+    body = json.dumps({"method": method, "args": args}).encode()
+    req = urllib.request.Request(
+        cfg["logseq_url"], data=body,
+        headers={
+            "Authorization": f"Bearer {cfg['logseq_token']}",
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=10) as r:
+        raw = r.read().decode()
+        return json.loads(raw) if raw else None
+
+
+def md_to_blocks(md):
+    """Markdown を Logseq のブロックツリーに変換(logseq-write スキル規約準拠)。
+       ## 見出し → トップレベル / 配下の段落・箇条書きは子ブロック / - [ ] → TODO。
+       返り値: [{"content": str, "children": [...]}, ...]"""
+    root, section, subsection = [], None, None
+
+    def container():
+        if subsection is not None:
+            return subsection["children"]
+        if section is not None:
+            return section["children"]
+        return root
+
+    for raw in md.splitlines():
+        s = raw.strip()
+        if not s or s == "---":
+            continue
+        if s.startswith("# ") and not s.startswith("## "):
+            continue                                   # H1 はスキップ
+        if s.startswith("## "):
+            section = {"content": s, "children": []}    # 見出しは独立ブロック
+            subsection = None
+            root.append(section)
+            continue
+        if s.startswith("### "):
+            subsection = {"content": s, "children": []}
+            (section["children"] if section else root).append(subsection)
+            continue
+        m = re.match(r"^[-*]\s+(.*)$", s)               # 箇条書き
+        if m:
+            item = m.group(1)
+            cb = re.match(r"^\[([ xX])\]\s+(.*)$", item)  # チェックボックス
+            if cb:
+                mark = "DONE" if cb.group(1).lower() == "x" else "TODO"
+                item = f"{mark} {cb.group(2)}"
+            container().append({"content": item, "children": []})
+            continue
+        container().append({"content": s, "children": []})   # 段落
+    return root
+
+
+def _clean_tree(nodes):
+    """children が空のキーを除去(insertBatchBlock 用に整形)"""
+    out = []
+    for n in nodes:
+        node = {"content": n["content"]}
+        kids = _clean_tree(n.get("children") or [])
+        if kids:
+            node["children"] = kids
+        out.append(node)
+    return out
+
+
+def append_tree(cfg, page_name, tree):
+    """トップレベルブロックを appendBlockInPage で作り、子は insertBatchBlock でツリー挿入"""
+    for blk in _clean_tree(tree):
+        res = logseq_call(cfg, "logseq.Editor.appendBlockInPage", [page_name, blk["content"]])
+        uuid = res.get("uuid") if isinstance(res, dict) else None
+        if blk.get("children") and uuid:
+            logseq_call(cfg, "logseq.Editor.insertBatchBlock",
+                        [uuid, blk["children"], {"sibling": False}])
+
+
+def write_to_logseq(cfg, page_name, minutes_md, transcript, meta,
+                    audio_rel=None, transcript_rel=None):
+    if not cfg["logseq_token"]:
+        warn("Logseq トークンが無いため Logseq 書き込みをスキップ")
+        return False
+    try:
+        logseq_call(cfg, "logseq.Editor.createPage",
+                    [page_name, {}, {"createFirstBlock": False, "redirect": False}])
+        # メタ情報(date はジャーナルへリンク。ページプロパティとして先頭ブロックに)
+        logseq_call(cfg, "logseq.Editor.appendBlockInPage",
+                    [page_name, f"type:: meeting\ndate:: [[{meta['date']}]]\nsource:: {meta['source']}"])
+
+        tree = []
+        # 録音音声(見出し + 再生プレーヤー)
+        if audio_rel:
+            tree.append({"content": "## 録音",
+                         "children": [{"content": f"![録音]({audio_rel})"}]})
+        # 議事録本文(Markdown → ツリー)
+        if minutes_md:
+            tree.extend(md_to_blocks(minutes_md))
+        # 文字起こし全文: assets にあればリンク参照(長文でページが重くならない)、無ければ本文埋め込み
+        if transcript_rel:
+            tree.append({"content": "## 文字起こし全文",
+                         "children": [{"content": f"[文字起こし全文を開く]({transcript_rel})"}]})
+        else:
+            tree.append({"content": "## 文字起こし全文",
+                         "children": [{"content": transcript}]})
+
+        append_tree(cfg, page_name, tree)
+        return True
+    except urllib.error.URLError as e:
+        warn(f"Logseq 書き込み失敗: {e}")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+def main():
+    ap = argparse.ArgumentParser(description="OBS録音 → 文字起こし → 議事録 → Logseq")
+    ap.add_argument("recording", help="OBSの録音ファイル (mkv/mp4/m4a/wav)")
+    ap.add_argument("--title", default="", help="会議タイトル(Logseqページ名に使用)")
+    ap.add_argument("--self-track", type=int, default=0, help="自分のマイクのトラック番号 (既定:0)")
+    ap.add_argument("--other-track", type=int, default=1, help="相手の音声のトラック番号 (既定:1)")
+    ap.add_argument("--no-minutes", action="store_true", help="議事録生成をスキップ")
+    ap.add_argument("--no-logseq", action="store_true", help="Logseq書き込みをスキップ")
+    ap.add_argument("--keep-wav", action="store_true", help="中間WAVを残す")
+    ap.add_argument("--attach-audio", dest="attach_audio", action="store_true",
+                    default=None, help="録音音声をLogseqに添付(既定:config)")
+    ap.add_argument("--no-attach-audio", dest="attach_audio", action="store_false",
+                    help="録音音声を添付しない")
+    args = ap.parse_args()
+
+    cfg = load_config()
+    src = Path(args.recording).expanduser()
+    if not src.exists():
+        die(f"録音ファイルが見つかりません: {src}")
+    if not Path(cfg["model"]).exists():
+        die(f"whisperモデルが見つかりません: {cfg['model']}\n  先にモデルをダウンロードしてください。")
+
+    now = dt.datetime.now()
+    title = args.title or src.stem
+    out_dir = Path(cfg["output_dir"]).expanduser() / now.strftime("%Y%m%d_%H%M%S")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    n_tracks = count_audio_tracks(src)
+    info(f"音声トラック数: {n_tracks}")
+
+    tmpdir = tempfile.mkdtemp(prefix="mtg_")
+    tracks_to_process = []
+    if n_tracks >= 2:
+        plan = [(args.self_track, cfg["self_label"]), (args.other_track, cfg["other_label"])]
+        with_labels = True
+    else:
+        plan = [(0, cfg["self_label"])]
+        with_labels = False
+        warn("トラックが1つのみ。話者ラベルなしで処理します。")
+
+    for idx, label in plan:
+        wav = Path(tmpdir) / f"track{idx}.wav"
+        info(f"トラック{idx} ({label}) を抽出中…")
+        extract_track(src, idx, wav)
+        info(f"トラック{idx} ({label}) を文字起こし中… (whisper)")
+        segs = transcribe(wav, cfg, tmpdir)
+        info(f"  → {len(segs)} セグメント")
+        tracks_to_process.append((label, segs))
+        if args.keep_wav:
+            import shutil
+            shutil.copy(wav, out_dir / wav.name)
+
+    merged = merge_segments(tracks_to_process)
+    transcript = format_transcript(merged, with_labels)
+    (out_dir / "transcript.txt").write_text(transcript)
+    info(f"文字起こし保存: {out_dir/'transcript.txt'}")
+
+    minutes_md = None
+    if not args.no_minutes:
+        info("議事録を生成中… (claude)")
+        minutes_md = generate_minutes(transcript, cfg)
+        if minutes_md:
+            (out_dir / "minutes.md").write_text(minutes_md)
+            info(f"議事録保存: {out_dir/'minutes.md'}")
+
+    if not args.no_logseq:
+        page_name = f"{cfg['logseq_page_prefix']} {now.strftime('%Y-%m-%d')} {title}".strip()
+        ts = now.strftime("%Y%m%d_%H%M%S")
+        audio_rel = None
+        transcript_rel = None
+        assets = get_assets_dir(cfg)
+        if assets:
+            assets.mkdir(parents=True, exist_ok=True)
+            # 文字起こし全文は assets にファイルとして置きリンク参照(長文でページが重くならないように)
+            tr_name = f"transcript_{ts}.txt"
+            (assets / tr_name).write_text(transcript)
+            transcript_rel = f"../assets/{tr_name}"
+            # 録音音声の添付
+            attach = cfg["attach_audio"] if args.attach_audio is None else args.attach_audio
+            if attach:
+                asset_name = f"mtg_{ts}.m4a"
+                info(f"録音音声を変換・添付中… ({asset_name})")
+                try:
+                    make_audio_asset(src, n_tracks, assets / asset_name, cfg["audio_bitrate"])
+                    audio_rel = f"../assets/{asset_name}"
+                except subprocess.CalledProcessError as e:
+                    warn(f"音声変換に失敗、添付をスキップ: {e}")
+        else:
+            warn("assetsディレクトリを解決できず、文字起こしはページ内に記載")
+        info(f"Logseqページ作成中: {page_name}")
+        ok = write_to_logseq(cfg, page_name,
+                             minutes_md, transcript,
+                             {"date": now.strftime("%Y-%m-%d"), "source": src.name},
+                             audio_rel=audio_rel, transcript_rel=transcript_rel)
+        if ok:
+            info(f"Logseq書き込み完了: 「{page_name}」")
+
+    print(f"\n\033[32m✔ 完了\033[0m  出力先: {out_dir}")
+    if minutes_md:
+        print("\n" + "=" * 60)
+        print(minutes_md)
+
+
+if __name__ == "__main__":
+    main()
