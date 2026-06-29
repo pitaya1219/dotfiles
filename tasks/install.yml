@@ -182,6 +182,14 @@ tasks:
             exit 1
             ;;
         esac
+  claude:
+    desc: Install Nix
+    silent: true
+    cmds:
+      - |
+        bash <<< '
+        curl -fsSL https://claude.ai/install.sh | bash
+        '
   nix:
     desc: Install Nix
     silent: true
@@ -190,7 +198,35 @@ tasks:
         echo "🔧 Installing Nix package manager..."
         if ! command -v nix >/dev/null 2>&1; then
           echo "📥 Downloading and installing Nix...";
-          curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | sh;
+          if uname -r 2>/dev/null | grep -qi "proot"; then
+            echo "🐧 proot environment detected, applying cp compatibility workaround...";
+            # proot does not support fchmodat with AT_EMPTY_PATH, which causes
+            # the Nix installer's "cp -a" to fail. Wrap cp to use -r instead.
+            mkdir -p /tmp/_nix_cp_wrap
+            {
+              echo '#!/bin/bash'
+              echo 'args=()'
+              echo 'for arg in "$@"; do'
+              echo '  case "$arg" in'
+              echo '    -a|--archive) args+=("-r") ;;'
+              echo '    --preserve=*|-p|--preserve) ;;'
+              echo '    *) args+=("$arg") ;;'
+              echo '  esac'
+              echo 'done'
+              echo 'exec /bin/cp "${args[@]}"'
+            } > /tmp/_nix_cp_wrap/cp
+            chmod +x /tmp/_nix_cp_wrap/cp
+            # sandbox and filter-syscalls require user namespaces, which are
+            # disabled in Android kernels. Pre-create nix.conf so the installer
+            # and all future nix commands work correctly in proot.
+            mkdir -p /etc/nix
+            printf 'sandbox = false\nfilter-syscalls = false\n' > /etc/nix/nix.conf
+            curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | \
+              PATH="/tmp/_nix_cp_wrap:$PATH" sh
+            rm -rf /tmp/_nix_cp_wrap
+          else
+            curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | sh;
+          fi
           echo "";
           echo "⚠️  Please restart your shell or run:";
           echo "    source ~/.nix-profile/etc/profile.d/nix.sh";
