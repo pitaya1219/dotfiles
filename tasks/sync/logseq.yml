@@ -261,10 +261,8 @@ tasks:
                     echo "After merging, update and delete this page."
                 } > "$conflict_page"
             fi
-            for cf in "${conflict_array[@]}"; do
-                [[ -f "$cf" ]] && rm -f "$cf" 2>/dev/null || true
-            done
-            # If the actual file doesn't exist, copy the largest conflict file to the decoded destination
+            # If the actual file doesn't exist, restore from the largest conflict file
+            # (must happen BEFORE deleting conflict files)
             if [[ ! -f "$actual_base" ]]; then
                 largest=""
                 max_size=0
@@ -276,6 +274,9 @@ tasks:
                 done
                 [[ -n "$largest" ]] && cp "$largest" "$base_file" 2>/dev/null || true
             fi
+            for cf in "${conflict_array[@]}"; do
+                [[ -f "$cf" ]] && rm -f "$cf" 2>/dev/null || true
+            done
         done
         $HAS_CONFLICTS && task sync:logseq:notify TITLE="Conflicts Detected" MESSAGE="Found conflict files" PRIORITY="high"
         INNEREOF
