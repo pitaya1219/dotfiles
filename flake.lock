@@ -21,6 +21,24 @@
         "type": "github"
       }
     },
+    "flake-utils": {
+      "inputs": {
+        "systems": "systems"
+      },
+      "locked": {
+        "lastModified": 1731533236,
+        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -58,6 +76,28 @@
         "ref": "main",
         "type": "git",
         "url": "https://git.pitaya.f5.si/pitaya1219/homelab.git"
+      }
+    },
+    "logseq-view": {
+      "inputs": {
+        "flake-utils": "flake-utils",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782824234,
+        "narHash": "sha256-cdvj+Fjp+AX7PaiZy+7XoqArV16cN6ug5Oij9vbur5Y=",
+        "ref": "main",
+        "rev": "0da04749c701c6c39a789e4a2c7a6addcdd63c11",
+        "revCount": 24,
+        "type": "git",
+        "url": "https://git.pitaya.f5.si/pitaya1219/logseq-view.git"
+      },
+      "original": {
+        "ref": "main",
+        "type": "git",
+        "url": "https://git.pitaya.f5.si/pitaya1219/logseq-view.git"
       }
     },
     "mistral-vibe": {
@@ -221,9 +261,25 @@
       "inputs": {
         "home-manager": "home-manager",
         "homelab": "homelab",
+        "logseq-view": "logseq-view",
         "mistral-vibe": "mistral-vibe",
         "neovim-nightly-overlay": "neovim-nightly-overlay",
         "nixpkgs": "nixpkgs_2"
+      }
+    },
+    "systems": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
       }
     },
     "uv2nix": {

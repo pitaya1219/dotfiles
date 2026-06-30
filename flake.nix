@@ -17,7 +17,7 @@
     };
     homelab.url = "git+https://git.pitaya.f5.si/pitaya1219/homelab.git?ref=main";
     logseq-view = {
-      url = "git+https://git.pitaya.f5.si/pitaya1219/logseq-view.git?ref=feat/add-flake-nix";
+      url = "git+https://git.pitaya.f5.si/pitaya1219/logseq-view.git?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
