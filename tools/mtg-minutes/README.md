@@ -78,11 +78,15 @@ mtg-minutes RECORDING.mkv --self-track 1 --other-track 0
 
 ## 4. インストール(PATHに通す)
 
+home-manager で管理する。`shared/programs/mtg-minutes.nix` が `bin/*` を nix パッケージ化し、
+`ffmpeg` / `whisper-cpp`(whisper-cli・whisper-stream)を runtimeInputs として固定する。
+r-shibuya プロファイルの imports に組み込み済みなので、switch すれば `mtg-rec` / `mtg-live` / `mtg-minutes` が PATH に入る。
+
 ```bash
-# 例: ~/.local/bin に симリンク
-ln -sf "$PWD/bin/mtg-minutes" ~/.local/bin/mtg-minutes
-# または dotfiles/tools へ移動して管理
+home-manager switch --flake .#r-shibuya
 ```
+
+`claude` CLI は別管理(ambient PATH)。whisper モデルは従来どおり `~/.cache/whisper-cpp/models/` に配置する。
 
 ## 5. 設定の上書き
 

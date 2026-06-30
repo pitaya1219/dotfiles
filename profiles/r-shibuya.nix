@@ -30,6 +30,7 @@
           ../shared/activations/proton-pass.nix
           ../shared/programs/bare.nix
           ../shared/programs/logseq-view.nix
+          ../shared/programs/mtg-minutes.nix
           ((import ../lib/taskfile-overrides.nix { inherit lib pkgs; }).forProfile "r-shibuya")
           ../shared/programs/bash.nix
           ../shared/programs/claude-code.nix
