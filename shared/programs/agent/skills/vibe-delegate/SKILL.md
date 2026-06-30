@@ -63,12 +63,14 @@ git -C "$CLONE" checkout main && git -C "$CLONE" reset --hard origin/main && git
 
 Write a self-contained prompt to `/tmp/vibe_task.md`. It MUST state:
 
+> **Every task prompt MUST include the session-save instruction below. Do not omit it for "small" tasks.**
+
 - The clone path; "work entirely inside this directory; do NOT create session subdirectories."
 - Create a feature branch (`feat/...`, `fix/...`, `chore/...`).
 - **Commit messages: clean and professional. NEVER mention AI / Mistral / Vibe / Claude / Anthropic; NO `Co-Authored-By` line.**
 - **Do NOT open a PR, do NOT merge. Only push the branch.**
 - Verify: `cargo fmt --all`, `cargo build`, `cargo test`, `cargo clippy --all-targets -- -D warnings`. If `cargo` is not on PATH, prefix with `nix develop -c`.
-- **On completion (after pushing), run the `session-save` skill** to record a summary of your work. Pass caller = `claude` so the page gets a `called-by:: claude` property — this marks it as a delegated sub-agent run (vs a directly-run session). If `session-save` / Logseq is unavailable, skip it silently.
+- **On completion (after pushing), ALWAYS run the `session-save` skill** — this is mandatory, not optional. Pass `caller = claude` so the page gets a `called-by:: claude` property. Only skip silently if Logseq itself is unreachable (network/port error); never omit it just because the task is small.
 - Final report: branch name, exact `cargo test` line, clippy result, files changed, any blocker. If a check fails and it cannot fix it, report verbatim and do NOT push broken code.
 
 ### 4. Launch Vibe (background) + INDEPENDENTLY VERIFY
