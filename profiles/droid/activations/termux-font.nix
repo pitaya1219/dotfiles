@@ -7,6 +7,6 @@ in
 {
   home.activation.setupTermuxFont = lib.hm.dag.entryAfter ["writeBoundary"] ''
     mkdir -p "$HOME/.termux"
-    ln -sf "${fontFile}" "$HOME/.termux/font.ttf"
+    cp -f "${fontFile}" "$HOME/.termux/font.ttf"
   '';
 }
