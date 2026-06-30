@@ -105,7 +105,7 @@ Tone: Technical but readable, focusing on "what" and "why" over "how".
 Invoke `Skill(logseq-write)` with `--create-page` to create a dedicated session page:
 
 ```
-$ARGUMENTS: "Session: <YYYY-MM-DD> <oneline-summary>" --create-page --format markdown \
+$ARGUMENTS: "Sessions/<YYYY-MM-DD> <oneline-summary>" --create-page --format markdown \
   --prop "tags=#<agent-type>-session" \
   --prop "date=[[<YYYY-MM-DD>]]" \
   --prop "repository=<repo-name-or-empty>" \
