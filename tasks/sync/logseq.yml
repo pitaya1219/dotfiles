@@ -327,7 +327,8 @@ tasks:
         bash <<'INNEREOF'
         set -euo pipefail
         if [[ "$(uname)" == "Darwin" ]]; then
-            task sync:logseq:schedule-macos
+            echo "On macOS, logseq sync is managed via home-manager launchd.agents."
+            echo "Run: home-manager switch --flake ~/dotfiles#r-shibuya"
         elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
             task sync:logseq:schedule-termux
         elif [[ -d /run/systemd/system ]]; then
@@ -344,7 +345,8 @@ tasks:
         bash <<'INNEREOF'
         set -euo pipefail
         if [[ "$(uname)" == "Darwin" ]]; then
-            task sync:logseq:schedule-macos-remove
+            echo "On macOS, logseq sync is managed via home-manager launchd.agents."
+            echo "To disable, set launchd.agents.logseq-sync.enable = false in profiles/r-shibuya.nix"
         elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
             task sync:logseq:schedule-termux-remove
         elif [[ -d /run/systemd/system ]]; then
@@ -361,7 +363,8 @@ tasks:
         bash <<'INNEREOF'
         set -euo pipefail
         if [[ "$(uname)" == "Darwin" ]]; then
-            task sync:logseq:schedule-macos-status
+            echo "=== macOS launchd (managed by home-manager) ==="
+            launchctl list | grep com.logseq.sync || echo "Not loaded"
         elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
             task sync:logseq:schedule-termux-status
         elif [[ -d /run/systemd/system ]]; then
@@ -386,65 +389,6 @@ tasks:
         sed "s|__DOTFILES_DIR__|$DOTFILES_DIR|g" "$TEMPLATE" > "$OUTPUT"
         chmod +x "$OUTPUT"
         echo "Termux shortcut created at $OUTPUT"
-        INNEREOF
-
-  schedule-macos:
-    desc: Setup macOS launchd agent for logseq sync
-    vars:
-      LOGSEQ_SYNC_INTERVAL: '{{.LOGSEQ_SYNC_INTERVAL | default "1800"}}'
-    cmds:
-      - mkdir -p "$HOME/Library/LaunchAgents"
-      - |
-        bash <<'INNEREOF'
-        set -euo pipefail
-        DOTFILES_DIR="{{.DOTFILES_DIR | default (env "HOME") }}/dotfiles"
-        TEMPLATE="$DOTFILES_DIR/tasks/sync/logseq/templates/macos/com.logseq.sync.plist"
-        OUTPUT="$HOME/Library/LaunchAgents/com.logseq.sync.plist"
-        LOG_FILE="{{.LOG_FILE}}"
-        LOG_FILE_ERROR="$(echo "$LOG_FILE" | sed 's/\.log$/-error.log/')"
-        
-        # Generate plist from template with __VAR__ substitution
-        sed "s|__DOTFILES_DIR__|$DOTFILES_DIR|g" "$TEMPLATE" \
-          | sed "s|__HOME__|$HOME|g" \
-          | sed "s|__PATH__|$PATH|g" \
-          | sed "s|__LOGSEQ_LOCAL__|{{.LOGSEQ_LOCAL}}|g" \
-          | sed "s|__LOGSEQ_REMOTE__|{{.LOGSEQ_REMOTE}}|g" \
-          | sed "s|__LOGSEQ_SYNC_INTERVAL__|{{.LOGSEQ_SYNC_INTERVAL}}|g" \
-          | sed "s|__LOG_FILE__|$LOG_FILE|g" \
-          | sed "s|__LOG_FILE_ERROR__|$LOG_FILE_ERROR|g" \
-          > "$OUTPUT"
-        
-        # Load the agent
-        launchctl unload "$OUTPUT" 2>/dev/null || true
-        launchctl load "$OUTPUT"
-        echo "macOS launchd agent loaded: $OUTPUT"
-        INNEREOF
-
-  schedule-macos-status:
-    desc: Show macOS launchd agent status
-    cmds:
-      - |
-        bash <<'INNEREOF'
-        set -euo pipefail
-        PLIST="$HOME/Library/LaunchAgents/com.logseq.sync.plist"
-        if [[ -f "$PLIST" ]]; then
-            echo "Launchd agent file exists: $PLIST"
-            launchctl list | grep com.logseq.sync || echo "Not loaded"
-        else
-            echo "Launchd agent not configured"
-        fi
-        INNEREOF
-
-  schedule-macos-remove:
-    desc: Remove macOS launchd agent for logseq sync
-    cmds:
-      - |
-        bash <<'INNEREOF'
-        set -euo pipefail
-        PLIST="$HOME/Library/LaunchAgents/com.logseq.sync.plist"
-        launchctl unload "$PLIST" 2>/dev/null || true
-        rm -f "$PLIST"
-        echo "macOS launchd agent removed"
         INNEREOF
 
   schedule-systemd:
