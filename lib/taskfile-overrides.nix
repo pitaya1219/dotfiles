@@ -37,7 +37,7 @@
         "  ${name}:\n" +
         "    cmds:\n" +
         (lib.concatStringsSep "\n" (builtins.map (cmd: "      - ${cmd}") task.cmds)) + "\n" +
-        "    silent: ${builtins.toString task.silent}"
+        "    silent: ${if task.silent then "true" else "false"}"
       ) (builtins.attrNames mergedTasks);
       
       # Generate final Taskfile.yml content
