@@ -2,7 +2,7 @@
 name: session-save
 description: Save current session summary to Logseq (if available) or as a local markdown file
 user-invocable: true
-version: 2.2.0
+version: 2.3.0
 ---
 
 Create a comprehensive summary of the current session and save it.
@@ -112,7 +112,7 @@ $ARGUMENTS: "Session: <YYYY-MM-DD> <oneline-summary>" --create-page --format mar
   --prop "git-branch=<branch-name-or-empty>" \
   --prop "objective=<one-sentence-objective>" \
   --prop "session-id=<SESSION_ID>" \
-  --prop "status=completed" \
+  --prop "status=<wip-or-completed>" \
   --prop "model=<model-name>" \
   --prop "pr=<pr-url-or-empty>" \
   --prop "called-by=<caller-or-empty>"
@@ -125,6 +125,7 @@ Field values:
 - `<repo-name>`: from `git remote get-url origin` if in a git repo, else omit
 - `<branch-name>`: from `git branch --show-current` if in a git repo, else omit
 - `<objective>`: one sentence summarizing the session goal, derived from the conversation
+- `<wip-or-completed>`: `wip` if the session still has unfinished work / Open Items to resume; `completed` only when everything is done. Default to `wip` when in doubt — the user looks up `status` to find sessions to resume.
 - `<model-name>`: the Claude/AI model in use (e.g. `claude-sonnet-4-6`)
 - `<pr-url>`: PR URL if one was created during the session, else omit
 - `<caller>`: the orchestrator that delegated this session, when it was run as a sub-agent (e.g. `claude` when delegated via the `vibe-delegate` skill). Omit the property entirely for normal, directly-run sessions.
