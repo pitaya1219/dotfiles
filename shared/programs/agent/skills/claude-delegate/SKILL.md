@@ -131,13 +131,24 @@ cd "$CLONE" && cargo fmt --all -- --check
 
 ### 7. Open the PR (after verification passes)
 
-Use the Gitea MCP `pull_request_write` or the REST API under your orchestrator identity:
+Detect the platform from the remote URL and use the appropriate method:
 
 ```bash
 ORIGIN=$(git -C "$CLONE" remote get-url origin)
+BRANCH=$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)
+```
+
+**GitHub** (`github.com` in the remote URL) — use `gh` CLI (user's own auth, no separate agent token needed):
+
+```bash
+cd "$CLONE" && gh pr create --head "$BRANCH" --base main --title "<title>" --body "<body incl. Closes #<issue>>"
+```
+
+**Gitea** (any other host) — use Gitea MCP `pull_request_write` or the REST API:
+
+```bash
 HOST=$(printf '%s' "$ORIGIN" | sed -E 's#^(https?://[^/]+).*#\1#')
 REPO_SLUG=$(printf '%s' "$ORIGIN" | sed -E 's#^https?://[^/]+/(.+)\.git$#\1#')
-BRANCH=$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)
 
 curl -fsS -X POST \
   -H "Authorization: token ${GITEA_CLAUDE_BOT_TOKEN}" \
