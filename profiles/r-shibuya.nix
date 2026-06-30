@@ -15,6 +15,11 @@
           token = { command = "passage show logseq/http-api/claude-code/token"; };
         };
 
+        programs.mtg-minutes = {
+          enable = true;
+          logseqTokenCommand = "passage show logseq/http-api/claude-code/token";
+        };
+
         dotfiles.agent.dailyReport = {
           sources = {
             github = { user = "pitaya1219"; };

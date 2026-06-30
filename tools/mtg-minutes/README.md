@@ -107,23 +107,38 @@ home-manager switch --flake .#r-shibuya
 
 ## 5. 設定の上書き
 
-`~/.config/mtg-minutes/config.json`(任意):
+`~/.config/mtg-minutes/config.json` を **home-manager が宣言管理**する。
+`programs.mtg-minutes.settings` に書いたキーが書き込まれる(read-only symlink になる):
 
-```json
-{
-  "model": "/Users/r-shibuya/.cache/whisper-cpp/models/ggml-large-v3-turbo.bin",
-  "self_label": "自分",
-  "other_label": "相手",
-  "logseq_page_prefix": "会議録",
-  "output_dir": "/Users/r-shibuya/Documents/mtg-minutes",
-  "attach_audio": true,
-  "audio_bitrate": "96k",
-  "logseq_assets_dir": ""
-}
+```nix
+programs.mtg-minutes = {
+  enable = true;
+  logseqTokenCommand = "passage show logseq/http-api/claude-code/token";
+  settings = {
+    self_label = "自分";
+    other_label = "相手";
+    output_dir = "~/Documents/mtg-minutes";
+    audio_bitrate = "96k";
+  };
+};
 ```
 
-Logseqトークンは未設定なら `~/Library/Application Support/Logseq/configs.edn` から自動取得。
-環境変数 `MTG_MODEL` 等でも上書き可。
+書ける主なキー(未指定はスクリプト DEFAULTS が適用):
+`model` / `whisper_bin` / `language` / `self_label` / `other_label` /
+`logseq_url` / `logseq_page_prefix` / `output_dir` / `attach_audio` /
+`audio_bitrate` / `logseq_assets_dir`。
+
+### Logseq トークン
+
+トークン実体は config にも nix store にも焼かず、**取得コマンド**を指定する。
+`logseqTokenCommand` が config.json の `logseq_token_cmd` に書かれ、`mtg-minutes` が
+**実行時に評価**してトークンを得る(passage 運用にそのまま乗る)。
+
+解決順: `logseq_token`(明示) → `logseq_token_cmd`(コマンド) → `configs.edn` 自動取得。
+環境変数 `MTG_MODEL` / `MTG_LOGSEQ_TOKEN` 等でも一時上書き可。
+
+> 既に手書きの `~/.config/mtg-minutes/config.json` があると switch が衝突する。
+> nix 管理に移すときは先に削除しておく。
 
 ---
 

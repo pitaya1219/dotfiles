@@ -40,6 +40,7 @@ DEFAULTS = {
     "other_label": "相手",
     "logseq_url": "http://127.0.0.1:12315/api",
     "logseq_token": "",          # configs.edn の :server/tokens から取得しても良い
+    "logseq_token_cmd": "",      # トークン取得コマンド(例: passage show ...)。logseq_token 未設定時に実行
     "logseq_page_prefix": "会議録",
     "claude_bin": "claude",
     "output_dir": str(Path.home() / "Documents/mtg-minutes"),
@@ -62,10 +63,25 @@ def load_config():
         env = os.environ.get("MTG_" + k.upper())
         if env:
             cfg[k] = env
-    # Logseq トークンが未設定なら configs.edn から拾う
+    # Logseq トークン解決順: 明示設定(config/env) > 取得コマンド > configs.edn
+    if not cfg["logseq_token"] and cfg["logseq_token_cmd"]:
+        cfg["logseq_token"] = resolve_token_cmd(cfg["logseq_token_cmd"])
     if not cfg["logseq_token"]:
         cfg["logseq_token"] = read_logseq_token()
     return cfg
+
+
+def resolve_token_cmd(cmd):
+    """logseq_token_cmd を実行してトークンを取得する(例: passage show ...)"""
+    try:
+        res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
+    except Exception as e:
+        warn(f"logseq_token_cmd の実行に失敗: {e}")
+        return ""
+    if res.returncode != 0:
+        warn(f"logseq_token_cmd が異常終了 (rc={res.returncode}): {res.stderr.strip()[:200]}")
+        return ""
+    return res.stdout.strip()
 
 
 def read_logseq_token():

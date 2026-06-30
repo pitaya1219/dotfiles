@@ -1,6 +1,9 @@
 { config, pkgs, lib, ... }:
 
 let
+  cfg = config.programs.mtg-minutes;
+  jsonFormat = pkgs.formats.json { };
+
   # mtg-rec / mtg-live / mtg-minutes が呼ぶ外部コマンドを固定する。
   #   ffmpeg     … ffmpeg + ffprobe (録音・音声変換・トラック数判定)
   #   whisper-cpp … whisper-cli (バッチ文字起こし) + whisper-stream (ライブ字幕)
@@ -49,11 +52,48 @@ let
       mainProgram = "mtg-minutes";
     };
   };
+
+  # logseq_token_cmd を設定に注入(コマンド文字列のみ。トークン実体は store に焼かない)。
+  settings = cfg.settings
+    // lib.optionalAttrs (cfg.logseqTokenCommand != null) {
+      logseq_token_cmd = cfg.logseqTokenCommand;
+    };
 in
 {
-  home.packages = [ mtg-minutes ];
+  options.programs.mtg-minutes = {
+    enable = lib.mkEnableOption "mtg-minutes meeting transcription & minutes toolkit (macOS)";
 
-  # mtg-minutes / mtg-live 双方が見る既定パスに turbo モデルを symlink する。
-  # 注意: 同パスに手動DL済みの実ファイルがあると switch が衝突する。先に削除すること。
-  home.file.".cache/whisper-cpp/models/ggml-large-v3-turbo.bin".source = whisperModel;
+    logseqTokenCommand = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "passage show logseq/http-api/claude-code/token";
+      description = ''
+        Logseq HTTP API トークンを取得するコマンド。config.json の `logseq_token_cmd`
+        に書き込まれ、mtg-minutes 実行時に評価される。トークン実体は nix store にも
+        config ファイルにも残らない。null なら書き込まない(configs.edn から自動取得)。
+      '';
+    };
+
+    settings = lib.mkOption {
+      type = jsonFormat.type;
+      default = { };
+      example = lib.literalExpression ''{ output_dir = "~/Documents/mtg"; self_label = "自分"; }'';
+      description = ''
+        `~/.config/mtg-minutes/config.json` に書き込む設定。スクリプト側 DEFAULTS を
+        上書きする。`logseq_token` はここに書かず `logseqTokenCommand` を使うこと。
+      '';
+    };
+  };
+
+  config = lib.mkIf cfg.enable {
+    home.packages = [ mtg-minutes ];
+
+    # mtg-minutes / mtg-live 双方が見る既定パスに turbo モデルを symlink する。
+    # 注意: 同パスに手動DL済みの実ファイルがあると switch が衝突する。先に削除すること。
+    home.file.".cache/whisper-cpp/models/ggml-large-v3-turbo.bin".source = whisperModel;
+
+    # config.json を宣言管理(read-only symlink)。token はコマンド経由なので秘密は含まない。
+    xdg.configFile."mtg-minutes/config.json".source =
+      jsonFormat.generate "mtg-minutes-config.json" settings;
+  };
 }
