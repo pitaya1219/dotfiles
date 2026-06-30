@@ -98,6 +98,7 @@ in
     kanagawa-paper-nvim
     iceberg-vim
     melange-nvim
+    lush-nvim
     zenbones-nvim
   ] ++ buildCustomPlugins;
 
