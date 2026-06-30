@@ -4,7 +4,7 @@
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
     pkgs = import nixpkgs {
       system = "aarch64-linux";
-      overlays = [ overlays.mistral-vibe overlays.fix-neovim-lua-passthru overlays.pipx-no-check overlays.pipx-proot-unpack ];
+      overlays = [ overlays.mistral-vibe overlays.fix-neovim-lua-passthru overlays.pipx-no-check overlays.pipx-proot-unpack overlays.logseq-view ];
     };
     modules = [
       ({ config, pkgs, lib, ... }: {
@@ -15,6 +15,7 @@
 
         imports = [
           ../shared/programs/bare.nix
+          ../shared/programs/logseq-view.nix
           ((import ../lib/taskfile-overrides.nix { inherit lib pkgs; }).forProfile "droid")
           ../shared/programs/bash.nix
           ../shared/programs/claude-code.nix

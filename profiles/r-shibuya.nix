@@ -4,7 +4,7 @@
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
     pkgs = import nixpkgs {
       system = "aarch64-darwin";
-      overlays = [ overlays.neovim-nightly overlays.mistral-vibe overlays.pipx-no-check ];
+      overlays = [ overlays.neovim-nightly overlays.mistral-vibe overlays.pipx-no-check overlays.logseq-view ];
     };
     modules = [
       ({ config, pkgs, lib, ... }: {

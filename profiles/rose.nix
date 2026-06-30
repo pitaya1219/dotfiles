@@ -4,7 +4,7 @@
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
     pkgs = import nixpkgs {
       system = "x86_64-linux";
-      overlays = [ overlays.neovim-nightly overlays.mistral-vibe overlays.pipx-no-check ];
+      overlays = [ overlays.neovim-nightly overlays.mistral-vibe overlays.pipx-no-check overlays.logseq-view ];
     };
     modules = extraModules ++ [
       ({ config, pkgs, lib, ... }: {
@@ -20,6 +20,7 @@
           ((import ../lib/taskfile-overrides.nix { inherit lib pkgs; }).forProfile "rose")
           ../shared/programs/bash.nix
           ../shared/programs/bare.nix
+          ../shared/programs/logseq-view.nix
           ../shared/programs/rust.nix
           ../shared/programs/claude-code.nix
           ../shared/programs/opencode.nix

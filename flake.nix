@@ -16,15 +16,22 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     homelab.url = "git+https://git.pitaya.f5.si/pitaya1219/homelab.git?ref=main";
+    logseq-view = {
+      url = "git+https://git.pitaya.f5.si/pitaya1219/logseq-view.git?ref=feat/add-flake-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, home-manager, neovim-nightly-overlay, mistral-vibe, homelab }:
+  outputs = { self, nixpkgs, home-manager, neovim-nightly-overlay, mistral-vibe, homelab, logseq-view }:
     let
       profileLib = import ./lib/profiles.nix { inherit (nixpkgs) lib; };
 
       overlays = {
         neovim-nightly = neovim-nightly-overlay.overlays.default;
         mistral-vibe = mistral-vibe.overlays.default;
+        logseq-view = final: prev: {
+          logseq-view = logseq-view.packages.${final.system}.logseq-view;
+        };
 
         # mistral-vibe overlay modifies neovim-unwrapped and drops the lua passthru
         # that neovim's wrapper.nix needs. Restore it with luajit (what nixpkgs
