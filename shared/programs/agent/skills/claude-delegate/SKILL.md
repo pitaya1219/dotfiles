@@ -88,6 +88,7 @@ Write a self-contained prompt for the subagent. It MUST state:
 - **Commit messages: clean and professional. NEVER mention AI / Claude / Anthropic / Haiku / Sonnet; NO `Co-Authored-By` line.**
 - **Do NOT open a PR, do NOT merge. Only push the branch.**
 - Run verification checks appropriate to the project (e.g. `cargo fmt --all`, `cargo build`, `cargo test`, `cargo clippy --all-targets -- -D warnings`; prefix with `nix develop -c` if cargo is not on PATH).
+- **On completion (after pushing), ALWAYS run the `session-save` skill** — this is mandatory, not optional. Pass `caller = claude` so the page gets a `called-by:: claude` property. If Logseq is unreachable (network/port error), `session-save` should fall back to writing a markdown file under `~/.agent/sessions/` rather than skipping silently.
 - Final report: branch name, exact test output line, lint result, files changed, any blocker. If a check fails and it cannot fix it, report verbatim and do NOT push broken code.
 
 ### 5. Spawn the subagent
