@@ -1,7 +1,23 @@
 { nixpkgs, home-manager, overlays, extraModules ? [], nix-darwin ? null }:
 
 let
+  lib = nixpkgs.lib;
   system = "aarch64-darwin";
+
+  nixpkgsConfig = {
+    allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [
+      "claude-code"
+      "specs.nvim"
+      "copilot.vim"
+    ];
+    packageOverrides = pkgs: {
+      neovim-unwrapped = pkgs.neovim-unwrapped.overrideAttrs (_: {
+        doCheck = false;
+        doInstallCheck = false;
+        checkPhase = "echo 'Tests skipped on macOS'";
+      });
+    };
+  };
 
   darwinOverlays = [
     overlays.neovim-nightly
@@ -105,21 +121,13 @@ in
       overlays = darwinOverlays;
     };
     modules = homeModules ++ [
-      ({ pkgs, ... }: {
-        # WORKAROUND: Force package overrides at nixpkgs.config level for macOS
-        nixpkgs.config.packageOverrides = pkgs: {
-          neovim-unwrapped = pkgs.neovim-unwrapped.overrideAttrs (_: {
-            doCheck = false;
-            doInstallCheck = false;
-            checkPhase = "echo 'Tests skipped on macOS'";
-          });
-        };
-      })
+      { nixpkgs.config = nixpkgsConfig; }
     ];
   };
 
   mkDarwinConfiguration = if nix-darwin == null then null else nix-darwin.lib.darwinSystem {
     inherit system;
+    specialArgs = { inherit nixpkgsConfig; };
     modules = [
       home-manager.darwinModules.home-manager
       ({ pkgs, lib, ... }: {

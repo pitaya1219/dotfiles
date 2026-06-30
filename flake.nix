@@ -114,8 +114,7 @@
       # r-shibuya uses nix-darwin for declarative brew cask management and system settings
       darwinConfigurations."r-shibuya" =
         (import ./profiles/r-shibuya.nix {
-          inherit nixpkgs home-manager overlays;
-          nix-darwin = nix-darwin;
+          inherit nixpkgs home-manager overlays nix-darwin;
           extraModules = [];
         }).mkDarwinConfiguration;
 

@@ -1,4 +1,4 @@
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, nixpkgsConfig, ... }:
 
 {
   # nix-darwin version tracking
@@ -14,23 +14,10 @@
   # Match the actual nixbld group GID on this machine (default changed from 30000 to 350)
   ids.gids.nixbld = 350;
 
-  # Allow unfree packages at the system level.
-  # Required when home-manager.useGlobalPkgs = true — home-manager's nixpkgs.config is ignored.
-  nixpkgs.config.allowUnfreePredicate = pkg:
-    builtins.elem (lib.getName pkg) [
-      "claude-code"
-      "specs.nvim"
-      "copilot.vim"
-    ];
-
-  # WORKAROUND: Skip neovim tests on macOS
-  nixpkgs.config.packageOverrides = pkgs: {
-    neovim-unwrapped = pkgs.neovim-unwrapped.overrideAttrs (_: {
-      doCheck = false;
-      doInstallCheck = false;
-      checkPhase = "echo 'Tests skipped on macOS'";
-    });
-  };
+  # Shared with mkHomeConfiguration via specialArgs — single source of truth.
+  # Required at system level because home-manager.useGlobalPkgs = true makes
+  # home-manager ignore its own nixpkgs.config options.
+  nixpkgs.config = nixpkgsConfig;
 
   # Required by recent nix-darwin for primary-user options (e.g. homebrew)
   system.primaryUser = "r-shibuya";
