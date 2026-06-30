@@ -331,6 +331,27 @@ for i = 1, 9 do
   end
 end
 
+-- macOS: terminals that send Option as Unicode chars instead of Esc+ sequences
+-- (e.g. Terminal.app default, iTerm2 without "Esc+" configured)
+-- US keyboard layout: Opt+h=˙ Opt+l=¬ Opt+1=¡ Opt+2=™ Opt+3=£ Opt+4=¢ Opt+5=∞ Opt+6=§ Opt+7=¶ Opt+8=• Opt+9=ª
+if vim.fn.has('mac') == 1 then
+  for _, mode in ipairs(nav_modes) do
+    vim.keymap.set(mode, '˙', tabprev_wrap, { silent = true, desc = 'Prev tab (Mac Opt+h)' })
+    vim.keymap.set(mode, '¬', tabnext_wrap, { silent = true, desc = 'Next tab (Mac Opt+l)' })
+  end
+
+  local mac_opt_nums = { '¡', '™', '£', '¢', '∞', '§', '¶', '•', 'ª' }
+  for i, char in ipairs(mac_opt_nums) do
+    for _, mode in ipairs(nav_modes) do
+      vim.keymap.set(mode, char, function()
+        if vim.fn.tabpagenr('$') >= i then
+          vim.cmd('tabnext ' .. i)
+        end
+      end, { silent = true, desc = 'Go to tab ' .. i .. ' (Mac Opt+' .. i .. ')' })
+    end
+  end
+end
+
 -- Move to tab with running terminal
 vim.keymap.set('n', '<leader>tabt', function()
   -- Find terminal buffer and its tab
