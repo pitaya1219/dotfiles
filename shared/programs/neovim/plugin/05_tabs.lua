@@ -300,6 +300,37 @@ end
 
 vim.keymap.set('n', '<leader>tabm', manage_tabs, { silent = true })
 
+-- Fast tab navigation with Alt (Meta) key
+local function tabnext_wrap()
+  local c = vim.fn.tabpagenr()
+  local t = vim.fn.tabpagenr('$')
+  vim.cmd('tabnext ' .. (c % t + 1))
+end
+
+local function tabprev_wrap()
+  local c = vim.fn.tabpagenr()
+  local t = vim.fn.tabpagenr('$')
+  vim.cmd('tabnext ' .. ((c - 2 + t) % t + 1))
+end
+
+-- <cmd> works in n/i/t without mode prefix
+local nav_modes = { 'n', 'i', 't' }
+for _, mode in ipairs(nav_modes) do
+  vim.keymap.set(mode, '<M-l>', tabnext_wrap, { silent = true, desc = 'Next tab (wrap)' })
+  vim.keymap.set(mode, '<M-h>', tabprev_wrap, { silent = true, desc = 'Prev tab (wrap)' })
+end
+
+-- Alt+number to jump to tab N (1–9)
+for i = 1, 9 do
+  for _, mode in ipairs(nav_modes) do
+    vim.keymap.set(mode, '<M-' .. i .. '>', function()
+      if vim.fn.tabpagenr('$') >= i then
+        vim.cmd('tabnext ' .. i)
+      end
+    end, { silent = true, desc = 'Go to tab ' .. i })
+  end
+end
+
 -- Move to tab with running terminal
 vim.keymap.set('n', '<leader>tabt', function()
   -- Find terminal buffer and its tab
