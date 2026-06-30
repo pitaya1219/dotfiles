@@ -7,6 +7,10 @@
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix-darwin = {
+      url = "github:LnL7/nix-darwin";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     neovim-nightly-overlay = {
       url = "github:nix-community/neovim-nightly-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -22,7 +26,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, home-manager, neovim-nightly-overlay, mistral-vibe, homelab, logseq-view }:
+  outputs = { self, nixpkgs, home-manager, nix-darwin, neovim-nightly-overlay, mistral-vibe, homelab, logseq-view }:
     let
       profileLib = import ./lib/profiles.nix { inherit (nixpkgs) lib; };
 
@@ -100,14 +104,23 @@
           ];
         };
       };
-      
-      # Generate home configurations from profiles  
-      homeConfigurations = builtins.mapAttrs 
-        (name: profile: profile.mkHomeConfiguration) 
+
+      # Generate home configurations from profiles
+      homeConfigurations = builtins.mapAttrs
+        (name: profile: profile.mkHomeConfiguration)
         profiles;
+
+      # Darwin (macOS system-level) configurations — only for profiles that opt in
+      # r-shibuya uses nix-darwin for declarative brew cask management and system settings
+      darwinConfigurations."r-shibuya" =
+        (import ./profiles/r-shibuya.nix {
+          inherit nixpkgs home-manager overlays;
+          nix-darwin = nix-darwin;
+          extraModules = [];
+        }).mkDarwinConfiguration;
 
     in
     {
-      inherit homeConfigurations;
+      inherit homeConfigurations darwinConfigurations;
     };
 }
