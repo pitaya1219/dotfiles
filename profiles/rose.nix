@@ -34,6 +34,7 @@
           ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "rose")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
           ./rose/tailscale.nix
+          ./rose/logseq-sync.nix
         ];
 
         services.dns-updater.enable = true;
