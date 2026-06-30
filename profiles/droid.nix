@@ -28,6 +28,7 @@
           ../shared/programs/readline.nix
           ../shared/activations/huggingface_hub.nix
           ../shared/activations/proton-pass.nix
+          ./droid/activations/termux-font.nix
           ./droid/packages/shellm.nix
           ./droid/ssh/config.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "droid")
