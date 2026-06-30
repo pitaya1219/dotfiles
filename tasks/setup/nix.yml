@@ -64,7 +64,7 @@ tasks:
           done
         fi
   home:
-    desc: Setup nix home-manager and switch profile
+    desc: Setup nix home-manager (or nix-darwin on macOS) and switch profile
     silent: true
     vars:
       PROFILE: '{{.PROFILE | default ""}}'
@@ -99,5 +99,49 @@ tasks:
             # build failed and left the directory, the next build refuses to proceed.
             rm -rf /homeless-shelter 2>/dev/null || true
           fi
-          nix run home-manager/master -- switch --flake .#"${profile}"
+          if [[ "$(uname)" == "Darwin" ]] && [[ -f "profiles/${profile}/darwin.nix" ]]; then
+            task setup:nix:darwin PROFILE="${profile}"
+          else
+            nix run home-manager/master -- switch --flake .#"${profile}"
+          fi
+        fi
+
+  darwin:
+    desc: Bootstrap or switch nix-darwin profile (macOS only)
+    silent: true
+    vars:
+      PROFILE: '{{.PROFILE | default ""}}'
+    cmds:
+      - |
+        profile="{{.PROFILE}}"
+        if [ -z "$profile" ]; then
+          echo "⚠️ PROFILE is required"
+          exit 1
+        fi
+        echo "🍎 Setup nix-darwin for profile: $profile"
+        # Bootstrap Netskope cert into the running nix daemon BEFORE building.
+        # Adding ssl-cert-file to nix.settings changes the nix.conf derivation hash;
+        # nix must fetch the new derivation from binary cache — which requires the cert.
+        # Writing directly to /etc/nix/nix.conf + daemon restart breaks the chicken-and-egg.
+        # nix-darwin will persist the setting permanently after a successful switch.
+        _NETSKOPE_CERT="/Library/Application Support/Netskope/STAgent/data/nscacert_combined.pem"
+        if [[ -f "$_NETSKOPE_CERT" ]] && ! grep -qF "ssl-cert-file" /etc/nix/nix.conf 2>/dev/null; then
+          echo "🔐 Pre-configuring Netskope cert in nix daemon..."
+          echo "ssl-cert-file = $_NETSKOPE_CERT" | sudo tee -a /etc/nix/nix.conf > /dev/null
+          sudo launchctl kickstart -k system/org.nixos.nix-daemon
+          echo "Waiting for nix-daemon to restart..."
+          for i in $(seq 1 15); do
+            nix store ping &>/dev/null && break || sleep 1
+          done
+        fi
+        # darwin-rebuild (and nix run nix-darwin) always require root for system activation.
+        # Capture binary path before sudo as sudo may have a restricted PATH.
+        if command -v darwin-rebuild &>/dev/null; then
+          DARWIN_REBUILD=$(command -v darwin-rebuild)
+          echo "Running darwin-rebuild switch (sudo required)..."
+          sudo "$DARWIN_REBUILD" switch --flake .#"${profile}"
+        else
+          NIX_BIN=$(command -v nix)
+          echo "darwin-rebuild not found, bootstrapping via nix run (sudo required)..."
+          sudo "$NIX_BIN" --extra-experimental-features "nix-command flakes" run nix-darwin -- switch --flake .#"${profile}"
         fi
