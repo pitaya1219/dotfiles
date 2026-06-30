@@ -96,8 +96,12 @@ tasks:
         export LOGSEQ_LOCAL="{{.LOGSEQ_LOCAL}}"
         export LOGSEQ_REMOTE="{{.LOGSEQ_REMOTE}}"
         echo "Starting download sync" >> "{{.LOG_FILE}}"
+        EXCLUDE_ARGS="{{.EXCLUDE}}"
+        if [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
+            EXCLUDE_ARGS="${EXCLUDE_ARGS},logseq/bak/**"
+        fi
         set +e
-        task sync:down:pcloud DIST_DIR="$LOGSEQ_LOCAL" ENCRYPT_SUBDIR="$LOGSEQ_REMOTE" PARENT_DIR="" EXCLUDE="{{.EXCLUDE}}" -- {{.CLI_ARGS}}
+        task sync:down:pcloud DIST_DIR="$LOGSEQ_LOCAL" ENCRYPT_SUBDIR="$LOGSEQ_REMOTE" PARENT_DIR="" EXCLUDE="$EXCLUDE_ARGS" -- {{.CLI_ARGS}}
         SYNC_RESULT=$?
         set -e
         if [[ $SYNC_RESULT -ne 0 ]]; then
