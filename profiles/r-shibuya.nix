@@ -45,6 +45,11 @@ let
         logseqTokenCommand = "passage show logseq/http-api/claude-code/token";
       };
 
+      programs.obs-noise-cancel = {
+        enable = true;
+        configSourceDir = ./r-shibuya/obs;
+      };
+
       dotfiles.agent.dailyReport = {
         sources = {
           github = { user = "pitaya1219"; };
@@ -63,6 +68,7 @@ let
         ../shared/programs/logseq-view.nix
         ./r-shibuya/logseq-sync.nix
         ../shared/programs/mtg-minutes.nix
+        ../shared/programs/obs.nix
         ((import ../lib/taskfile-overrides.nix { inherit lib pkgs; }).forProfile "r-shibuya")
         ../shared/programs/bash.nix
         ../shared/programs/claude-code.nix
