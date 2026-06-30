@@ -2,7 +2,7 @@
 name: session-save
 description: Save current session summary to Logseq (if available) or as a local markdown file
 user-invocable: true
-version: 2.1.0
+version: 2.2.0
 ---
 
 Create a comprehensive summary of the current session and save it.
@@ -114,7 +114,8 @@ $ARGUMENTS: "Session: <YYYY-MM-DD> <oneline-summary>" --create-page --format mar
   --prop "session-id=<SESSION_ID>" \
   --prop "status=completed" \
   --prop "model=<model-name>" \
-  --prop "pr=<pr-url-or-empty>"
+  --prop "pr=<pr-url-or-empty>" \
+  --prop "called-by=<caller-or-empty>"
 ```
 
 Field values:
@@ -126,6 +127,7 @@ Field values:
 - `<objective>`: one sentence summarizing the session goal, derived from the conversation
 - `<model-name>`: the Claude/AI model in use (e.g. `claude-sonnet-4-6`)
 - `<pr-url>`: PR URL if one was created during the session, else omit
+- `<caller>`: the orchestrator that delegated this session, when it was run as a sub-agent (e.g. `claude` when delegated via the `vibe-delegate` skill). Omit the property entirely for normal, directly-run sessions.
 
 The generated summary (without a top-level `#` heading — the page title serves that role) is the content to write.
 
