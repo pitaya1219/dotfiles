@@ -45,6 +45,13 @@ let
       rev = "master";
       sha256 = "1n3jbbpqr4k6fa4hdj1q372rkacn9v7isx9bvafdbhrqvx8j66g7";
     }
+    {
+      name = "oldworld-nvim";
+      owner = "dgox16";
+      repo = "oldworld.nvim";
+      rev = "main";
+      sha256 = "sha256-yO5XKSMwDu0/QYnoMbxWs+h0tfjftAYJYPrKO2XYfNQ=";
+    }
   ];
 
 
@@ -90,6 +97,8 @@ in
     kanagawa-nvim
     kanagawa-paper-nvim
     iceberg-vim
+    melange-nvim
+    zenbones-nvim
   ] ++ buildCustomPlugins;
 
   # These tools are added to $PATH only when Neovim is started
