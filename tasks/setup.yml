@@ -2,6 +2,7 @@ version: '3'
 
 includes:
   nix: ./setup/nix.yml
+  macos: ./setup/macos.yml
 
 tasks:
   default:

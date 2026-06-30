@@ -1,0 +1,22 @@
+version: '3'
+
+tasks:
+  trust-corp-ca:
+    desc: Trust corporate proxy CA (Netskope) in macOS System keychain — work machines only, interactive, one-time
+    silent: true
+    platforms: [darwin]
+    cmds:
+      - |
+        echo "🔐 Trusting corporate proxy CA certificates..."
+        _KEYCHAIN="/Library/Keychains/System.keychain"
+        _TMP=$(mktemp /tmp/corp-ca-XXXXXX.pem)
+        # Find all certs with CN matching "certadmin" (Netskope CA)
+        if /usr/bin/security find-certificate -c "certadmin" -p "$_KEYCHAIN" > "$_TMP" 2>/dev/null \
+            && [[ -s "$_TMP" ]]; then
+          sudo /usr/bin/security add-trusted-cert -d -r trustRoot -k "$_KEYCHAIN" "$_TMP" \
+            && echo "✅ Netskope CA is now trusted as a root CA." \
+            || echo "⚠️  Failed to trust Netskope CA."
+        else
+          echo "ℹ️  Netskope CA not found in System keychain (not on corporate network?)."
+        fi
+        rm -f "$_TMP"
