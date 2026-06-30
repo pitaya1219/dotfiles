@@ -7,6 +7,14 @@ let
   # claude CLI は別管理なので wrapProgram の --prefix で既存 PATH に委ねる。
   runtimeInputs = with pkgs; [ ffmpeg whisper-cpp ];
 
+  # 既定モデル(large-v3-turbo)だけ nix で固定取得する。約1.6GB。
+  # base / small が必要なときは手動DL(README §1 参照)。mtg-live は config を
+  # 読まず ~/.cache の各 ggml-*.bin を直接見るため、ここでは turbo のみ置く。
+  whisperModel = pkgs.fetchurl {
+    url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin";
+    hash = "sha256-H8cPd0046xaZk6w5Huo1fvR8iHV+9y7llDh5t+jivGk=";
+  };
+
   mtg-minutes = pkgs.stdenvNoCC.mkDerivation {
     pname = "mtg-minutes";
     version = "0.1.0";
@@ -44,4 +52,8 @@ let
 in
 {
   home.packages = [ mtg-minutes ];
+
+  # mtg-minutes / mtg-live 双方が見る既定パスに turbo モデルを symlink する。
+  # 注意: 同パスに手動DL済みの実ファイルがあると switch が衝突する。先に削除すること。
+  home.file.".cache/whisper-cpp/models/ggml-large-v3-turbo.bin".source = whisperModel;
 }
