@@ -7,21 +7,21 @@ let
       name = "aquarium-vim";
       owner = "FrenzyExists";
       repo = "aquarium-vim";
-      rev = "develop";
-      sha256 = "0rc3cmba2bfrjcffpc1f2a9y2yx167a39l1lxpxpvapsilkxnb2d";
+      rev = "d5c4816717e5136278a9148bd19268fcaf514fe9";
+      sha256 = "00cs7l7k62z7f1ms363n7szvnrr0dm5z4fg83rhszh6llfdk6121";
     }
     {
       name = "base2tone-nvim";
       owner = "atelierbram";
       repo = "Base2Tone-nvim";
-      rev = "main";
+      rev = "c32c1d3dfdc8fb6e91cbf6078c078d6c3eaaa673";
       sha256 = "1wn2dgwicqn8y0sgw2fsbs750xxwnxg68a6j18aj8yhhpq2dkhsx";
     }
     {
       name = "evangelion";
       owner = "xero";
       repo = "evangelion.nvim";
-      rev = "main";
+      rev = "08cf52a0931a81bf5b64c93b744e136b5edb6d85";
       sha256 = "0afa1alxf8my6k564sqmzykwk8aqb6n37wa5w3aqdlxs6y2hrsnm";
     }
     {
