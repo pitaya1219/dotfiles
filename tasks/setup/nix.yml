@@ -193,3 +193,16 @@ tasks:
           echo "darwin-rebuild not found, bootstrapping via nix run (sudo required)..."
           sudo "$NIX_BIN" --extra-experimental-features "nix-command flakes" run nix-darwin -- switch --flake .#"${profile}"
         fi
+        # Reload user LaunchAgents that home-manager's activation couldn't manage.
+        # darwin-rebuild switch runs as root, but the gui/$UID domain is the user's GUI
+        # session — root cannot bootout/bootstrap agents there, so home-manager's
+        # setupLaunchAgents step silently fails for any agent whose plist changed.
+        # Re-running the bootout+bootstrap as the current user (non-root) fixes this.
+        echo "🔄 Reloading user LaunchAgents (as user, not root)..."
+        _UID=$(id -u)
+        for _AGENT_PLIST in ~/Library/LaunchAgents/com.*.plist; do
+          [[ -f "$_AGENT_PLIST" ]] || continue
+          _LABEL=$(defaults read "$_AGENT_PLIST" Label 2>/dev/null) || continue
+          launchctl bootout "gui/${_UID}/${_LABEL}" 2>/dev/null || true
+          launchctl bootstrap "gui/${_UID}" "$_AGENT_PLIST" 2>/dev/null || true
+        done
