@@ -44,41 +44,73 @@ in
 
   config = lib.mkIf cfg.enable {
     home.activation.seedObsConfig = lib.hm.dag.entryAfter ["writeBoundary"] ''
-      export PATH="${pkgs.coreutils}/bin:$PATH"
+      export PATH="${pkgs.coreutils}/bin:${pkgs.diffutils}/bin:${pkgs.python3}/bin:$PATH"
 
       OBS_BASE="$HOME/Library/Application Support/obs-studio"
       PROFILE_DIR="$OBS_BASE/basic/profiles/${cfg.profileName}"
       SCENES_DIR="$OBS_BASE/basic/scenes"
+      DIFF_FILE="$HOME/.cache/obs-noise-cancel/last.diff"
 
-      # プロファイルディレクトリを作成
-      mkdir -p "$PROFILE_DIR" "$SCENES_DIR"
+      mkdir -p "$PROFILE_DIR" "$SCENES_DIR" "$(dirname "$DIFF_FILE")"
+      > "$DIFF_FILE"
+      HAVE_DIFF=0
 
-      # basic.ini (プロファイル設定): 存在しない場合のみコピー
-      if [ ! -f "$PROFILE_DIR/basic.ini" ]; then
-        echo "obs-noise-cancel: seeding $PROFILE_DIR/basic.ini"
-        cp "${cfg.configSourceDir}/basic.ini" "$PROFILE_DIR/basic.ini"
-        chmod 644 "$PROFILE_DIR/basic.ini"
-      else
-        echo "obs-noise-cancel: skip basic.ini (already exists)"
-      fi
+      # INI: seed or diff-to-file
+      obs_check_ini() {
+        local label=$1 src=$2 dst=$3 note=''${4:-}
+        if [ ! -f "$dst" ]; then
+          echo "obs-noise-cancel: seeding $label"
+          cp "$src" "$dst"
+          chmod 644 "$dst"
+        elif diff -q "$src" "$dst" > /dev/null 2>&1; then
+          echo "obs-noise-cancel: $label up to date"
+        else
+          echo "obs-noise-cancel: $label differs''${note:+ ($note)}"
+          { echo "=== $label''${note:+ ($note)} ==="; diff -u "$src" "$dst"; echo; } >> "$DIFF_FILE" || true
+          HAVE_DIFF=1
+        fi
+      }
 
-      # シーンコレクション JSON: 存在しない場合のみコピー
-      SCENE_FILE="$SCENES_DIR/${cfg.sceneCollectionFile}"
-      if [ ! -f "$SCENE_FILE" ]; then
-        echo "obs-noise-cancel: seeding $SCENE_FILE"
-        cp "${cfg.configSourceDir}/${cfg.sceneCollectionFile}" "$SCENE_FILE"
-        chmod 644 "$SCENE_FILE"
-      else
-        echo "obs-noise-cancel: skip ${cfg.sceneCollectionFile} (already exists)"
-      fi
+      # JSON: キー順を無視して正規化比較し、差分をファイルへ
+      obs_check_json() {
+        local label=$1 src=$2 dst=$3
+        if [ ! -f "$dst" ]; then
+          echo "obs-noise-cancel: seeding $label"
+          cp "$src" "$dst"
+          chmod 644 "$dst"
+        else
+          src_norm=$(python3 -c \
+            "import json,sys; print(json.dumps(json.load(open(sys.argv[1])), ensure_ascii=False, indent=2, sort_keys=True))" \
+            "$src")
+          dst_norm=$(python3 -c \
+            "import json,sys; print(json.dumps(json.load(open(sys.argv[1])), ensure_ascii=False, indent=2, sort_keys=True))" \
+            "$dst")
+          if [ "$src_norm" = "$dst_norm" ]; then
+            echo "obs-noise-cancel: $label up to date"
+          else
+            echo "obs-noise-cancel: $label differs"
+            { echo "=== $label ==="; diff -u <(echo "$src_norm") <(echo "$dst_norm"); echo; } >> "$DIFF_FILE" || true
+            HAVE_DIFF=1
+          fi
+        fi
+      }
 
-      # user.ini (プロファイル/シーン選択): 存在しない場合のみコピー
-      if [ ! -f "$OBS_BASE/user.ini" ]; then
-        echo "obs-noise-cancel: seeding $OBS_BASE/user.ini"
-        cp "${cfg.configSourceDir}/user.ini" "$OBS_BASE/user.ini"
-        chmod 644 "$OBS_BASE/user.ini"
-      else
-        echo "obs-noise-cancel: skip user.ini (already exists)"
+      obs_check_ini "basic.ini" \
+        "${cfg.configSourceDir}/basic.ini" \
+        "$PROFILE_DIR/basic.ini"
+
+      obs_check_json "${cfg.sceneCollectionFile}" \
+        "${cfg.configSourceDir}/${cfg.sceneCollectionFile}" \
+        "$SCENES_DIR/${cfg.sceneCollectionFile}"
+
+      # user.ini はウィンドウ geometry 等の runtime 状態も含むため差分が出やすい
+      obs_check_ini "user.ini" \
+        "${cfg.configSourceDir}/user.ini" \
+        "$OBS_BASE/user.ini" \
+        "window geometry changes are normal"
+
+      if [ "$HAVE_DIFF" = "1" ]; then
+        echo "obs-noise-cancel: diff saved → $DIFF_FILE"
       fi
     '';
   };
