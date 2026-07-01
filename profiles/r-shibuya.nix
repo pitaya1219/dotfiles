@@ -41,6 +41,11 @@ let
         token = { command = "passage show logseq/http-api/claude-code/token"; };
       };
 
+      dotfiles.agent.asana = {
+        projectGid = "1208405292637994";
+        todoSectionGid = "1209218441201478";
+      };
+
       programs.mtg-minutes = {
         enable = true;
         logseqTokenCommand = "passage show logseq/http-api/claude-code/token";
