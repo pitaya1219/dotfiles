@@ -8,7 +8,7 @@ let
   #   ffmpeg     … ffmpeg + ffprobe (録音・音声変換・トラック数判定)
   #   whisper-cpp … whisper-cli (バッチ文字起こし) + whisper-stream (ライブ字幕)
   # claude CLI は別管理なので wrapProgram の --prefix で既存 PATH に委ねる。
-  runtimeInputs = with pkgs; [ ffmpeg whisper-cpp ];
+  runtimeInputs = with pkgs; [ ffmpeg whisper-cpp switchaudio-osx ];
 
   # 既定モデル(large-v3-turbo)だけ nix で固定取得する。約1.6GB。
   # base / small が必要なときは手動DL(README §1 参照)。mtg-live は config を
