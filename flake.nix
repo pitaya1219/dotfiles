@@ -34,7 +34,7 @@
         neovim-nightly = neovim-nightly-overlay.overlays.default;
         mistral-vibe = mistral-vibe.overlays.default;
         logseq-view = final: prev: {
-          logseq-view = logseq-view.packages.${final.system}.logseq-view;
+          logseq-view = logseq-view.packages.${final.stdenv.hostPlatform.system}.logseq-view;
         };
 
         # mistral-vibe overlay modifies neovim-unwrapped and drops the lua passthru

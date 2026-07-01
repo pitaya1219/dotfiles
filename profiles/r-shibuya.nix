@@ -3,7 +3,6 @@
 let
   lib = nixpkgs.lib;
   system = "aarch64-darwin";
-
   nixpkgsConfig = {
     allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [
       "claude-code"
@@ -75,7 +74,6 @@ let
         ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "r-shibuya")
         ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "r-shibuya")
         ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "r-shibuya")
-        (import ../shared/programs/unfree.nix { additionalPackages = [ "copilot.vim" ]; })
       ];
 
       home = {
@@ -86,7 +84,7 @@ let
           cloudflared
           docker
           docker-credential-helpers
-          elixir
+          beamPackages.elixir
           elixir-ls
           gitea-mcp-server
           jq
