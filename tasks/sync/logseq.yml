@@ -41,8 +41,12 @@ tasks:
         export LOG_FILE="{{.LOG_FILE}}"
         
         echo "$(date '+%Y-%m-%d %H:%M:%S') - Starting bidirectional sync" >> "$LOG_FILE"
+        EXCLUDE_ARGS="{{.EXCLUDE}}"
+        if [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
+            EXCLUDE_ARGS="${EXCLUDE_ARGS},logseq/bak/**"
+        fi
         set +e
-        task sync:bisync:pcloud SOURCE_DIR="$LOGSEQ_LOCAL" ENCRYPT_SUBDIR="$LOGSEQ_REMOTE" PARENT_DIR="" EXCLUDE="{{.EXCLUDE}}" -- $RESYNC {{.CLI_ARGS}}
+        task sync:bisync:pcloud SOURCE_DIR="$LOGSEQ_LOCAL" ENCRYPT_SUBDIR="$LOGSEQ_REMOTE" PARENT_DIR="" EXCLUDE="$EXCLUDE_ARGS" -- $RESYNC {{.CLI_ARGS}}
         SYNC_RESULT=$?
         set -e
         
