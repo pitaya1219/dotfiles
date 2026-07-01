@@ -1,8 +1,16 @@
-{ config, pkgs, lib, nixpkgsConfig, ... }:
+{ config, pkgs, lib, nixpkgsConfig, netskopeCA, ... }:
 
 {
   # nix-darwin version tracking
   system.stateVersion = 4;
+
+  # Expose NIX_SSL_CERT_FILE in the nix-daemon's LaunchDaemon environment.
+  # impureEnvVars in fixed-output derivations (e.g. fetchCargoVendor) reads
+  # NIX_SSL_CERT_FILE from the *daemon* process, not from the calling user.
+  # Without this, Netskope's CA cert is unknown to those builds and SSL fails.
+  launchd.daemons.nix-daemon.serviceConfig.EnvironmentVariables = {
+    NIX_SSL_CERT_FILE = netskopeCA;
+  };
 
   nix.settings = {
     experimental-features = [ "nix-command" "flakes" ];

@@ -3,6 +3,8 @@
 let
   lib = nixpkgs.lib;
   system = "aarch64-darwin";
+  netskopeCA = "/Library/Application Support/Netskope/STAgent/data/nscacert_combined.pem";
+
   nixpkgsConfig = {
     allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [
       "claude-code"
@@ -125,7 +127,7 @@ in
 
   mkDarwinConfiguration = if nix-darwin == null then null else nix-darwin.lib.darwinSystem {
     inherit system;
-    specialArgs = { inherit nixpkgsConfig; };
+    specialArgs = { inherit nixpkgsConfig netskopeCA; };
     modules = [
       home-manager.darwinModules.home-manager
       ({ pkgs, lib, ... }: {

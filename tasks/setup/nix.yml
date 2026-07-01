@@ -119,20 +119,68 @@ tasks:
           exit 1
         fi
         echo "🍎 Setup nix-darwin for profile: $profile"
-        # Bootstrap Netskope cert into the running nix daemon BEFORE building.
-        # Adding ssl-cert-file to nix.settings changes the nix.conf derivation hash;
-        # nix must fetch the new derivation from binary cache — which requires the cert.
-        # Writing directly to /etc/nix/nix.conf + daemon restart breaks the chicken-and-egg.
-        # nix-darwin will persist the setting permanently after a successful switch.
+        # Bootstrap Netskope CA cert into the running nix daemon BEFORE building.
+        # Two things are needed:
+        #   1. ssl-cert-file in nix.conf — for the daemon's own libcurl (binary cache fetches)
+        #   2. NIX_SSL_CERT_FILE in daemon LaunchDaemon env — for impureEnvVars in fixed-output
+        #      derivations (e.g. fetchCargoVendor). The daemon reads impureEnvVars from its OWN
+        #      environment, not from the calling user. nix-darwin persists this via
+        #      launchd.daemons.nix-daemon.serviceConfig.EnvironmentVariables after a successful
+        #      switch; this bootstrap handles the chicken-and-egg on first run.
         _NETSKOPE_CERT="/Library/Application Support/Netskope/STAgent/data/nscacert_combined.pem"
-        if [[ -f "$_NETSKOPE_CERT" ]] && ! grep -qF "ssl-cert-file" /etc/nix/nix.conf 2>/dev/null; then
-          echo "🔐 Pre-configuring Netskope cert in nix daemon..."
-          echo "ssl-cert-file = $_NETSKOPE_CERT" | sudo tee -a /etc/nix/nix.conf > /dev/null
-          sudo launchctl kickstart -k system/org.nixos.nix-daemon
-          echo "Waiting for nix-daemon to restart..."
-          for i in $(seq 1 15); do
-            nix store ping &>/dev/null && break || sleep 1
-          done
+        _PLIST="/Library/LaunchDaemons/org.nixos.nix-daemon.plist"
+        _NEED_RESTART=0
+        if [[ -f "$_NETSKOPE_CERT" ]]; then
+          # 1. ssl-cert-file in nix.conf (daemon's own libcurl for binary cache fetches)
+          if ! grep -qF "ssl-cert-file" /etc/nix/nix.conf 2>/dev/null; then
+            echo "🔐 Pre-configuring ssl-cert-file in /etc/nix/nix.conf..."
+            echo "ssl-cert-file = $_NETSKOPE_CERT" | sudo tee -a /etc/nix/nix.conf > /dev/null
+            _NEED_RESTART=1
+          fi
+          # 2. NIX_SSL_CERT_FILE for build sandboxes (via impureEnvVars in fetchCargoVendor etc.)
+          #
+          # WHY we need a Nix store path (not the /Library/... path directly):
+          #   - nss-cacert's setup hook does `test -r "$NIX_SSL_CERT_FILE"` and silently
+          #     falls back to the bundled nss-cacert (no Netskope CA) if the file is not
+          #     readable inside the build sandbox.
+          #   - /Library/Application Support/... is outside the sandbox → readability fails
+          #     → nixpkgs-patched certifi ends up with the bundled CA bundle (no Netskope CA)
+          #     → requests SSL verification fails against the Netskope MITM cert.
+          #   - /nix/store/... IS readable inside sandboxes, so adding the cert to the
+          #     store and using the store path avoids the silent fallback.
+          echo "🔐 Staging Netskope cert into Nix store for sandbox access..."
+          _STORE_CERT=$(nix-store --add-fixed sha256 "$_NETSKOPE_CERT" 2>/dev/null || true)
+          if [[ -z "$_STORE_CERT" ]]; then
+            echo "⚠️  nix-store --add-fixed failed; builds may still fail SSL verification"
+            _STORE_CERT="$_NETSKOPE_CERT"
+          else
+            echo "    Store path: $_STORE_CERT"
+          fi
+          if [[ -f "$_PLIST" ]]; then
+            _CURRENT_NIX_SSL=$(sudo /usr/libexec/PlistBuddy \
+              -c "Print :EnvironmentVariables:NIX_SSL_CERT_FILE" "$_PLIST" 2>/dev/null)
+            if [[ "$_CURRENT_NIX_SSL" != "$_STORE_CERT" ]]; then
+              echo "🔐 Updating NIX_SSL_CERT_FILE in nix-daemon plist (was: ${_CURRENT_NIX_SSL:-<unset>})..."
+              sudo /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables dict" "$_PLIST" 2>/dev/null || true
+              sudo /usr/libexec/PlistBuddy \
+                -c "Delete :EnvironmentVariables:NIX_SSL_CERT_FILE" "$_PLIST" 2>/dev/null || true
+              sudo /usr/libexec/PlistBuddy \
+                -c "Add :EnvironmentVariables:NIX_SSL_CERT_FILE string '$_STORE_CERT'" "$_PLIST"
+              _NEED_RESTART=1
+            fi
+          fi
+          if [[ "$_NEED_RESTART" == "1" ]]; then
+            # bootout removes the service from launchd's database so that
+            # bootstrap re-reads the plist from disk — kickstart only restarts
+            # the process and does NOT pick up EnvironmentVariables changes.
+            echo "Reloading nix-daemon (bootout + bootstrap to pick up plist changes)..."
+            sudo launchctl bootout system/org.nixos.nix-daemon 2>/dev/null || true
+            sudo launchctl bootstrap system "$_PLIST"
+            echo "Waiting for nix-daemon to be ready..."
+            for i in $(seq 1 20); do
+              nix store ping &>/dev/null && break || sleep 1
+            done
+          fi
         fi
         # darwin-rebuild (and nix run nix-darwin) always require root for system activation.
         # Capture binary path before sudo as sudo may have a restricted PATH.
