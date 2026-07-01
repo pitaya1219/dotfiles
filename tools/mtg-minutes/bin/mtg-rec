@@ -30,6 +30,7 @@ from pathlib import Path
 
 SELF_DEVICE = "BlackHole 2ch"
 OTHER_DEVICE = "BlackHole 16ch"
+MEETING_OUTPUT_DEVICE = "会議用"
 OUT_DIR = Path.home() / "Movies"
 MTG_MINUTES = "mtg-minutes"
 
@@ -47,6 +48,25 @@ def warn(msg):
 def die(msg, code=1):
     print(f"\033[31m✖\033[0m {msg}", file=sys.stderr)
     sys.exit(code)
+
+
+def get_audio_output():
+    """現在のシステム出力デバイス名を返す。SwitchAudioSource がなければ None。"""
+    try:
+        res = subprocess.run(["SwitchAudioSource", "-c"], capture_output=True, text=True)
+        return res.stdout.strip() or None
+    except FileNotFoundError:
+        return None
+
+
+def switch_audio_output(device_name):
+    """SwitchAudioSource でシステム出力デバイスを切り替える。失敗は warn のみ。"""
+    try:
+        subprocess.run(["SwitchAudioSource", "-s", device_name], check=True, capture_output=True)
+    except FileNotFoundError:
+        warn("SwitchAudioSource が見つかりません。出力デバイスの自動切り替えをスキップ")
+    except subprocess.CalledProcessError:
+        warn(f"出力デバイスの切り替えに失敗: {device_name!r}")
 
 
 def list_audio_devices():
@@ -84,6 +104,10 @@ def main():
     ap.add_argument("--out", default="", help="出力ファイルパス(既定: ~/Movies/mtg_日時.mkv)")
     ap.add_argument("--minutes", nargs="?", const="", default=None,
                     metavar="TITLE", help="録音停止後に mtg-minutes を実行(タイトル任意)")
+    ap.add_argument("--output-device", default=MEETING_OUTPUT_DEVICE,
+                    help=f"録音中に切り替えるシステム出力デバイス名 (既定: {MEETING_OUTPUT_DEVICE})")
+    ap.add_argument("--no-switch-output", action="store_true",
+                    help="システム出力デバイスの自動切り替えをスキップ")
     args = ap.parse_args()
 
     devices = list_audio_devices()
@@ -133,16 +157,32 @@ def main():
     else:
         info("録音中… \033[1mCtrl-C で停止\033[0m")
 
+    # 録音前: システム出力デバイスを「会議用」に切り替え
+    prev_output = None
+    if not args.no_switch_output:
+        prev_output = get_audio_output()
+        if prev_output == args.output_device:
+            prev_output = None  # すでに正しいデバイスなら復元不要
+        else:
+            info(f"出力デバイス切り替え: {prev_output!r} → {args.output_device!r}")
+            switch_audio_output(args.output_device)
+
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        proc.wait()
-    except KeyboardInterrupt:
-        # Ctrl-C は ffmpeg にも届く。finalize を待つ。
         try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.terminate()
             proc.wait()
+        except KeyboardInterrupt:
+            # Ctrl-C は ffmpeg にも届く。finalize を待つ。
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.terminate()
+                proc.wait()
+    finally:
+        # 録音後: 出力デバイスを元に戻す
+        if prev_output:
+            switch_audio_output(prev_output)
+            info(f"出力デバイスを戻しました: {prev_output!r}")
     print()
     if not out.exists() or out.stat().st_size < 1024:
         die("録音ファイルが作成されませんでした。デバイスの使用状況を確認してください。")
