@@ -45,6 +45,17 @@
       };
       model = "sonnet";
       hooks = {
+        PreToolUse = [
+          {
+            matcher = "";
+            hooks = [
+              {
+                type = "command";
+                command = "${config.home.homeDirectory}/dotfiles/scripts/claude-session-dir-check.sh";
+              }
+            ];
+          }
+        ];
         Stop = [
           {
             matcher = "";
