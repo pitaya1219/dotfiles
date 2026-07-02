@@ -100,13 +100,24 @@ git ls-remote --heads origin <branch>                # did it push?
 - A too-low `--max-price` stops it **mid-task before it commits/verifies**, leaving WIP and possibly an unverified config bug (e.g. a malformed `clippy.toml`).
 - If it stopped early or left broken/uncommitted work: either reset the clone and re-run with a higher budget, or finish/fix it yourself as the orchestrator (and say so in the report).
 
-### 5. Open the PR as **mistral-bot** (orchestrator, after verification)
+### 5. Open the PR (orchestrator, after verification)
 
-Only after your own independent checks pass. The PR must be attributed to **mistral-bot**, because the implementation is Vibe's work. Create it by calling the Gitea API with the Vibe bot token (`GITEA_VIBE_BOT_TOKEN`) — NOT the orchestrator's own MCP token:
+Only after your own independent checks pass. Detect the platform from the remote URL and use the appropriate method:
 
 ```bash
-# Derive the Gitea host + owner/repo from the clone's remote — never hardcode a server.
-ORIGIN=$(git -C "$CLONE" remote get-url origin)                              # https://<host>/<owner>/<repo>.git
+ORIGIN=$(git -C "$CLONE" remote get-url origin)
+BRANCH=$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)
+```
+
+**GitHub** (`github.com` in the remote URL) — use `gh` CLI (user's own auth, no separate token needed). Note: on GitHub, the PR will be under the user's own identity — the mistral-bot identity is not available on GitHub:
+
+```bash
+cd "$CLONE" && gh pr create --head "$BRANCH" --base main --title "<title>" --body "<body incl. Closes #<issue>>"
+```
+
+**Gitea** (any other host) — use the REST API with the Vibe bot token (`GITEA_VIBE_BOT_TOKEN`). The PR will be attributed to **mistral-bot**:
+
+```bash
 HOST=$(printf '%s' "$ORIGIN" | sed -E 's#^(https?://[^/]+).*#\1#')
 REPO_SLUG=$(printf '%s' "$ORIGIN" | sed -E 's#^https?://[^/]+/(.+)\.git$#\1#')   # <owner>/<repo>
 
@@ -114,11 +125,11 @@ curl -fsS -X POST \
   -H "Authorization: token ${GITEA_VIBE_BOT_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "$(jq -n --arg t '<title>' --arg b '<body incl. Closes #<issue>>' \
-        --arg h '<branch>' '{head:$h, base:"main", title:$t, body:$b}')" \
+        --arg h "$BRANCH" '{head:$h, base:"main", title:$t, body:$b}')" \
   "$HOST/api/v1/repos/$REPO_SLUG/pulls"
 ```
 
-**Push-not-merge** — never merge. Then post your independent-verification summary as a PR **comment** under your own (orchestrator) identity, so authorship (mistral-bot) and review (orchestrator) stay cleanly separated.
+**Push-not-merge** — never merge. Then post your independent-verification summary as a PR **comment** under your own (orchestrator) identity, so authorship and review stay cleanly separated.
 
 Alternative: let Vibe open the PR itself in step 3 (it has `create_pull_request` permission and authenticates as mistral-bot via `.vibe/gitea-mcp-wrapper.sh`). Simpler, but the PR is then opened on Vibe's *self-report* before your verification — so still verify and comment before any merge. Prefer the orchestrator-opens-after-verify flow above.
 
