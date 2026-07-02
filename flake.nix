@@ -24,15 +24,20 @@
       url = "git+https://git.pitaya.f5.si/pitaya1219/logseq-view.git?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix-claude-code = {
+      url = "github:ryoppippi/nix-claude-code";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, home-manager, nix-darwin, neovim-nightly-overlay, mistral-vibe, homelab, logseq-view }:
+  outputs = { self, nixpkgs, home-manager, nix-darwin, neovim-nightly-overlay, mistral-vibe, homelab, logseq-view, nix-claude-code }:
     let
       profileLib = import ./lib/profiles.nix { inherit (nixpkgs) lib; };
 
       overlays = {
         neovim-nightly = neovim-nightly-overlay.overlays.default;
         mistral-vibe = mistral-vibe.overlays.default;
+        nix-claude-code = nix-claude-code.overlays.default;
         logseq-view = final: prev: {
           logseq-view = logseq-view.packages.${final.stdenv.hostPlatform.system}.logseq-view;
         };
