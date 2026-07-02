@@ -87,7 +87,7 @@ Write a self-contained prompt for the subagent. It MUST state:
 - Create a feature branch (`feat/...`, `fix/...`, `chore/...`).
 - **Commit messages: clean and professional. NEVER mention AI / Claude / Anthropic / Haiku / Sonnet; NO `Co-Authored-By` line.**
 - **Do NOT open a PR, do NOT merge. Only push the branch.**
-- Run verification checks appropriate to the project (e.g. `cargo fmt --all`, `cargo build`, `cargo test`, `cargo clippy --all-targets -- -D warnings`; prefix with `nix develop -c` if cargo is not on PATH).
+- Run the project's standard verification suite (build, test, lint). Discover the appropriate commands from the project's CLAUDE.md or tooling conventions (e.g. `cargo test` for Rust, `npm test` for Node, `pytest` for Python). If `nix develop` is needed, prefix commands accordingly.
 - **On completion (after pushing), ALWAYS run the `session-save` skill** — this is mandatory, not optional. Pass `caller = claude` so the page gets a `called-by:: claude` property. If Logseq is unreachable (network/port error), `session-save` should fall back to writing a markdown file under `~/.agent/sessions/` rather than skipping silently.
 - Final report: branch name, exact test output line, lint result, files changed, any blocker. If a check fails and it cannot fix it, report verbatim and do NOT push broken code.
 
@@ -120,9 +120,11 @@ git -C "$CLONE" ls-remote --heads origin
 git -C "$CLONE" status --short
 
 # Run tests yourself
-cd "$CLONE" && cargo test 2>&1 | grep 'test result'          # or: nix develop -c cargo test
-cd "$CLONE" && cargo clippy --all-targets -- -D warnings
-cd "$CLONE" && cargo fmt --all -- --check
+# YOU run the project's verification suite (adapt to the project's language/tooling)
+cd "$CLONE"
+# e.g. for Rust: cargo test && cargo clippy --all-targets -- -D warnings && cargo fmt --all -- --check
+# e.g. for Node: npm test && npm run lint
+# e.g. for Python: pytest && ruff check .
 ```
 
 **Known failure modes:**

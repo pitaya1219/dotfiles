@@ -67,9 +67,9 @@ Write a self-contained prompt to `/tmp/vibe_task.md`. It MUST state:
 - Create a feature branch (`feat/...`, `fix/...`, `chore/...`).
 - **Commit messages: clean and professional. NEVER mention AI / Mistral / Vibe / Claude / Anthropic; NO `Co-Authored-By` line.**
 - **Do NOT open a PR, do NOT merge. Only push the branch.**
-- Verify: `cargo fmt --all`, `cargo build`, `cargo test`, `cargo clippy --all-targets -- -D warnings`. If `cargo` is not on PATH, prefix with `nix develop -c`.
+- Run the project's standard verification suite (build, test, lint). Discover the appropriate commands from the project's CLAUDE.md or tooling conventions (e.g. `cargo test` for Rust, `npm test` for Node, `pytest` for Python). If `nix develop` is needed, prefix commands accordingly.
 - **On completion (after pushing), ALWAYS run the `session-save` skill** — this is mandatory, not optional. Pass `caller = claude` so the page gets a `called-by:: claude` property. If Logseq is unreachable (network/port error), `session-save` should fall back to writing a markdown file under `~/.agent/sessions/` rather than skipping silently.
-- Final report: branch name, exact `cargo test` line, clippy result, files changed, any blocker. If a check fails and it cannot fix it, report verbatim and do NOT push broken code.
+- Final report: branch name, exact test output line, lint result, files changed, any blocker. If a check fails and it cannot fix it, report verbatim and do NOT push broken code.
 
 ### 4. Launch Vibe (background) + INDEPENDENTLY VERIFY
 
@@ -89,9 +89,10 @@ grep -iE 'vibe_stop|price|limit' /tmp/vibe_run.log   # did it stop early (budget
 git status --short                                   # uncommitted leftovers?
 git log --oneline -3 --pretty='%h %an %s'            # did it commit? author?
 git ls-remote --heads origin <branch>                # did it push?
-cargo test 2>&1 | grep 'test result'                 # YOU run the tests
-cargo clippy --all-targets -- -D warnings            # YOU run clippy
-cargo fmt --all -- --check
+# YOU run the project's verification suite (adapt to the project's language/tooling)
+# e.g. for Rust: cargo test, cargo clippy --all-targets -- -D warnings, cargo fmt --all -- --check
+# e.g. for Node: npm test, npm run lint
+# e.g. for Python: pytest, ruff check .
 ```
 
 **Known failure modes (from PoC):**
