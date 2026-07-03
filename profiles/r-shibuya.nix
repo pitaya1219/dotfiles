@@ -26,6 +26,7 @@ let
     overlays.pipx-no-check
     overlays.fix-neovim-lua-passthru
     overlays.logseq-view
+    overlays.nix-claude-code
   ];
 
   # Shared home-manager modules used by both mkHomeConfiguration and mkDarwinConfiguration
