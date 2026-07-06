@@ -16,31 +16,14 @@
 
 ## deepdive エントリの追加手順
 
-1. `references/deepdive.md` に新しい `## 節` を追加する
-2. `**トリガー**:` にマッチさせたいキーワード群を列挙（タイトル・背景から LLM がマッチ判定する）
-3. `**追加質問**:` に、その種別で追加で聞くべき質問と、生成物のどのセクションを補強するかを書く
+`references/deepdive.md` に新しい `## 節` を追加し、各節を以下のフォーマットで書く:
+
+1. `**トリガー**:` マッチさせたいキーワード群（タイトル・背景から LLM がマッチ判定する）
+2. `**追加質問**:` その種別で追加で聞くべき質問
+3. `**補強先**:` 生成物のどのセクションを補強するか
 4. 表を扱う質問なら、`html_notes` にテーブルタグが無い点に注意（`references/html-rules.md`）
 
 ## 設定 (`~/.agent/asana.json`)
 
-スキーマ: `{ "projectGid": "...", "todoSectionGid": "..." }`
-
-- 未存在時は `SKILL.md` Step 1 のウィザードが対話で生成する（チーム配布向け）
-- dotfiles オーナーは Nix で宣言 → 読み取り専用シンリンクで生成される:
-  ```nix
-  dotfiles.agent.asana = {
-    projectGid = "1208405292637994";
-    todoSectionGid = "1209218441201478";
-  };
-  ```
-
-## ソース編集後の反映
-
-このスキルのソースは `~/dotfiles/shared/programs/agent/skills/asana-create-task/`。編集後:
-
-```bash
-cd ~/dotfiles
-nix run home-manager/master -- switch --flake .#$USER
-```
-
-`~/.claude/skills/asana-create-task/`（→ `~/.agent/skills/...`）に反映される。
+スキーマ: `{ "projectGid": "...", "todoSectionGid": "..." }`。
+設定があれば利用し、無ければ `SKILL.md` Step 1 が対話で作成する。

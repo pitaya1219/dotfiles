@@ -1,7 +1,6 @@
 # Asana html_notes 変換ルール（静的リファレンス）
 
-Asana タスクの説明欄は **Markdown ではなく、Asana 独自の制限付き HTML (`html_notes`)** で登録する。
-これはハルシネーション防止用の固定仕様リファレンス。Asana 仕様が変わった時のみ更新する。
+Asana タスクの説明欄は **Markdown ではなく、Asana 独自の制限付き HTML (`html_notes`)** で登録する。以下は変換時の規約（正本）。
 
 ## 大原則
 - ルートは単一の `<body>...</body>`。整形式 XML であること
