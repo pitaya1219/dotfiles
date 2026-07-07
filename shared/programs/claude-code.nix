@@ -38,7 +38,8 @@
     home.file.".claude/commands".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/commands";
     home.file.".claude/skills".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/skills";
 
-    # Claude Code-specific subagents (not shared via ~/.agent — Vibe has no agents dir).
+    # Claude Code-specific subagents (not shared via ~/.agent — Vibe's agents
+    # live in ~/.vibe/agents as TOML, incompatible with these markdown definitions).
     # explore.md overrides the built-in Explore agent to pin it to Haiku:
     # since v2.1.198 the built-in inherits the main session model, so
     # exploration on an Opus/Sonnet session burns expensive tokens.
