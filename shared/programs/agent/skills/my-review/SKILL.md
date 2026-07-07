@@ -2,7 +2,7 @@
 name: my-review
 description: Perform code review in pitaya1219's personal review style
 user-invocable: true
-version: 1.1.0
+version: 1.2.0
 ---
 
 # My Review Skill
@@ -17,6 +17,7 @@ The review is done in four phases: diff analysis, context gathering (when needed
 ```
 /my-review              # Review current branch diff vs base branch
 /my-review --pr <N>     # Review a specific PR by number
+/my-review --deep       # Multi-agent review: parallel perspective reviewers + adversarial verification
 /my-review --fix        # Apply auto-fixable suggestions to files after review
 /my-review --comment    # Post findings as inline PR comments
 ```
@@ -69,6 +70,8 @@ Wait for the user's response before proceeding to Phase 3.
 ## Phase 3: Review Output
 
 Apply **all** of the following review perspectives to the diff. For each finding, output a comment in the appropriate format.
+
+**With `--deep`:** do not apply the perspectives yourself. Run the multi-agent pipeline described in **Deep Mode** below, then continue from **Output Format** with the synthesized findings.
 
 ---
 
@@ -149,6 +152,54 @@ Apply **all** of the following review perspectives to the diff. For each finding
 - Does test or debug code expose PII? (names, phone numbers, IDs, payment references in logs or fixtures)
 - Are dev and prod environments properly separated for configuration values?
   - Flag: `この変更、本番環境にも影響があります。開発・本番で分けられるようにして欲しいです。`
+
+---
+
+### Deep Mode (`--deep`)
+
+Multi-agent variant of Phase 3. Instead of one context applying all nine perspectives serially, fan the perspectives out to parallel reviewer subagents, adversarially verify every finding, and synthesize only the survivors. Use for large or high-stakes diffs — it reads the diff several times over, so it costs more than the serial mode.
+
+**Fallback:** if the harness has no subagent mechanism (e.g. Mistral Vibe), tell the user `--deep` is unavailable and run the serial Phase 3 instead.
+
+#### Stage A: Fan-out reviewers
+
+Spawn the following reviewer subagents **in parallel**, one per perspective group:
+
+| Reviewer | Perspectives | Extra input |
+|----------|-------------|-------------|
+| `spec-security` | 1 要件・仕様への正確な準拠, 9 セキュリティ・データ保護 | Phase 2 answers, ticket/spec references |
+| `naming-types` | 2 命名・コメントの適切さ, 3 型アノテーションの厳密さ | — |
+| `tests` | 4 テストの品質・網羅性 | — |
+| `errors-business` | 5 エラーハンドリング, 8 ビジネスロジックの正確性 | Phase 2 answers |
+| `design-perf` | 6 コード設計・責務分離, 7 パフォーマンス・DB設計 | — |
+
+Each reviewer's prompt must contain:
+
+- How to obtain the diff (the same base-branch diff command or PR number from Phase 1) and the list of changed files. The reviewer reads the repo itself; do not paste whole files into the prompt.
+- The **verbatim text of its assigned perspective definitions** from this file — nothing about the other perspectives.
+- The relevant Phase 2 context (see Extra input column).
+- Output instructions: return findings as a structured list, one item per finding, with `file`, `line`, `perspective`, `proposed_severity` (must-fix / suggestion / want / 任意), the comment body in Japanese in the reviewer's style, and an optional `suggestion` code block. Cite exact `file:line` from the diff. Report only findings the reviewer actually believes; do not pad.
+
+#### Stage B: Adversarial verification
+
+Group Stage A findings by file. For each file, spawn a verifier subagent whose prompt frames it as a **skeptic trying to refute each finding**:
+
+- Does the cited line exist in the diff and say what the finding claims?
+- Is the issue already handled elsewhere in the diff or surrounding code?
+- Would the suggested fix actually work (types, imports, behavior)?
+- Is the finding consistent with the Phase 2 business context?
+
+Verdict per finding: `confirmed` or `refuted` (with reason). **Drop refuted findings — they must not appear in the review.** If the verifier is uncertain, keep the finding but mark it so the orchestrator can downgrade its severity or phrase it as a question.
+
+#### Stage C: Synthesis (orchestrator)
+
+Back in the main session:
+
+1. Deduplicate confirmed findings (same file/line/point raised by multiple reviewers → merge into one comment).
+2. Decide the final notation for each finding yourself (無印 / `[suggestion]` / `[want]` / `[任意]`) — reviewers only propose severity; the orchestrator owns the final call.
+3. Render everything using **Output Format** below and make the Approval / Request Changes decision as usual.
+
+`--deep` composes with the other flags: `--pr` changes only how the diff is obtained; `--fix` / `--comment` run in Phase 4 on the synthesized findings.
 
 ---
 
