@@ -38,6 +38,15 @@
     home.file.".claude/commands".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/commands";
     home.file.".claude/skills".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/skills";
 
+    # Claude Code-specific subagents (not shared via ~/.agent — Vibe has no agents dir).
+    # explore.md overrides the built-in Explore agent to pin it to Haiku:
+    # since v2.1.198 the built-in inherits the main session model, so
+    # exploration on an Opus/Sonnet session burns expensive tokens.
+    home.file.".claude/agents" = {
+      source = ./claude-code/agents;
+      recursive = true;
+    };
+
     home.file.".claude/settings.json".text = builtins.toJSON {
       statusLine = {
         type = "command";
