@@ -159,7 +159,7 @@ Apply **all** of the following review perspectives to the diff. For each finding
 
 Multi-agent variant of Phase 3. Instead of one context applying all nine perspectives serially, fan the perspectives out to parallel reviewer subagents, adversarially verify every finding, and synthesize only the survivors. Use for large or high-stakes diffs — it reads the diff several times over, so it costs more than the serial mode.
 
-**Fallback:** if the harness has no subagent mechanism (e.g. Mistral Vibe), tell the user `--deep` is unavailable and run the serial Phase 3 instead.
+**Delegation mechanism:** use whatever subagent facility the harness provides — Claude Code's Agent tool, or Mistral Vibe's `task` tool. If the harness has none, or delegation fails, tell the user and run the serial Phase 3 instead.
 
 #### Stage A: Fan-out reviewers
 
