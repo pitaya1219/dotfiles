@@ -9,6 +9,13 @@
   # Symlink .vibe/skills -> .agent/skills
   home.file.".vibe/skills".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/skills";
 
+  # Custom agents. explore.toml overrides the builtin explore subagent to run
+  # on a cheap model instead of inheriting the main session model.
+  home.file.".vibe/agents" = {
+    source = ./vibe/agents;
+    recursive = true;
+  };
+
   # Gitea MCP wrapper script
   home.file.".vibe/gitea-mcp-wrapper.sh" = {
     text = builtins.readFile ../../scripts/gitea-mcp-wrapper.sh;

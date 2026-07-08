@@ -1,0 +1,18 @@
+# Overrides Vibe's builtin `explore` subagent (agent name = file stem) to pin
+# a cheap model. The builtin runs on the session's active_model, so bulk
+# exploration (grep/read sweeps) burns expensive mistral-medium tokens.
+# devstral-small is already registered in Vibe's default [[models]] config
+# ($0.1/$0.3 per Mtok vs $1.5/$7.5 for mistral-medium-3.5).
+#
+# The override replaces the builtin profile wholesale — enabled_tools and
+# system_prompt_id must restate the builtin values (read-only tools, builtin
+# explore prompt) or they would be lost.
+# Same pattern as the Claude Code side: shared/programs/claude-code/agents/explore.md
+display_name = "Explore"
+description = "Read-only subagent for codebase exploration"
+safety = "safe"
+agent_type = "subagent"
+
+active_model = "devstral-small"
+enabled_tools = ["grep", "read"]
+system_prompt_id = "explore"
