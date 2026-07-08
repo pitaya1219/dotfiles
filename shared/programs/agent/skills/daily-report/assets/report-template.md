@@ -32,7 +32,7 @@
 <!-- If Logseq sessions data is available, use the rich format below.
      Otherwise fall back to the local directory listing. -->
 
-### Session: <title>
+### Session/<date> <title>
 - **Objective**: ...
 - **Repository**: repo @ branch
 - **PR**: https://...

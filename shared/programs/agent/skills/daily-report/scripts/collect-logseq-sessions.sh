@@ -34,8 +34,8 @@ curl -sf --max-time 3 \
 MIDNIGHT_MS=$(( $(midnight_ts) * 1000 ))
 EOD_MS=$(( MIDNIGHT_MS + 86400000 ))
 
-# Query session pages created today via datascript
-QUERY="[:find (pull ?p [:block/name :block/original-name :block/created-at]) :where [?p :block/name ?name] [(clojure.string/starts-with? ?name \"session: \")] [?p :block/created-at ?ts] [(>= ?ts ${MIDNIGHT_MS})] [(< ?ts ${EOD_MS})]]"
+# Query session pages (namespace "session/...") created today via datascript
+QUERY="[:find (pull ?p [:block/name :block/original-name :block/created-at]) :where [?p :block/name ?name] [(clojure.string/starts-with? ?name \"session/\")] [?p :block/created-at ?ts] [(>= ?ts ${MIDNIGHT_MS})] [(< ?ts ${EOD_MS})]]"
 
 PAGES=$(curl -sf \
   -H "Authorization: Bearer $TOK" \
