@@ -2,12 +2,12 @@
 name: logseq-write
 description: Append content to a Logseq page (or create a new page) via HTTP API, with optional Markdown-to-blocks conversion
 user-invocable: true
-version: 2.0.0
+version: 2.1.0
 ---
 
 Append content to a Logseq page, or create a new page with properties. Reads connection config from `~/.agent/logseq.json`.
 
-`$ARGUMENTS` format: `<page> [--format markdown|logseq] [--title "..."] [--tag tag-name] [--create-page] [--prop key=value]...`
+`$ARGUMENTS` format: `<page> [--format markdown|logseq] [--title "..."] [--tag tag-name] [--create-page] [--prop key=value]... [--asset path[:name]]...`
 
 - `page` — Logseq page name (e.g. `2026-06-08` for today's journal, or `Session: fix-bug` for a new page)
 - `--format` — `markdown` (default) converts Markdown; `logseq` uses native outline as-is
@@ -15,6 +15,7 @@ Append content to a Logseq page, or create a new page with properties. Reads con
 - `--tag` — adds `tags:: #<tag>` property on the title block (requires `--title`, append mode only)
 - `--create-page` — create a new page instead of appending to an existing one; `<page>` becomes the page title
 - `--prop key=value` — set a page property (repeatable, requires `--create-page`)
+- `--asset path[:name]` — copy a local file into the graph's `assets/` dir and append a link block to the content (repeatable). Optional `:name` overrides the on-disk filename (defaults to the source basename). Image extensions render inline (`![]`), everything else as a download link (`[]`).
 
 ## Step 1: Load Config
 
@@ -55,6 +56,7 @@ From `$ARGUMENTS`, extract:
 - `TAG` — `--tag` value (optional, append mode only)
 - `CREATE_PAGE` — true if `--create-page` is present
 - `PROPS` — map of key→value from all `--prop key=value` occurrences
+- `ASSETS` — list of `path[:name]` from all `--asset` occurrences
 
 ## Step 3: Create Page (if `--create-page`)
 
@@ -80,6 +82,37 @@ echo "$RESULT" | jq -e '.uuid' > /dev/null || { echo "createPage failed: $RESULT
 ```
 
 After page creation, proceed to insert content blocks into the new page using `PAGE` as the page name.
+
+## Step 3.5: Copy Assets (if `--asset`)
+
+For each `--asset path[:name]`, copy the file into the graph's `assets/` directory
+and build a link block. Collect the resulting blocks into `ASSET_BLOCKS` (a JSON
+array of `{ "content": ... }` objects) for appending in Step 4.
+
+```bash
+# Resolve the current graph's on-disk assets/ dir (once)
+GRAPH_PATH=$(curl -sf \
+  -H "Authorization: Bearer $LOGSEQ_TOKEN" -H "Content-Type: application/json" \
+  -d '{"method":"logseq.App.getCurrentGraph","args":[]}' \
+  "$LOGSEQ_URL/api" | jq -r '.path // empty')
+
+ASSET_BLOCKS='[]'
+if [ -n "$GRAPH_PATH" ] && [ -d "$GRAPH_PATH/assets" ]; then
+  for SPEC in "${ASSETS[@]}"; do
+    SRC="${SPEC%%:*}"                          # part before optional :name
+    NAME="${SPEC#*:}"; [ "$NAME" = "$SPEC" ] && NAME="$(basename "$SRC")"
+    [ -f "$SRC" ] || { echo "asset not found, skipping: $SRC" >&2; continue; }
+    cp "$SRC" "$GRAPH_PATH/assets/$NAME"
+    # Image extensions render inline; everything else is a download link.
+    case "${NAME,,}" in
+      *.png|*.jpg|*.jpeg|*.gif|*.webp|*.svg|*.bmp) PREFIX='!';;
+      *) PREFIX='';;
+    esac
+    LINK="${PREFIX}[${NAME}](../assets/${NAME})"
+    ASSET_BLOCKS=$(jq -c --arg c "$LINK" '. + [{content:$c}]' <<<"$ASSET_BLOCKS")
+  done
+fi
+```
 
 ## Step 4: Build Block Tree
 
@@ -118,6 +151,10 @@ Build a JSON array of block objects:
   }
 ]
 ```
+
+If `ASSET_BLOCKS` (from Step 3.5) is non-empty, append its blocks to the end of this
+top-level array so asset links appear after the content. When content is empty (assets
+only), the tree is just `ASSET_BLOCKS`.
 
 ## Step 5: Wrap with Title Block (append mode only)
 
