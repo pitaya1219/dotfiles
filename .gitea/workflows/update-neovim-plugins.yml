@@ -122,8 +122,10 @@ jobs:
             git add "$PLUGINS_FILE"
             git commit -m "chore: Update ${NAME} to ${SHORT_SHA}"
 
-            # Push
-            git push -f "https://oauth2:${BOT_TOKEN}@$(echo ${GITEA_SERVER_URL} | sed 's|https://||')/${REPO}.git" "$BRANCH"
+            # Push (preserve GITEA_SERVER_URL's scheme; on self-hosted
+            # runners it may resolve to an internal http:// address)
+            PUSH_URL=$(echo "${GITEA_SERVER_URL}" | sed -E "s#^(https?)://#\1://oauth2:${BOT_TOKEN}@#")
+            git push -f "${PUSH_URL}/${REPO}.git" "$BRANCH"
 
             # Check for existing PR from this branch
             EXISTING=$(curl -sf \
