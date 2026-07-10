@@ -49,7 +49,7 @@ let
       name = "oldworld-nvim";
       owner = "dgox16";
       repo = "oldworld.nvim";
-      rev = "main";
+      rev = "db072a0bd2c90035fc3a57a73014cb54d3902f1f";
       sha256 = "sha256-yO5XKSMwDu0/QYnoMbxWs+h0tfjftAYJYPrKO2XYfNQ=";
     }
   ];
