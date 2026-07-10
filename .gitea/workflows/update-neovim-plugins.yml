@@ -38,7 +38,6 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           GITEA_SERVER_URL: ${{ gitea.server_url }}
           REPO: ${{ gitea.repository }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -48,11 +47,10 @@ jobs:
           PLUGINS_JSON=$(python3 scripts/update-neovim-plugins.py parse "$PLUGINS_FILE")
           echo "Found plugins: $(echo "$PLUGINS_JSON" | jq -r '.[].name' | tr '\n' ' ')"
 
-          # GitHub API helper (authenticated to avoid rate limits)
+          # GitHub API helper (unauthenticated; secrets.GITHUB_TOKEN is a
+          # Gitea-issued token and is not valid against api.github.com)
           github_api() {
-            curl -sf \
-              ${GITHUB_TOKEN:+-H "Authorization: token ${GITHUB_TOKEN}"} \
-              "$@"
+            curl -sf "$@"
           }
 
           # Process each plugin
