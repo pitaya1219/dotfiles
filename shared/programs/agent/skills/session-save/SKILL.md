@@ -2,7 +2,7 @@
 name: session-save
 description: Save current session summary to Logseq (if available) or as a local markdown file
 user-invocable: true
-version: 2.4.0
+version: 2.5.0
 ---
 
 Create a comprehensive summary of the current session and save it.
@@ -39,47 +39,21 @@ fi
 
 ## Session ID Detection
 
-Obtain the current session UUID using the following priority:
+Source the bundled adapter, which resolves the current session's identity and
+transcript across agent types (Claude Code, Vibe). All agent-specific branching
+lives in that script, so this skill stays orchestration-only.
 
 ```bash
-WORKDIR_ENCODED=$(pwd | sed 's|/|-|g')
-
-# 1. Claude Code: ~/.claude/projects/<workdir>/<uuid>.jsonl (most reliable)
-SESSION_ID=$(ls -t "$HOME/.claude/projects/${WORKDIR_ENCODED}"/*.jsonl 2>/dev/null | \
-  head -1 | xargs -r basename -s .jsonl 2>/dev/null)
-
-# 2. Claude Code: /tmp tasks dir filtered by workdir
-if [ -z "$SESSION_ID" ]; then
-  SESSION_ID=$(find /tmp -maxdepth 7 -type d -name "tasks" 2>/dev/null | \
-    grep "${WORKDIR_ENCODED}" | \
-    while read d; do echo "$(stat -c %Y "$d") $d"; done | \
-    sort -rn | head -1 | \
-    awk '{print $2}' | \
-    grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
-fi
-
-# 3. Claude Code: /tmp tasks dir across all workdirs
-if [ -z "$SESSION_ID" ]; then
-  SESSION_ID=$(find /tmp -maxdepth 7 -type d -name "tasks" -path "*/claude-*" 2>/dev/null | \
-    while read d; do echo "$(stat -c %Y "$d") $d"; done | \
-    sort -rn | head -1 | \
-    awk '{print $2}' | \
-    grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
-fi
-
-# 4. Vibe: meta.json in cwd-local → ~/agent-sessions → $VIBE_HOME (global)
-if [ -z "$SESSION_ID" ]; then
-  _META=$(ls -dt \
-    "$(pwd)/.vibe/logs/session"/session_*/meta.json \
-    "$HOME/agent-sessions/.vibe/logs/session"/session_*/meta.json \
-    "${VIBE_HOME:-$HOME/.vibe}/logs/session"/session_*/meta.json \
-    2>/dev/null | head -1)
-  if [ -n "$_META" ]; then
-    SESSION_ID=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['session_id'])" "$_META" 2>/dev/null)
-    [ -z "$SESSION_ID" ] && SESSION_ID=$(echo "$_META" | grep -oE 'session_[0-9]+_[0-9]+_([0-9a-f]+)' | grep -oE '[0-9a-f]+$')
-  fi
-fi
+source "$HOME/.agent/skills/session-save/detect-session.sh"
+# Sets, best-effort (empty when undetected):
+#   AGENT_TYPE       claude-code | vibe | unknown
+#   SESSION_ID       session UUID (or trailing hash for Vibe fallback)
+#   WORKDIR_ENCODED  $(pwd) with '/' → '-'
+#   TRANSCRIPT_PATH  absolute path to the full raw transcript (.jsonl)
 ```
+
+`~/.claude/skills` and `~/.vibe/skills` both point at `~/.agent/skills`, so the
+`~/.agent/...` path resolves regardless of which agent runs this skill.
 
 ## Summary Template
 
@@ -100,52 +74,24 @@ Tone: Technical but readable, focusing on "what" and "why" over "how".
 
 ## Attach Raw Transcript as a Logseq Asset (Logseq only)
 
-When `USE_LOGSEQ=true`, also copy the full session transcript (`.jsonl`) into the
-Logseq graph's `assets/` directory so the page can link to the complete raw log.
-Locating the transcript is agent-type aware (Claude Code and Vibe supported).
-Best-effort: skip silently when no transcript file is found.
+When `USE_LOGSEQ=true` and `TRANSCRIPT_PATH` was resolved (by the adapter above),
+copy the full session transcript into the Logseq graph's `assets/` directory so the
+page can link to the complete raw log. Best-effort: skip silently when there is no
+transcript. (Agent-type branching already happened in `detect-session.sh`.)
 
 ```bash
 RAW_TRANSCRIPT_REF=""
-if [ "$USE_LOGSEQ" = true ] && [ -n "$SESSION_ID" ]; then
-  # Locate the full transcript for this session (agent-type aware).
-  _JSONL=""
-
-  # Claude Code: ~/.claude/projects/<workdir-encoded>/<uuid>.jsonl
-  if [ -f "$HOME/.claude/projects/${WORKDIR_ENCODED}/${SESSION_ID}.jsonl" ]; then
-    _JSONL="$HOME/.claude/projects/${WORKDIR_ENCODED}/${SESSION_ID}.jsonl"
-  fi
-
-  # Vibe: <base>/logs/session/session_*/messages.jsonl — pick the session dir
-  # whose meta.json session_id matches SESSION_ID (or whose name ends with it,
-  # since detection may yield only the trailing hash).
-  if [ -z "$_JSONL" ]; then
-    for _base in "$(pwd)/.vibe" "$HOME/agent-sessions/.vibe" "${VIBE_HOME:-$HOME/.vibe}"; do
-      [ -d "$_base/logs/session" ] || continue
-      for _sd in $(ls -dt "$_base/logs/session"/session_* 2>/dev/null); do
-        [ -f "$_sd/messages.jsonl" ] || continue
-        _sid=$(jq -r '.session_id // empty' "$_sd/meta.json" 2>/dev/null)
-        case "$(basename "$_sd")" in *"$SESSION_ID") _byname=1;; *) _byname=0;; esac
-        if [ "$_sid" = "$SESSION_ID" ] || [ "$_byname" = 1 ]; then
-          _JSONL="$_sd/messages.jsonl"; break
-        fi
-      done
-      [ -n "$_JSONL" ] && break
-    done
-  fi
-
-  if [ -n "$_JSONL" ] && [ -f "$_JSONL" ]; then
-    # Resolve the current graph's on-disk path, then its assets/ dir
-    _GRAPH_PATH=$(curl -sf \
-      -H "Authorization: Bearer $_TOK" -H "Content-Type: application/json" \
-      -d '{"method":"logseq.App.getCurrentGraph","args":[]}' \
-      "$_URL/api" | jq -r '.path // empty')
-    if [ -n "$_GRAPH_PATH" ] && [ -d "$_GRAPH_PATH/assets" ]; then
-      _ASSET_NAME="session-${SESSION_ID}.jsonl"
-      cp "$_JSONL" "$_GRAPH_PATH/assets/$_ASSET_NAME"
-      # Logseq asset links are graph-relative: ../assets/<name>
-      RAW_TRANSCRIPT_REF="[session.jsonl](../assets/${_ASSET_NAME})"
-    fi
+if [ "$USE_LOGSEQ" = true ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+  # Resolve the current graph's on-disk path, then its assets/ dir
+  _GRAPH_PATH=$(curl -sf \
+    -H "Authorization: Bearer $_TOK" -H "Content-Type: application/json" \
+    -d '{"method":"logseq.App.getCurrentGraph","args":[]}' \
+    "$_URL/api" | jq -r '.path // empty')
+  if [ -n "$_GRAPH_PATH" ] && [ -d "$_GRAPH_PATH/assets" ]; then
+    _ASSET_NAME="session-${SESSION_ID}.jsonl"
+    cp "$TRANSCRIPT_PATH" "$_GRAPH_PATH/assets/$_ASSET_NAME"
+    # Logseq asset links are graph-relative: ../assets/<name>
+    RAW_TRANSCRIPT_REF="[session.jsonl](../assets/${_ASSET_NAME})"
   fi
 fi
 ```
@@ -177,7 +123,7 @@ $ARGUMENTS: "Session/<YYYY-MM-DD> <oneline-summary>" --create-page --format mark
 
 Field values:
 - `<oneline-summary>`: concise kebab-case title (e.g. `session-save-logseq-integration`)
-- `<agent-type>`: `claude-code`, `vibe`, or `opencode` — detect from environment; default `claude-code`
+- `<agent-type>`: use `$AGENT_TYPE` from the adapter (`claude-code`, `vibe`, or `unknown`); default `claude-code` when `unknown`
 - `[[<YYYY-MM-DD>]]`: today's date as a Logseq journal page link (e.g. `[[2026-06-09]]`)
 - `<repo-name>`: from `git remote get-url origin` if in a git repo, else omit
 - `<branch-name>`: from `git branch --show-current` if in a git repo, else omit
