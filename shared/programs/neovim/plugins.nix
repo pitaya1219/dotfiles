@@ -42,8 +42,8 @@ let
       name = "spaceduck";
       owner = "spaceduck-theme";
       repo = "nvim";
-      rev = "master";
-      sha256 = "1n3jbbpqr4k6fa4hdj1q372rkacn9v7isx9bvafdbhrqvx8j66g7";
+      rev = "f476d6804114d04295ecad83979c7b3946b08010";
+      sha256 = "sha256-5xkjUd84w9Wc2it1Hc9OlqmZxRk4yAaJcmaSjO9actg=";
     }
     {
       name = "oldworld-nvim";
