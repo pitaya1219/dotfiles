@@ -2,7 +2,7 @@
 name: session-save
 description: Save current session summary to Logseq (if available) or as a local markdown file
 user-invocable: true
-version: 2.5.0
+version: 2.6.0
 ---
 
 Create a comprehensive summary of the current session and save it.
@@ -55,9 +55,28 @@ source "$HOME/.agent/skills/session-save/detect-session.sh"
 `~/.claude/skills` and `~/.vibe/skills` both point at `~/.agent/skills`, so the
 `~/.agent/...` path resolves regardless of which agent runs this skill.
 
+## Identify Topics (split decision)
+
+Before summarizing, decide whether the session covered **one** coherent topic or
+**several distinct** ones, and split into one Logseq page per topic accordingly.
+
+- **Default to a single page.** Most sessions are one topic even when they wander.
+- **Split only when the session clearly contains separate workstreams** that a
+  reader would look up independently — different repos/deliverables, unrelated
+  goals, or a hard pivot mid-session. Example from this skill's own history: an
+  Asana spec write-up **and** an unrelated dotfiles skill refactor → two pages.
+- **Do not over-split.** Sub-tasks of one goal, a fix plus its test, or
+  investigation-then-implementation of the same feature stay on **one** page.
+- Produce a list `TOPICS` of `{ slug, objective }`. One entry → one page (normal
+  case); two or more → one page each. When unsure, prefer fewer pages.
+
+All resulting pages belong to the same session, so they share `session-id` and the
+same `raw-transcript` asset; only the per-topic content, `slug`, `objective`, and
+`status` differ. See the Save step for cross-linking.
+
 ## Summary Template
 
-Generate a session summary using these sections:
+Generate a summary **per topic in `TOPICS`** (one per page) using these sections:
 
 1. **Overview** — What was done and why (2-4 sentences)
 2. **What Was Done** — Actions taken (bullet points)
@@ -104,10 +123,20 @@ keeping it in sync with the latest transcript.
 
 ### If Logseq is available (`USE_LOGSEQ=true`)
 
-Invoke `Skill(logseq-write)` with `--create-page` to create a dedicated session page:
+Create **one page per topic in `TOPICS`** (usually just one). For each topic invoke
+`Skill(logseq-write)` with `--create-page`, using that topic's `slug` and `objective`
+and its own generated summary. Across a multi-topic session:
+
+- Keep `session-id`, `date`, `model`, and `raw-transcript` **identical** on every
+  page (one session, one transcript asset shared by all pages).
+- Set `objective`, `status`, and the page content **per topic**.
+- In each page's **References** section, cross-link the sibling topic pages with
+  `[[Session/<YYYY-MM-DD> <other-slug>]]` so the split session stays navigable.
+
+Per-topic create-page invocation:
 
 ```
-$ARGUMENTS: "Session/<YYYY-MM-DD> <oneline-summary>" --create-page --format markdown \
+$ARGUMENTS: "Session/<YYYY-MM-DD> <topic-slug>" --create-page --format markdown \
   --prop "tags=#<agent-type>-session" \
   --prop "date=[[<YYYY-MM-DD>]]" \
   --prop "repository=<repo-name-or-empty>" \
@@ -122,12 +151,12 @@ $ARGUMENTS: "Session/<YYYY-MM-DD> <oneline-summary>" --create-page --format mark
 ```
 
 Field values:
-- `<oneline-summary>`: concise kebab-case title (e.g. `session-save-logseq-integration`)
+- `<topic-slug>`: the topic's concise kebab-case title (e.g. `session-save-logseq-integration`). For a single-topic session this is just the session's one-line summary.
 - `<agent-type>`: use `$AGENT_TYPE` from the adapter (`claude-code`, `vibe`, or `unknown`); default `claude-code` when `unknown`
 - `[[<YYYY-MM-DD>]]`: today's date as a Logseq journal page link (e.g. `[[2026-06-09]]`)
 - `<repo-name>`: from `git remote get-url origin` if in a git repo, else omit
 - `<branch-name>`: from `git branch --show-current` if in a git repo, else omit
-- `<objective>`: one sentence summarizing the session goal, derived from the conversation
+- `<objective>`: the topic's `objective` from `TOPICS` (one sentence). For a single-topic session, the session goal.
 - `<wip-or-completed>`: `wip` if the session still has unfinished work / Open Items to resume; `completed` only when everything is done. Default to `wip` when in doubt — the user looks up `status` to find sessions to resume.
 - `<model-name>`: the Claude/AI model in use (e.g. `claude-sonnet-4-6`)
 - `<pr-url>`: PR URL if one was created during the session, else omit
@@ -138,8 +167,11 @@ The generated summary (without a top-level `#` heading — the page title serves
 
 ### If Logseq is unavailable (`USE_LOGSEQ=false`)
 
-- If `$ARGUMENTS` is provided: use it as the output path directly
-- Otherwise: `.ai/sessions/YYYY-MM-DD-${SESSION_ID}-${summary}.md`
-  - Fallback (no SESSION_ID): `.ai/sessions/YYYY-MM-DD-HHmmss-${summary}.md`
+Write **one file per topic** in `TOPICS` (usually one):
 
-Create parent directories if needed, then write the generated summary to the output path.
+- Single topic, and `$ARGUMENTS` is provided: use it as the output path directly.
+- Otherwise, per topic: `.ai/sessions/YYYY-MM-DD-${SESSION_ID}-<topic-slug>.md`
+  - Fallback (no SESSION_ID): `.ai/sessions/YYYY-MM-DD-HHmmss-<topic-slug>.md`
+- When splitting, cross-reference sibling files by relative filename at the top of each.
+
+Create parent directories if needed, then write each topic's generated summary to its path.

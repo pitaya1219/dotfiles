@@ -2,7 +2,7 @@
 name: session-wrapup
 description: Archive session summary and clean up branches
 user-invocable: true
-version: 2.0.0
+version: 2.1.0
 ---
 
 # Session Wrapup Skill
@@ -33,6 +33,11 @@ Skill(session-save) $ARGUMENTS="<computed-output-path>"
 `Skill(session-save)` will automatically check Logseq availability:
 - If Logseq is reachable → saves to today's journal page in Logseq (ignores the path argument)
 - If not → saves to the provided local file path
+
+`Skill(session-save)` also decides whether the session covered distinct topics and,
+if so, splits it into one page/file per topic (cross-linked, sharing the transcript
+asset). The computed path above is the single-topic default; the split case is handled
+inside `session-save`.
 
 ## Step 2: Branch Cleanup
 
