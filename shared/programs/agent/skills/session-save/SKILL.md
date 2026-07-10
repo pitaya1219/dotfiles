@@ -2,7 +2,7 @@
 name: session-save
 description: Save current session summary to Logseq (if available) or as a local markdown file
 user-invocable: true
-version: 2.3.0
+version: 2.4.0
 ---
 
 Create a comprehensive summary of the current session and save it.
@@ -98,6 +98,37 @@ Generate a session summary using these sections:
 Format: Use clear headings, bullet points, and code blocks where appropriate.
 Tone: Technical but readable, focusing on "what" and "why" over "how".
 
+## Attach Raw Transcript as a Logseq Asset (Logseq only)
+
+When `USE_LOGSEQ=true`, also copy the full session transcript (`.jsonl`) into the
+Logseq graph's `assets/` directory so the page can link to the complete raw log.
+Best-effort: skip silently when no transcript file is found (e.g. Vibe/opencode).
+
+```bash
+RAW_TRANSCRIPT_REF=""
+if [ "$USE_LOGSEQ" = true ] && [ -n "$SESSION_ID" ]; then
+  # Claude Code transcript path: ~/.claude/projects/<workdir-encoded>/<uuid>.jsonl
+  _JSONL="$HOME/.claude/projects/${WORKDIR_ENCODED}/${SESSION_ID}.jsonl"
+  if [ -f "$_JSONL" ]; then
+    # Resolve the current graph's on-disk path, then its assets/ dir
+    _GRAPH_PATH=$(curl -sf \
+      -H "Authorization: Bearer $_TOK" -H "Content-Type: application/json" \
+      -d '{"method":"logseq.App.getCurrentGraph","args":[]}' \
+      "$_URL/api" | jq -r '.path // empty')
+    if [ -n "$_GRAPH_PATH" ] && [ -d "$_GRAPH_PATH/assets" ]; then
+      _ASSET_NAME="session-${SESSION_ID}.jsonl"
+      cp "$_JSONL" "$_GRAPH_PATH/assets/$_ASSET_NAME"
+      # Logseq asset links are graph-relative: ../assets/<name>
+      RAW_TRANSCRIPT_REF="[session.jsonl](../assets/${_ASSET_NAME})"
+    fi
+  fi
+fi
+```
+
+If `RAW_TRANSCRIPT_REF` is non-empty, pass it as the `raw-transcript` page property
+in the Save step below. Re-running for the same `SESSION_ID` overwrites the asset,
+keeping it in sync with the latest transcript.
+
 ## Save
 
 ### If Logseq is available (`USE_LOGSEQ=true`)
@@ -115,7 +146,8 @@ $ARGUMENTS: "Session/<YYYY-MM-DD> <oneline-summary>" --create-page --format mark
   --prop "status=<wip-or-completed>" \
   --prop "model=<model-name>" \
   --prop "pr=<pr-url-or-empty>" \
-  --prop "called-by=<caller-or-empty>"
+  --prop "called-by=<caller-or-empty>" \
+  --prop "raw-transcript=<RAW_TRANSCRIPT_REF-or-empty>"
 ```
 
 Field values:
@@ -129,6 +161,7 @@ Field values:
 - `<model-name>`: the Claude/AI model in use (e.g. `claude-sonnet-4-6`)
 - `<pr-url>`: PR URL if one was created during the session, else omit
 - `<caller>`: the orchestrator that delegated this session, when it was run as a sub-agent (e.g. `claude` when delegated via the `vibe-delegate` skill). Omit the property entirely for normal, directly-run sessions.
+- `<RAW_TRANSCRIPT_REF>`: the value computed in "Attach Raw Transcript as a Logseq Asset" (e.g. `[session.jsonl](../assets/session-<uuid>.jsonl)`). Omit the property entirely when empty (asset was not attached).
 
 The generated summary (without a top-level `#` heading — the page title serves that role) is the content to write.
 
