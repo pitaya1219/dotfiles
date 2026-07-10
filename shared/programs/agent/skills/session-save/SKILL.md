@@ -102,14 +102,39 @@ Tone: Technical but readable, focusing on "what" and "why" over "how".
 
 When `USE_LOGSEQ=true`, also copy the full session transcript (`.jsonl`) into the
 Logseq graph's `assets/` directory so the page can link to the complete raw log.
-Best-effort: skip silently when no transcript file is found (e.g. Vibe/opencode).
+Locating the transcript is agent-type aware (Claude Code and Vibe supported).
+Best-effort: skip silently when no transcript file is found.
 
 ```bash
 RAW_TRANSCRIPT_REF=""
 if [ "$USE_LOGSEQ" = true ] && [ -n "$SESSION_ID" ]; then
-  # Claude Code transcript path: ~/.claude/projects/<workdir-encoded>/<uuid>.jsonl
-  _JSONL="$HOME/.claude/projects/${WORKDIR_ENCODED}/${SESSION_ID}.jsonl"
-  if [ -f "$_JSONL" ]; then
+  # Locate the full transcript for this session (agent-type aware).
+  _JSONL=""
+
+  # Claude Code: ~/.claude/projects/<workdir-encoded>/<uuid>.jsonl
+  if [ -f "$HOME/.claude/projects/${WORKDIR_ENCODED}/${SESSION_ID}.jsonl" ]; then
+    _JSONL="$HOME/.claude/projects/${WORKDIR_ENCODED}/${SESSION_ID}.jsonl"
+  fi
+
+  # Vibe: <base>/logs/session/session_*/messages.jsonl — pick the session dir
+  # whose meta.json session_id matches SESSION_ID (or whose name ends with it,
+  # since detection may yield only the trailing hash).
+  if [ -z "$_JSONL" ]; then
+    for _base in "$(pwd)/.vibe" "$HOME/agent-sessions/.vibe" "${VIBE_HOME:-$HOME/.vibe}"; do
+      [ -d "$_base/logs/session" ] || continue
+      for _sd in $(ls -dt "$_base/logs/session"/session_* 2>/dev/null); do
+        [ -f "$_sd/messages.jsonl" ] || continue
+        _sid=$(jq -r '.session_id // empty' "$_sd/meta.json" 2>/dev/null)
+        case "$(basename "$_sd")" in *"$SESSION_ID") _byname=1;; *) _byname=0;; esac
+        if [ "$_sid" = "$SESSION_ID" ] || [ "$_byname" = 1 ]; then
+          _JSONL="$_sd/messages.jsonl"; break
+        fi
+      done
+      [ -n "$_JSONL" ] && break
+    done
+  fi
+
+  if [ -n "$_JSONL" ] && [ -f "$_JSONL" ]; then
     # Resolve the current graph's on-disk path, then its assets/ dir
     _GRAPH_PATH=$(curl -sf \
       -H "Authorization: Bearer $_TOK" -H "Content-Type: application/json" \
