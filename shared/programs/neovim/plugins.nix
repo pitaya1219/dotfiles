@@ -35,8 +35,8 @@ let
       name = "nvim-colorizer";
       owner = "norcalli";
       repo = "nvim-colorizer.lua";
-      rev = "master";
-      sha256 = "0v1h9lj68kmx6052zg78v366iibxq78367h7avm97pvp5ksvqcw2";
+      rev = "a065833f35a3a7cc3ef137ac88b5381da2ba302e";
+      sha256 = "sha256-gjO89Sx335PqVgceM9DBfcVozNjovC8KML1OZCRNMGw=";
     }
     {
       name = "spaceduck";
