@@ -1,7 +1,7 @@
 { config, pkgs, lib, ... }:
 
 {
-  imports = [ ./agent.nix ];
+  imports = [ ./agent.nix ./mcp-servers.nix ];
 
   options = {
     dotfiles.claudeJson = lib.mkOption {
@@ -18,7 +18,14 @@
   config = let
     nixClaudeJson = pkgs.writeText "claude-json-nix" (builtins.toJSON config.dotfiles.claudeJson);
   in {
-    dotfiles.claude-code.mcpServers = {
+    # Remote HTTP MCP servers from the shared dotfiles.httpMcpServers option.
+    # The url (e.g. Windmill's issued MCP URL) already carries its own auth
+    # token as a query param; Claude Code expands the ${VAR} placeholder from
+    # its own process env at connect time, so the token is never written here.
+    dotfiles.claude-code.mcpServers = (lib.mapAttrs (_: srv: {
+      type = "http";
+      url = srv.url;
+    }) config.dotfiles.httpMcpServers) // {
       gitea = {
         command = "gitea-mcp";
         args = [
