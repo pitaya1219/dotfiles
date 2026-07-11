@@ -133,9 +133,9 @@ tasks:
         -- {{.CLI_ARGS}}
     env:
       RCLONE_CRYPT_PASSWORD:
-        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password)"'
+        sh: '[ -n "${RCLONE_CRYPT_PASSWORD:-}" ] && echo "$RCLONE_CRYPT_PASSWORD" || rclone obscure "$(passage show rclone/crypt/${USER}/password)"'
       RCLONE_CRYPT_PASSWORD2:
-        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password2)"'
+        sh: '[ -n "${RCLONE_CRYPT_PASSWORD2:-}" ] && echo "$RCLONE_CRYPT_PASSWORD2" || rclone obscure "$(passage show rclone/crypt/${USER}/password2)"'
       RCLONE_CRYPT_REMOTE: '{{.RCLONE_CRYPT_REMOTE | default ""}}'
       RCLONE_CRYPT_FILENAME_ENCRYPTION: '{{.RCLONE_CRYPT_FILENAME_ENCRYPTION | default "standard"}}'
       RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION: '{{.RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION | default "true"}}'
@@ -153,9 +153,9 @@ tasks:
         -- {{.CLI_ARGS}}
     env:
       RCLONE_CRYPT_PASSWORD:
-        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password)"'
+        sh: '[ -n "${RCLONE_CRYPT_PASSWORD:-}" ] && echo "$RCLONE_CRYPT_PASSWORD" || rclone obscure "$(passage show rclone/crypt/${USER}/password)"'
       RCLONE_CRYPT_PASSWORD2:
-        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password2)"'
+        sh: '[ -n "${RCLONE_CRYPT_PASSWORD2:-}" ] && echo "$RCLONE_CRYPT_PASSWORD2" || rclone obscure "$(passage show rclone/crypt/${USER}/password2)"'
       RCLONE_CRYPT_REMOTE: '{{.RCLONE_CRYPT_REMOTE | default ""}}'
       RCLONE_CRYPT_FILENAME_ENCRYPTION: '{{.RCLONE_CRYPT_FILENAME_ENCRYPTION | default "standard"}}'
       RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION: '{{.RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION | default "true"}}'
@@ -173,9 +173,9 @@ tasks:
         -- {{.CLI_ARGS}}
     env:
       RCLONE_CRYPT_PASSWORD:
-        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password)"'
+        sh: '[ -n "${RCLONE_CRYPT_PASSWORD:-}" ] && echo "$RCLONE_CRYPT_PASSWORD" || rclone obscure "$(passage show rclone/crypt/${USER}/password)"'
       RCLONE_CRYPT_PASSWORD2:
-        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password2)"'
+        sh: '[ -n "${RCLONE_CRYPT_PASSWORD2:-}" ] && echo "$RCLONE_CRYPT_PASSWORD2" || rclone obscure "$(passage show rclone/crypt/${USER}/password2)"'
       RCLONE_CRYPT_REMOTE: '{{.RCLONE_CRYPT_REMOTE | default ""}}'
       RCLONE_CRYPT_FILENAME_ENCRYPTION: '{{.RCLONE_CRYPT_FILENAME_ENCRYPTION | default "standard"}}'
       RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION: '{{.RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION | default "true"}}'
@@ -366,9 +366,9 @@ tasks:
         -- {{.CLI_ARGS}}
     env:
       RCLONE_CRYPT_PASSWORD:
-        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password)"'
+        sh: '[ -n "${RCLONE_CRYPT_PASSWORD:-}" ] && echo "$RCLONE_CRYPT_PASSWORD" || rclone obscure "$(passage show rclone/crypt/${USER}/password)"'
       RCLONE_CRYPT_PASSWORD2:
-        sh: 'rclone obscure "$(passage show rclone/crypt/${USER}/password2)"'
+        sh: '[ -n "${RCLONE_CRYPT_PASSWORD2:-}" ] && echo "$RCLONE_CRYPT_PASSWORD2" || rclone obscure "$(passage show rclone/crypt/${USER}/password2)"'
       RCLONE_CRYPT_REMOTE: '{{.RCLONE_CRYPT_REMOTE | default ""}}'
       RCLONE_CRYPT_FILENAME_ENCRYPTION: '{{.RCLONE_CRYPT_FILENAME_ENCRYPTION | default "standard"}}'
       RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION: '{{.RCLONE_CRYPT_DIRECTORY_NAME_ENCRYPTION | default "true"}}'

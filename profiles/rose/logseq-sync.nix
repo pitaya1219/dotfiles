@@ -20,11 +20,19 @@ let
     UID_IN_CONTAINER=$(${pkgs.incus}/bin/incus exec ${containerName} -- id -u ${containerUser})
     GID_IN_CONTAINER=$(${pkgs.incus}/bin/incus exec ${containerName} -- id -g ${containerUser})
     TOKEN=$(${pkgs.passage}/bin/passage show rclone/pcloud/${config.home.username}/token)
+    # The pcloud token alone only authenticates the underlying pcloud backend — the
+    # logseq data is also wrapped in an rclone crypt layer on top of that, which needs
+    # its own (obscured) password pair. Pre-obscure here so the container-side fallback
+    # in tasks/sync.yml can use it as-is without needing rclone/passage to do it itself.
+    CRYPT_PW=$(${pkgs.rclone}/bin/rclone obscure "$(${pkgs.passage}/bin/passage show rclone/crypt/${config.home.username}/password)")
+    CRYPT_PW2=$(${pkgs.rclone}/bin/rclone obscure "$(${pkgs.passage}/bin/passage show rclone/crypt/${config.home.username}/password2)")
     ${pkgs.incus}/bin/incus exec ${containerName} \
       --user "$UID_IN_CONTAINER" --group "$GID_IN_CONTAINER" \
       --cwd "${syncDir}" \
       --env "HOME=/home/${containerUser}" \
       --env "RCLONE_PCLOUD_TOKEN=$TOKEN" \
+      --env "RCLONE_CRYPT_PASSWORD=$CRYPT_PW" \
+      --env "RCLONE_CRYPT_PASSWORD2=$CRYPT_PW2" \
       --env "LOGSEQ_LOCAL=/home/${containerUser}/Logseq" \
       --env "LOGSEQ_REMOTE=app/logseq" \
       -- task sync:logseq
