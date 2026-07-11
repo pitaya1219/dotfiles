@@ -27,7 +27,7 @@ let
       --env "RCLONE_PCLOUD_TOKEN=$TOKEN" \
       --env "LOGSEQ_LOCAL=/home/${containerUser}/Logseq" \
       --env "LOGSEQ_REMOTE=app/logseq" \
-      -- task sync:logseq -- --resync
+      -- task sync:logseq
   '';
 in
 {
