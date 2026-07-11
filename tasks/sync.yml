@@ -240,8 +240,11 @@ tasks:
         EXCLUDE='{{.EXCLUDE}}' \
         -- {{.CLI_ARGS}}
     env:
+      # Reuse an already-exported token (e.g. injected by `incus exec --env` from a host
+      # that holds the real passage store) before falling back to a local passage lookup —
+      # lets this task run unmodified inside environments with no passage/age key of their own.
       RCLONE_PCLOUD_TOKEN:
-        sh: passage show rclone/pcloud/${USER}/token
+        sh: '[ -n "${RCLONE_PCLOUD_TOKEN:-}" ] && echo "$RCLONE_PCLOUD_TOKEN" || passage show rclone/pcloud/${USER}/token'
       RCLONE_PCLOUD_HOSTNAME: 'eapi.pcloud.com'
       RCLONE_CRYPT_REMOTE: ':pcloud:{{.PARENT_DIR}}'
 
@@ -256,8 +259,11 @@ tasks:
         EXCLUDE='{{.EXCLUDE}}' \
         -- {{.CLI_ARGS}}
     env:
+      # Reuse an already-exported token (e.g. injected by `incus exec --env` from a host
+      # that holds the real passage store) before falling back to a local passage lookup —
+      # lets this task run unmodified inside environments with no passage/age key of their own.
       RCLONE_PCLOUD_TOKEN:
-        sh: passage show rclone/pcloud/${USER}/token
+        sh: '[ -n "${RCLONE_PCLOUD_TOKEN:-}" ] && echo "$RCLONE_PCLOUD_TOKEN" || passage show rclone/pcloud/${USER}/token'
       RCLONE_PCLOUD_HOSTNAME: 'eapi.pcloud.com'
       RCLONE_CRYPT_REMOTE: ':pcloud:{{.PARENT_DIR}}'
 
@@ -272,8 +278,11 @@ tasks:
         EXCLUDE='{{.EXCLUDE}}' \
         -- {{.CLI_ARGS}}
     env:
+      # Reuse an already-exported token (e.g. injected by `incus exec --env` from a host
+      # that holds the real passage store) before falling back to a local passage lookup —
+      # lets this task run unmodified inside environments with no passage/age key of their own.
       RCLONE_PCLOUD_TOKEN:
-        sh: passage show rclone/pcloud/${USER}/token
+        sh: '[ -n "${RCLONE_PCLOUD_TOKEN:-}" ] && echo "$RCLONE_PCLOUD_TOKEN" || passage show rclone/pcloud/${USER}/token'
       RCLONE_PCLOUD_HOSTNAME: 'eapi.pcloud.com'
       RCLONE_CRYPT_REMOTE: ':pcloud:{{.PARENT_DIR}}'
 
@@ -374,7 +383,10 @@ tasks:
         EXCLUDE='{{.EXCLUDE}}' \
         -- {{.CLI_ARGS}}
     env:
+      # Reuse an already-exported token (e.g. injected by `incus exec --env` from a host
+      # that holds the real passage store) before falling back to a local passage lookup —
+      # lets this task run unmodified inside environments with no passage/age key of their own.
       RCLONE_PCLOUD_TOKEN:
-        sh: passage show rclone/pcloud/${USER}/token
+        sh: '[ -n "${RCLONE_PCLOUD_TOKEN:-}" ] && echo "$RCLONE_PCLOUD_TOKEN" || passage show rclone/pcloud/${USER}/token'
       RCLONE_PCLOUD_HOSTNAME: 'eapi.pcloud.com'
       RCLONE_CRYPT_REMOTE: ':pcloud:{{.PARENT_DIR}}'
