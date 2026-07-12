@@ -55,7 +55,8 @@ let
   ];
 
 
-  # Build custom plugins using loop
+  # Build custom plugins using loop.
+  # unpackPhase uses tar instead of cp to avoid proot fchmodat(AT_FDCWD,"",AT_EMPTY_PATH) failures.
   buildCustomPlugins = map (plugin: pkgs.vimUtils.buildVimPlugin {
     name = plugin.name;
     src = pkgs.fetchFromGitHub {
@@ -64,6 +65,14 @@ let
       rev = plugin.rev;
       sha256 = plugin.sha256;
     };
+    unpackPhase = ''
+      runHook preUnpack
+      mkdir source
+      tar cf - -C "$src" . | tar xf - -C source
+      chmod -R u+w source
+      sourceRoot="source"
+      runHook postUnpack
+    '';
   }) customPlugins;
 in
 {

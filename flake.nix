@@ -138,6 +138,93 @@
             })
           ];
         };
+
+        # WORKAROUND: proot-only fix for vim plugin unpackPhase.
+        # GNU coreutils cp uses fchmodat(AT_FDCWD,"",AT_EMPTY_PATH) which proot maps to
+        # ENOENT when copying directory sources. Override vimUtils.buildVimPlugin to use
+        # tar-based unpackPhase instead, covering both nixpkgs and custom plugins.
+        # Apply only to droid profile via droid.nix overlays.
+        # WORKAROUND: proot-only fix for vim plugin and Lua package unpackPhase.
+        # vimPlugins uses (vimUtils.override { inherit vim; }).buildVimPlugin, which
+        # bypasses any overlay on vimUtils.buildVimPlugin. Apply overrideAttrs directly
+        # to each plugin in vimPlugins instead.
+        # Also patch Lua packages that become neovim plugins (e.g. fzf-lua).
+        # Apply only to droid profile via droid.nix overlays.
+        vim-plugin-proot-unpack = final: prev:
+          let
+            prootUnpackPhase = ''
+              runHook preUnpack
+              mkdir source
+              tar cf - -C "$src" . | tar xf - -C source
+              chmod -R u+w source
+              sourceRoot="source"
+              runHook postUnpack
+            '';
+            patchPkg = name: pkg:
+              if pkg ? overrideAttrs then
+                pkg.overrideAttrs (old: {
+                  unpackPhase = if (old.unpackPhase or "") == "" then prootUnpackPhase else old.unpackPhase;
+                  # doCheck = false prevents checkInputs (e.g. fzf-lua for nvim-notify)
+                  # from being pulled in as dependencies, which avoids cascading build
+                  # failures. Plugin tests also don't run reliably in proot anyway.
+                  doCheck = false;
+                })
+              else pkg;
+          in {
+            vimPlugins = builtins.mapAttrs patchPkg prev.vimPlugins;
+            luajitPackages = prev.luajitPackages // {
+              fzf-lua = patchPkg "fzf-lua" prev.luajitPackages.fzf-lua;
+            };
+          };
+
+        # WORKAROUND: proot-only fix for mistral-vibe (Python/pyproject) unpackPhase.
+        # Same fchmodat ENOENT issue. Apply only to droid profile.
+        mistral-vibe-proot-unpack = final: prev: {
+          mistral-vibe = prev.mistral-vibe.overrideAttrs (_: {
+            unpackPhase = ''
+              runHook preUnpack
+              mkdir source
+              tar cf - -C "$src" . | tar xf - -C source
+              chmod -R u+w source
+              sourceRoot="source"
+              runHook postUnpack
+            '';
+          });
+        };
+
+        # WORKAROUND: proot-only fix for logseq-view unpackPhase and cargoSetup.
+        # Two proot issues with fchmodat(AT_FDCWD,"",AT_EMPTY_PATH) returning ENOENT:
+        # 1. Default unpackPhase uses cp to copy the source directory → fixed with tar.
+        # 2. cargoSetupPostUnpackHook uses cp -Lr to copy the vendor dir → fixed by
+        #    wrapping cp in preUnpack to intercept cp -Lr and use tar instead.
+        # Must be applied after overlays.logseq-view. Apply only to droid profile.
+        logseq-view-proot-unpack = final: prev: {
+          logseq-view = prev.logseq-view.overrideAttrs (old: {
+            unpackPhase = ''
+              runHook preUnpack
+              mkdir source
+              tar cf - -C "$src" . | tar xf - -C source
+              chmod -R u+w source
+              sourceRoot="source"
+              runHook postUnpack
+            '';
+            preUnpack = (old.preUnpack or "") + ''
+              cp() {
+                case "$*" in
+                  "-Lr --reflink=auto -- "*)
+                    local src="''${@: -2:1}"
+                    local dest="''${@: -1}"
+                    mkdir -p "$dest"
+                    tar cf - -C "$src" . | tar xf - -C "$dest"
+                    ;;
+                  *)
+                    command cp "$@"
+                    ;;
+                esac
+              }
+            '';
+          });
+        };
       };
       
       # Load all profiles automatically
