@@ -34,7 +34,20 @@ MEETING_OUTPUT_DEVICE = "会議用"
 OUT_DIR = Path.home() / "Movies"
 MTG_MINUTES = "mtg-minutes"
 
+# 無音チェック: 録音全体に等間隔でサンプル窓をとり、無音(閾値未満)だった窓の
+# 割合が高ければ「そのトラックは録れていない疑いがある」と警告する。
+# 数点だけのサンプリングだと、区間の一部だけ音声モニタリングが復旧していた
+# ような断続的な無音(実際に発生した障害パターン)を見逃すため密にサンプルする。
+# (現実の会話は概ね-20〜-50dB、デバイス未接続/モニタ経路断時の無音床は-90dB前後)
+SILENCE_THRESHOLD_DB = -50.0
+SILENCE_SAMPLE_WINDOW_SEC = 20
+SILENCE_SAMPLE_INTERVAL_SEC = 120  # この間隔でサンプル数を決める
+SILENCE_MIN_SAMPLES = 5
+SILENCE_MAX_SAMPLES = 15
+SILENCE_FRACTION_THRESHOLD = 0.6  # サンプル窓のこの割合以上が無音なら警告
+
 DEV_RE = re.compile(r"\[(\d+)\]\s+(.+)")
+MEAN_VOLUME_RE = re.compile(r"mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB")
 
 
 def info(msg):
@@ -93,6 +106,48 @@ def resolve(devices, name):
         if nl in dname.lower():
             return idx, dname
     return None, None
+
+
+def probe_duration(path):
+    """ffprobe で録音時間(秒)を取得。失敗時は None。"""
+    res = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+        capture_output=True, text=True,
+    )
+    try:
+        return float(res.stdout.strip())
+    except ValueError:
+        return None
+
+
+def sample_mean_volume(path, track_index, start, length):
+    """指定トラック・区間の mean_volume(dB)を測定。失敗時は None。"""
+    res = subprocess.run(
+        ["ffmpeg", "-ss", str(start), "-t", str(length), "-i", str(path),
+         "-map", f"0:{track_index}", "-af", "volumedetect", "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    m = MEAN_VOLUME_RE.search(res.stderr)
+    return float(m.group(1)) if m else None
+
+
+def check_track_silence(path, track_index, duration):
+    """録音全体を等間隔サンプリングし、無音だった窓の割合が高ければそのトラックが
+    無音疑いだと判定する。戻り値: (無音疑いか, 無音割合, サンプル数) / 測定不能なら None。"""
+    if not duration or duration <= 0:
+        return None
+    n_samples = max(SILENCE_MIN_SAMPLES, min(SILENCE_MAX_SAMPLES, round(duration / SILENCE_SAMPLE_INTERVAL_SEC)))
+    window = min(SILENCE_SAMPLE_WINDOW_SEC, duration)
+    offsets = sorted({max(0.0, min(duration - window, duration * (i + 0.5) / n_samples))
+                       for i in range(n_samples)})
+    levels = [sample_mean_volume(path, track_index, off, window) for off in offsets]
+    levels = [l for l in levels if l is not None]
+    if not levels:
+        return None
+    silent_count = sum(1 for l in levels if l < SILENCE_THRESHOLD_DB)
+    fraction = silent_count / len(levels)
+    return fraction >= SILENCE_FRACTION_THRESHOLD, fraction, len(levels)
 
 
 def main():
@@ -167,26 +222,42 @@ def main():
             info(f"出力デバイス切り替え: {prev_output!r} → {args.output_device!r}")
             switch_audio_output(args.output_device)
 
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    try:
+    # ffmpegのstderrは事後診断のためログファイルに残す(DEVNULLに捨てない)
+    ffmpeg_log = out.with_suffix(".log")
+    with open(ffmpeg_log, "w") as logf:
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=logf)
         try:
-            proc.wait()
-        except KeyboardInterrupt:
-            # Ctrl-C は ffmpeg にも届く。finalize を待つ。
             try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                proc.terminate()
                 proc.wait()
-    finally:
-        # 録音後: 出力デバイスを元に戻す
-        if prev_output:
-            switch_audio_output(prev_output)
-            info(f"出力デバイスを戻しました: {prev_output!r}")
+            except KeyboardInterrupt:
+                # Ctrl-C は ffmpeg にも届く。finalize を待つ。
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.terminate()
+                    proc.wait()
+        finally:
+            # 録音後: 出力デバイスを元に戻す
+            if prev_output:
+                switch_audio_output(prev_output)
+                info(f"出力デバイスを戻しました: {prev_output!r}")
     print()
     if not out.exists() or out.stat().st_size < 1024:
-        die("録音ファイルが作成されませんでした。デバイスの使用状況を確認してください。")
+        die(f"録音ファイルが作成されませんでした。ffmpegのログを確認してください: {ffmpeg_log}")
     info(f"\033[32m録音完了\033[0m: {out}  ({out.stat().st_size//1024} KB)")
+
+    # 無音チェック: OBSのAudio Monitoringが復旧しないまま録れてしまうケースなどを検知
+    info("無音チェック中…")
+    duration = probe_duration(out)
+    self_result = check_track_silence(out, 0, duration)
+    other_result = check_track_silence(out, 1, duration)
+    silent = [(label, result) for label, result in (("自分", self_result), ("相手", other_result))
+              if result is not None and result[0]]
+    if silent:
+        for label, (_, fraction, n) in silent:
+            warn(f"{label}側トラックが無音の疑いがあります"
+                 f"(サンプル{n}箇所中 {round(fraction * n)}箇所が無音)")
+        warn("OBSのAudio Monitoring(UA80など)を一度OFF→ONにしてから再度録音し直すことを検討してください。")
 
     # そのまま議事録生成
     if args.minutes is not None:
