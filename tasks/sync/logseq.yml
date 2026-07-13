@@ -258,13 +258,24 @@ tasks:
                 mkdir -p "$LOGSEQ_LOCAL/pages"
                 conflict_page="$LOGSEQ_LOCAL/pages/conflict-${date_str}.md"
                 timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-                # Count how many versions were actually found, so the summary
-                # reflects reality instead of a generic "multiple" claim.
-                num_versions=0
-                [[ -f "$actual_base" ]] && num_versions=$((num_versions + 1))
+                # Build one ordered list of the versions that actually exist on
+                # disk (current file first, then each conflict). Both the Diff
+                # Summary and the Version blocks below index into this list, so
+                # their numbering always agrees. Doing it once also means the
+                # summary reflects reality instead of a generic "multiple" claim.
+                version_files=()
+                version_labels=()
+                if [[ -f "$actual_base" ]]; then
+                    version_files+=("$actual_base")
+                    version_labels+=("Current/Newer")
+                fi
                 for cf in "${conflict_array[@]}"; do
-                    [[ -f "$cf" ]] && num_versions=$((num_versions + 1))
+                    if [[ -f "$cf" ]]; then
+                        version_files+=("$cf")
+                        version_labels+=("Conflict/Older")
+                    fi
                 done
+                num_versions=${#version_files[@]}
                 {
                     echo "tags:: #conflict"
                     echo "created:: $timestamp"
@@ -272,33 +283,37 @@ tasks:
                     echo "# Conflict detected: [[${page_name}]]"
                     echo ""
                     echo "${num_versions} version(s) of [[${page_name}]] were found during sync (see Diff Summary and Versions below)."
-                    if [[ -f "$actual_base" ]] && [[ -f "${conflict_array[0]}" ]]; then
-                        echo "## Diff Summary"
+                    echo "## Diff Summary"
+                    echo ""
+                    echo "Legend: removed | added | unchanged"
+                    echo ""
+                    if [[ $num_versions -lt 2 ]]; then
+                        # Only one version reached disk (e.g. actual_base was not
+                        # found and a single conflict file remained). A diff needs
+                        # two sides, so say so explicitly rather than silently
+                        # omitting the section.
+                        echo "Only ${num_versions} version was available on disk, so no diff could be computed. See the Version block(s) below for the full text."
                         echo ""
-                        echo "Legend: removed | added | unchanged"
-                        echo ""
-                        echo '```'
-                        safe_diff "${conflict_array[0]}" "$actual_base"
-                        echo ""
-                        echo '```'
-                        echo ""
-                    fi
-                    version=1
-                    if [[ -f "$actual_base" ]]; then
-                        echo "## Version $version (Current/Newer)"
-                        echo "- collapsed:: true"
-                        sed 's/^/\t/' "$actual_base" 2>/dev/null || echo "(Could not read file: $actual_base)"
-                        echo ""
-                        version=$((version + 1))
-                    fi
-                    for cf in "${conflict_array[@]}"; do
-                        if [[ -f "$cf" ]]; then
-                            echo "## Version $version (Conflict/Older)"
-                            echo "- collapsed:: true"
-                            sed 's/^/\t/' "$cf" 2>/dev/null || echo "(Could not read file: $cf)"
+                    else
+                        # Diff every consecutive pair of versions. This covers all
+                        # versions when there are 3+ (the previous code only diffed
+                        # the first conflict against the current file), and still
+                        # works when actual_base is missing, since it then diffs the
+                        # remaining conflict versions against each other.
+                        for ((i = 1; i < num_versions; i++)); do
+                            echo "### Version $i (${version_labels[$((i - 1))]}) vs Version $((i + 1)) (${version_labels[$i]})"
                             echo ""
-                            version=$((version + 1))
-                        fi
+                            echo '```'
+                            safe_diff "${version_files[$((i - 1))]}" "${version_files[$i]}"
+                            echo '```'
+                            echo ""
+                        done
+                    fi
+                    for ((i = 0; i < num_versions; i++)); do
+                        echo "## Version $((i + 1)) (${version_labels[$i]})"
+                        echo "- collapsed:: true"
+                        sed 's/^/\t/' "${version_files[$i]}" 2>/dev/null || echo "(Could not read file: ${version_files[$i]})"
+                        echo ""
                     done
                     echo "---"
                     echo "After merging, update and delete this page."
