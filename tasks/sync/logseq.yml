@@ -152,7 +152,33 @@ tasks:
         url_decode() {
             python3 -c "import sys, urllib.parse; print(urllib.parse.unquote(sys.stdin.read().strip()))" <<< "$1"
         }
-        
+
+        # Convert a page's on-disk basename back to its real Logseq page name,
+        # so [[links]] built from it resolve instead of pointing at a dead page.
+        # Reverses both URL-encoding and the "___" namespace separator Logseq
+        # substitutes for "/" in hierarchical (namespace) page filenames.
+        page_name_from_basename() {
+            local decoded
+            decoded=$(url_decode "$1")
+            echo "${decoded//___//}"
+        }
+
+        # Run a unified diff and print it, distinguishing "files differ" (diff
+        # exit 1, the expected case whenever we get here) from a real failure
+        # (exit >=2). With `pipefail`, piping straight into `tail` would make
+        # the normal "differ" exit code look like an error and print a
+        # spurious "(Could not compute diff)" after already-correct output.
+        safe_diff() {
+            local output status
+            output=$(diff -u "$1" "$2" 2>/dev/null)
+            status=$?
+            if [[ $status -ge 2 ]]; then
+                echo "(Could not compute diff)"
+            else
+                echo "$output" | tail -n +4
+            fi
+        }
+
         ALL_CONFLICTS=$(find "$LOGSEQ_LOCAL/journals" "$LOGSEQ_LOCAL/pages" -name "*.conflict*" 2>/dev/null || true)
         if [[ -z "$ALL_CONFLICTS" ]]; then exit 0; fi
         echo "Processing conflict files:"
@@ -194,7 +220,7 @@ tasks:
                                 echo "Legend: removed | added | unchanged"
                                 echo ""
                                 echo '```'
-                                diff -u "$cf" "$actual_base" 2>/dev/null | tail -n +4 || echo "(Could not compute diff)"
+                                safe_diff "$cf" "$actual_base"
                                 echo '```'
                             } >> "$actual_base"
                         fi
@@ -227,24 +253,32 @@ tasks:
             if $has_diff; then
                 HAS_CONFLICTS=true
                 basename=$(basename "$base_file" .md)
+                page_name=$(page_name_from_basename "$basename")
                 date_str=$(echo "$basename" | tr '_' '-')
                 mkdir -p "$LOGSEQ_LOCAL/pages"
                 conflict_page="$LOGSEQ_LOCAL/pages/conflict-${date_str}.md"
                 timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+                # Count how many versions were actually found, so the summary
+                # reflects reality instead of a generic "multiple" claim.
+                num_versions=0
+                [[ -f "$actual_base" ]] && num_versions=$((num_versions + 1))
+                for cf in "${conflict_array[@]}"; do
+                    [[ -f "$cf" ]] && num_versions=$((num_versions + 1))
+                done
                 {
                     echo "tags:: #conflict"
                     echo "created:: $timestamp"
                     echo ""
-                    echo "# Conflict detected: [[${basename}]]"
+                    echo "# Conflict detected: [[${page_name}]]"
                     echo ""
-                    echo "Multiple versions found during sync."
+                    echo "${num_versions} version(s) of [[${page_name}]] were found during sync (see Diff Summary and Versions below)."
                     if [[ -f "$actual_base" ]] && [[ -f "${conflict_array[0]}" ]]; then
                         echo "## Diff Summary"
                         echo ""
                         echo "Legend: removed | added | unchanged"
                         echo ""
                         echo '```'
-                        diff -u "${conflict_array[0]}" "$actual_base" 2>/dev/null | tail -n +4 || echo "(Could not compute diff)"
+                        safe_diff "${conflict_array[0]}" "$actual_base"
                         echo ""
                         echo '```'
                         echo ""
