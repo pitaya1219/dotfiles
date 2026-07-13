@@ -28,6 +28,7 @@ let
     overlays.logseq-view
     overlays.nix-claude-code
     overlays.parquet-tools-relax-pandas
+    overlays.whisper-cpp-no-coreml
   ];
 
   # Shared home-manager modules used by both mkHomeConfiguration and mkDarwinConfiguration

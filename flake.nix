@@ -75,6 +75,23 @@
           });
         };
 
+        # WORKAROUND: linking libwhisper.coreml.dylib against CoreML.framework
+        # crashes cctools-binutils-darwin's ld with a Trace/BPT trap (SIGTRAP,
+        # exit 133) on this nixpkgs pin. metalSupport already gives Apple
+        # Silicon acceleration, so drop CoreML rather than chase the linker bug.
+        # nixpkgs' postPatch appends `install(TARGETS whisper.coreml LIBRARY)`
+        # unconditionally on Darwin (a nixpkgs bug: it should gate on
+        # coreMLSupport), so strip that line or CMake configure fails looking
+        # for a target that no longer exists.
+        # Should be removed once the linker issue is fixed upstream.
+        whisper-cpp-no-coreml = final: prev: {
+          whisper-cpp = (prev.whisper-cpp.override { coreMLSupport = false; }).overrideAttrs (old: {
+            postPatch = old.postPatch + ''
+              sed -i '/install(TARGETS whisper.coreml LIBRARY)/d' src/CMakeLists.txt
+            '';
+          });
+        };
+
         # WORKAROUND: proot does not provide dynamic /dev/fd entries for high-numbered
         # file descriptors. patchelf's setup hook uses bash process substitution
         # (done < <(find ...)) which requires /dev/fd/N. Create a wrapper that
