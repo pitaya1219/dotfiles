@@ -74,6 +74,7 @@ let
 
       imports = [
         ../shared/activations/proton-pass.nix
+        ../shared/activations/gapplin.nix
         ./r-shibuya/corp.nix
         ../shared/programs/bare.nix
         ../shared/programs/logseq-view.nix

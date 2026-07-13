@@ -41,6 +41,11 @@
     # or "zap" to fully remove including data. Use "none" while migrating.
     onActivation.cleanup = "none";
 
+    # mas-cli: needed to install Mac App Store-only apps (e.g. Gapplin) declaratively.
+    brews = [
+      "mas"
+    ];
+
     casks = [
       "android-studio"
       "blackhole-2ch"
