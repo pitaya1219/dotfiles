@@ -300,11 +300,14 @@ tasks:
                         # the first conflict against the current file), and still
                         # works when actual_base is missing, since it then diffs the
                         # remaining conflict versions against each other.
+                        # Args are passed (later, earlier) so diff's "old new" convention
+                        # holds: "-" marks lines only in the earlier-listed version,
+                        # "+" marks lines only in the later-listed (newer) one.
                         for ((i = 1; i < num_versions; i++)); do
                             echo "### Version $i (${version_labels[$((i - 1))]}) vs Version $((i + 1)) (${version_labels[$i]})"
                             echo ""
                             echo '```'
-                            safe_diff "${version_files[$((i - 1))]}" "${version_files[$i]}"
+                            safe_diff "${version_files[$i]}" "${version_files[$((i - 1))]}"
                             echo '```'
                             echo ""
                         done
