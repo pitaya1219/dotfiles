@@ -2,7 +2,10 @@
 local M = {}
 _G.BottomTerminal = M
 
-local state = {}  -- [tabnr] = { buf, win }
+-- Keyed by the tabpage *handle* (nvim_get_current_tabpage), not the positional
+-- tab number: tab numbers renumber when a tab is closed, which would misalign
+-- every remaining tab's terminal. Handles stay stable across close/reorder.
+local state = {}  -- [tabpage_handle] = { buf, win }
 
 -- Highlight for the winbar notice (bold yellow; links to WarningMsg for theme compat)
 vim.api.nvim_set_hl(0, 'BottomTermNotice', { link = 'WarningMsg', bold = true, default = true })
@@ -12,7 +15,7 @@ local NOTICE = '%#BottomTermNotice#  ⬇  terminal ready  ·  <Alt-j> to open  %
 -- Update winbar on every window in the current tab.
 -- Shows notice when bottom terminal is hidden, clears it when visible.
 local function refresh_notice()
-  local tab = vim.fn.tabpagenr()
+  local tab = vim.api.nvim_get_current_tabpage()
   local s = state[tab]
   local is_hidden = s
     and vim.api.nvim_buf_is_valid(s.buf)
@@ -25,9 +28,18 @@ local function refresh_notice()
   end
 end
 
+-- A closed tab invalidates its handle. Prune every entry whose handle is no
+-- longer valid and wipe its terminal buffer so the orphaned shell dies with it.
 vim.api.nvim_create_autocmd('TabClosed', {
-  callback = function(ev)
-    state[tonumber(ev.file)] = nil
+  callback = function()
+    for tab, s in pairs(state) do
+      if not vim.api.nvim_tabpage_is_valid(tab) then
+        if s.buf and vim.api.nvim_buf_is_valid(s.buf) then
+          vim.api.nvim_buf_delete(s.buf, { force = true })
+        end
+        state[tab] = nil
+      end
+    end
   end,
 })
 
@@ -42,7 +54,7 @@ vim.api.nvim_create_autocmd('TabEnter', {
 -- The window is closed immediately; the shell process keeps running.
 -- cwd: optional starting directory; defaults to Neovim's current working directory.
 function M.open(cwd)
-  local tab = vim.fn.tabpagenr()
+  local tab = vim.api.nvim_get_current_tabpage()
   local s = state[tab]
 
   if s and vim.api.nvim_buf_is_valid(s.buf) then
@@ -63,7 +75,7 @@ function M.open(cwd)
 end
 
 function M.toggle()
-  local tab = vim.fn.tabpagenr()
+  local tab = vim.api.nvim_get_current_tabpage()
   local s = state[tab]
 
   if not s or not vim.api.nvim_buf_is_valid(s.buf) then
