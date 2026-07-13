@@ -29,6 +29,7 @@ let
     overlays.nix-claude-code
     overlays.parquet-tools-relax-pandas
     overlays.whisper-cpp-no-coreml
+    overlays.starship-lld
   ];
 
   # Shared home-manager modules used by both mkHomeConfiguration and mkDarwinConfiguration

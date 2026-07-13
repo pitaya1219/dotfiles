@@ -92,6 +92,21 @@
           });
         };
 
+        # WORKAROUND: nixpkgs' bundled ld64 (957.1, via cctools-binutils-darwin
+        # 1010.6) crashes with a Trace/BPT trap (SIGTRAP, exit 133) in
+        # ld::passes::stubs::Pass::process while linking starship against
+        # apple-sdk-14.4 frameworks. Deterministic (crashes at the same binary
+        # offset every time) but not reproducible with a minimal synthetic
+        # link, so it looks like a real bug in this old ld64 build triggered
+        # only by large/complex link jobs. Route around it via lld instead.
+        # Should be removed once nixpkgs ships a newer ld64 that fixes this.
+        starship-lld = final: prev: {
+          starship = prev.starship.overrideAttrs (old: {
+            nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ final.llvmPackages.bintools ];
+            RUSTFLAGS = (old.RUSTFLAGS or "") + " -C link-arg=-fuse-ld=lld";
+          });
+        };
+
         # WORKAROUND: proot does not provide dynamic /dev/fd entries for high-numbered
         # file descriptors. patchelf's setup hook uses bash process substitution
         # (done < <(find ...)) which requires /dev/fd/N. Create a wrapper that
