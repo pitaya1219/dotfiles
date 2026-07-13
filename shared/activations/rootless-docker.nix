@@ -29,7 +29,7 @@ in
   home.activation.overrideConfigure = lib.hm.dag.entryAfter ["installRootlessDocker"] ''
     cat > ~/.config/systemd/user/docker.service.d/override.conf <<EOF
 [Service]
-Environment="PATH=/home/rose/.nix-profile/bin:/home/rose/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=$HOME/.nix-profile/bin:$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 EOF
   '';
 
