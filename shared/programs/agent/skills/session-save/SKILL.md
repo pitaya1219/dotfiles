@@ -2,7 +2,7 @@
 name: session-save
 description: Save current session summary to Logseq (if available) or as a local markdown file
 user-invocable: true
-version: 2.6.0
+version: 2.7.0
 ---
 
 Create a comprehensive summary of the current session and save it.
@@ -81,7 +81,13 @@ Generate a summary **per topic in `TOPICS`** (one per page) using these sections
 1. **Overview** — What was done and why (2-4 sentences)
 2. **What Was Done** — Actions taken (bullet points)
 3. **Files Changed** — `git diff --stat` output; "No git repository" if not applicable
-4. **Decisions Made** — Key decisions and their reasons
+4. **Decisions Made** — Key decisions and their reasons. When a decision came from a
+   design/architecture discussion (e.g. "why this layer and not that one", a
+   trade-off the user asked about explicitly), keep the reasoning in full rather
+   than compressing it to a one-line bullet — write it as it was explained
+   (principles, examples, the test used to judge it), not just the conclusion.
+   The conclusion without the reasoning isn't reusable next time a similar call
+   comes up.
 5. **Problems & Solutions** — Issues encountered and how they were resolved
 6. **Learnings & Insights** — Key concepts explored, useful patterns or techniques
 7. **Open Items** — Pending tasks and known issues
@@ -89,7 +95,9 @@ Generate a summary **per topic in `TOPICS`** (one per page) using these sections
 9. **References** — Relevant commands, URLs, and code snippets
 
 Format: Use clear headings, bullet points, and code blocks where appropriate.
-Tone: Technical but readable, focusing on "what" and "why" over "how".
+Tone: Technical but readable, focusing on "what" and "why" over "how". Exception:
+substantial design-rationale explanations (section 4 above) should be preserved in
+their explained depth, not trimmed to match this terse default.
 
 ## Attach Raw Transcript as a Logseq Asset (Logseq only)
 
