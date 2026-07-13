@@ -219,11 +219,11 @@ mtg-live --list
 mtg-live --model small    # 14倍速・良好
 mtg-live --model base     # 22倍速・最軽量
 
-# 字幕ログを保存(~/Documents/mtg-minutes/live/ に残る)
-mtg-live --save
-
 # 相手の発言を英語にライブ翻訳
 mtg-live --translate
+
+# 字幕ログのファイル保存をしない(既定は ~/Documents/mtg-minutes/live/ に保存される)
+mtg-live --no-save
 
 # デバイスを名前/番号で明示
 mtg-live --device "BlackHole 16ch"
