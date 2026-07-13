@@ -65,6 +65,16 @@
           ];
         };
 
+        # WORKAROUND: nixpkgs bumped pandas past parquet-tools' pinned <3.0.0
+        # upper bound, breaking pythonRuntimeDepsCheckHook. parquet-tools already
+        # relaxes halo/tabulate/thrift the same way upstream; extend that to pandas.
+        # Should be removed once parquet-tools bumps its pandas ceiling upstream.
+        parquet-tools-relax-pandas = final: prev: {
+          parquet-tools = prev.parquet-tools.overridePythonAttrs (old: {
+            pythonRelaxDeps = (old.pythonRelaxDeps or [ ]) ++ [ "pandas" ];
+          });
+        };
+
         # WORKAROUND: proot does not provide dynamic /dev/fd entries for high-numbered
         # file descriptors. patchelf's setup hook uses bash process substitution
         # (done < <(find ...)) which requires /dev/fd/N. Create a wrapper that

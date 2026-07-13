@@ -27,6 +27,7 @@ let
     overlays.fix-neovim-lua-passthru
     overlays.logseq-view
     overlays.nix-claude-code
+    overlays.parquet-tools-relax-pandas
   ];
 
   # Shared home-manager modules used by both mkHomeConfiguration and mkDarwinConfiguration
