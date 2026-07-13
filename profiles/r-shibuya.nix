@@ -39,6 +39,8 @@ let
 
       dotfiles.claudeJson.claudeAiMcpEverConnected = [ "claude.ai Asana" "claude.ai GitHub Integration" "claude.ai Slack" ];
 
+      dotfiles.claude-code.model = "opus";
+
       dotfiles.agent.logseq = {
         url = "http://localhost:12315";
         token = { command = "passage show logseq/http-api/claude-code/token"; };

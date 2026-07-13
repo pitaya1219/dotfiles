@@ -13,6 +13,11 @@
       type = lib.types.attrsOf lib.types.anything;
       default = {};
     };
+
+    dotfiles.claude-code.model = lib.mkOption {
+      type = lib.types.str;
+      default = "sonnet";
+    };
   };
 
   config = let
@@ -60,7 +65,7 @@
         type = "command";
         command = "${config.home.homeDirectory}/dotfiles/scripts/claude-statusline.sh";
       };
-      model = "sonnet";
+      model = config.dotfiles.claude-code.model;
       hooks = {
         Stop = [
           {
