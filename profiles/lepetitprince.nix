@@ -47,6 +47,7 @@
             passt
             mistral-vibe
             tailscale
+            go-task
           ];
         };
       })
