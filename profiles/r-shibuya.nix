@@ -61,6 +61,11 @@ let
         configSourceDir = ./r-shibuya/obs;
       };
 
+      programs.tmux.extraConfig = ''
+        set -s copy-command "pbcopy"
+        display "using pbcopy as copy-command"
+      '';
+
       dotfiles.agent.dailyReport = {
         sources = {
           github = { user = "pitaya1219"; };
@@ -127,7 +132,6 @@ let
           watch
           wireguard-tools
         ];
-        file.".config/tmux/override.conf".source = ./r-shibuya/tmux/override.conf;
       };
     })
   ];
