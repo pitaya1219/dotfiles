@@ -14,6 +14,7 @@ includes:
   proot: ./tasks/proot.yml
   sync: ./tasks/sync.yml
   boot: ./tasks/boot.yml
+  secrets: ./tasks/secrets.yml
  
 tasks:
   default:
