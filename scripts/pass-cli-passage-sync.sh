@@ -12,10 +12,14 @@
 # existing passage value as a new pass-cli field). Otherwise pull/push/sync
 # never expand the scope (= the pass-cli item's existing field set).
 #
+# --prefix <namespace> narrows the target to fields where "name == namespace"
+# or "name starts with namespace/" (e.g. --prefix address-manager limits the
+# sync to fields like address-manager/dev/mssql-sa/id).
+#
 # Usage:
-#   pass-cli-passage-sync.sh pull [--vault NAME] [--item TITLE] [--dry-run]
-#   pass-cli-passage-sync.sh push [--vault NAME] [--item TITLE] [--add PATH]... [--dry-run]
-#   pass-cli-passage-sync.sh sync [--vault NAME] [--item TITLE] [--prefer passage|pass-cli] [--dry-run]
+#   pass-cli-passage-sync.sh pull [--vault NAME] [--item TITLE] [--prefix NAMESPACE] [--dry-run]
+#   pass-cli-passage-sync.sh push [--vault NAME] [--item TITLE] [--prefix NAMESPACE] [--add PATH]... [--dry-run]
+#   pass-cli-passage-sync.sh sync [--vault NAME] [--item TITLE] [--prefix NAMESPACE] [--prefer passage|pass-cli] [--dry-run]
 #
 # pull: writes each pass-cli field's value into passage (pass-cli wins, overwrites passage).
 # push: writes each passage value into its matching pass-cli field (passage wins, overwrites pass-cli).
@@ -32,6 +36,7 @@ VAULT="Passage"
 ITEM="passage"
 MODE=""
 PREFER=""
+PREFIX=""
 DRY_RUN=0
 ADD_PATHS=()
 
@@ -53,6 +58,7 @@ while [ $# -gt 0 ]; do
     --item) ITEM="${2:?--item requires a value}"; shift 2 ;;
     --add) ADD_PATHS+=("${2:?--add requires a path}"); shift 2 ;;
     --prefer) PREFER="${2:?--prefer requires passage or pass-cli}"; shift 2 ;;
+    --prefix) PREFIX="${2:?--prefix requires a namespace}"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
@@ -68,6 +74,8 @@ if [ -n "$PREFER" ] && [ "$PREFER" != "passage" ] && [ "$PREFER" != "pass-cli" ]
   echo "--prefer must be 'passage' or 'pass-cli'" >&2
   exit 1
 fi
+
+PREFIX="${PREFIX%/}"
 
 for bin in jq pass-cli passage; do
   if ! command -v "$bin" >/dev/null 2>&1; then
@@ -93,6 +101,20 @@ fetch_pass_cli_fields() {
   '
 }
 
+# Always matches when --prefix is unset. Otherwise matches only when name is
+# exactly the namespace, or starts with "namespace/" (a plain string-prefix
+# check would let "foo" false-positive on "foobar/x", so we compare up through
+# the separating "/").
+prefix_match() {
+  local name="$1"
+  [ -z "$PREFIX" ] && return 0
+  [ "$name" = "$PREFIX" ] && return 0
+  case "$name" in
+    "$PREFIX"/*) return 0 ;;
+  esac
+  return 1
+}
+
 passage_show() {
   passage show "$1" 2>/dev/null
 }
@@ -109,6 +131,7 @@ cmd_pull() {
   local name value_b64 value current
   while IFS=$'\t' read -r name value_b64; do
     [ -z "$name" ] && continue
+    prefix_match "$name" || continue
     value=$(printf '%s' "$value_b64" | base64 -d)
     current=$(passage_show "$name" || true)
     if [ "$current" = "$value" ]; then
@@ -127,6 +150,7 @@ cmd_push() {
   local name value_b64 value current
   while IFS=$'\t' read -r name value_b64; do
     [ -z "$name" ] && continue
+    prefix_match "$name" || continue
     value=$(printf '%s' "$value_b64" | base64 -d)
     if ! current=$(passage_show "$name"); then
       echo "push: skip $name (not found in passage)" >&2
@@ -163,6 +187,7 @@ cmd_sync() {
   local name value_b64 pc_value pg_value conflicts=0
   while IFS=$'\t' read -r name value_b64; do
     [ -z "$name" ] && continue
+    prefix_match "$name" || continue
     pc_value=$(printf '%s' "$value_b64" | base64 -d)
     if ! pg_value=$(passage_show "$name"); then
       if [ "$DRY_RUN" = 1 ]; then
