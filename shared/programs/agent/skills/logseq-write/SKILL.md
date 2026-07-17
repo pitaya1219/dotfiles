@@ -2,7 +2,7 @@
 name: logseq-write
 description: Append content to a Logseq page (or create a new page) via HTTP API, with optional Markdown-to-blocks conversion
 user-invocable: true
-version: 2.1.0
+version: 3.0.0
 ---
 
 Append content to a Logseq page, or create a new page with properties. Reads connection config from `~/.agent/logseq.json`.
@@ -15,7 +15,7 @@ Append content to a Logseq page, or create a new page with properties. Reads con
 - `--tag` — adds `tags:: #<tag>` property on the title block (requires `--title`, append mode only)
 - `--create-page` — create a new page instead of appending to an existing one; `<page>` becomes the page title
 - `--prop key=value` — set a page property (repeatable, requires `--create-page`)
-- `--asset path[:name]` — copy a local file into the graph's `assets/` dir and append a link block to the content (repeatable). Optional `:name` overrides the on-disk filename (defaults to the source basename). Image extensions render inline (`![]`), everything else as a download link (`[]`).
+- `--asset path[:name]` — upload a local file to Nextcloud and append a link block to the content (repeatable). Optional `:name` overrides the on-disk filename (defaults to the source basename). Image extensions render inline (`![]`), everything else as a download link (`[]`). Linked via Nextcloud's internal (login-required) URL — see Step 3.5.
 
 ## Step 1: Load Config
 
@@ -83,32 +83,47 @@ echo "$RESULT" | jq -e '.uuid' > /dev/null || { echo "createPage failed: $RESULT
 
 After page creation, proceed to insert content blocks into the new page using `PAGE` as the page name.
 
-## Step 3.5: Copy Assets (if `--asset`)
+## Step 3.5: Upload Assets to Nextcloud (if `--asset`)
 
-For each `--asset path[:name]`, copy the file into the graph's `assets/` directory
-and build a link block. Collect the resulting blocks into `ASSET_BLOCKS` (a JSON
-array of `{ "content": ... }` objects) for appending in Step 4.
+For each `--asset path[:name]`, upload the file to Nextcloud and build a link block.
+Collect the resulting blocks into `ASSET_BLOCKS` (a JSON array of `{ "content": ... }`
+objects) for appending in Step 4. Credentials come from passage, not
+`~/.agent/logseq.json`.
 
 ```bash
-# Resolve the current graph's on-disk assets/ dir (once)
-GRAPH_PATH=$(curl -sf \
-  -H "Authorization: Bearer $LOGSEQ_TOKEN" -H "Content-Type: application/json" \
-  -d '{"method":"logseq.App.getCurrentGraph","args":[]}' \
-  "$LOGSEQ_URL/api" | jq -r '.path // empty')
+NC_HOST=$(passage show homelab/nextcloud/host)
+NC_ID=$(passage show homelab/nextcloud/logseq/ryu/id)
+NC_PASSWORD=$(passage show homelab/nextcloud/logseq/ryu/password)
+NC_DIR="logseq-assets"
 
 ASSET_BLOCKS='[]'
-if [ -n "$GRAPH_PATH" ] && [ -d "$GRAPH_PATH/assets" ]; then
+
+if [ "${#ASSETS[@]}" -gt 0 ]; then
+  curl -s -o /dev/null -u "$NC_ID:$NC_PASSWORD" -X MKCOL \
+    "$NC_HOST/remote.php/dav/files/$NC_ID/$NC_DIR/"   # ignore result — no-op if it already exists
+
   for SPEC in "${ASSETS[@]}"; do
     SRC="${SPEC%%:*}"                          # part before optional :name
     NAME="${SPEC#*:}"; [ "$NAME" = "$SPEC" ] && NAME="$(basename "$SRC")"
     [ -f "$SRC" ] || { echo "asset not found, skipping: $SRC" >&2; continue; }
-    cp "$SRC" "$GRAPH_PATH/assets/$NAME"
+
+    curl -sf -u "$NC_ID:$NC_PASSWORD" -T "$SRC" \
+      "$NC_HOST/remote.php/dav/files/$NC_ID/$NC_DIR/$NAME" \
+      || { echo "nextcloud upload failed, skipping: $SRC" >&2; continue; }
+
+    # PROPFIND for the Nextcloud fileid to build the internal link (/f/<id>).
+    FILEID=$(curl -sf -u "$NC_ID:$NC_PASSWORD" -X PROPFIND -H "Depth: 0" \
+      --data '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><oc:fileid/></d:prop></d:propfind>' \
+      "$NC_HOST/remote.php/dav/files/$NC_ID/$NC_DIR/$NAME" \
+      | grep -oP '(?<=<oc:fileid>)[0-9]+')
+    [ -n "$FILEID" ] || { echo "nextcloud fileid lookup failed, skipping: $NAME" >&2; continue; }
+
     # Image extensions render inline; everything else is a download link.
     case "${NAME,,}" in
       *.png|*.jpg|*.jpeg|*.gif|*.webp|*.svg|*.bmp) PREFIX='!';;
       *) PREFIX='';;
     esac
-    LINK="${PREFIX}[${NAME}](../assets/${NAME})"
+    LINK="${PREFIX}[${NAME}](${NC_HOST}/f/${FILEID})"
     ASSET_BLOCKS=$(jq -c --arg c "$LINK" '. + [{content:$c}]' <<<"$ASSET_BLOCKS")
   done
 fi

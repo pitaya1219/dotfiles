@@ -2,7 +2,7 @@
 name: session-save
 description: Save current session summary to Logseq (if available) or as a local markdown file
 user-invocable: true
-version: 2.7.0
+version: 2.8.0
 ---
 
 Create a comprehensive summary of the current session and save it.
@@ -102,23 +102,29 @@ their explained depth, not trimmed to match this terse default.
 ## Attach Raw Transcript as a Logseq Asset (Logseq only)
 
 When `USE_LOGSEQ=true` and `TRANSCRIPT_PATH` was resolved (by the adapter above),
-copy the full session transcript into the Logseq graph's `assets/` directory so the
-page can link to the complete raw log. Best-effort: skip silently when there is no
-transcript. (Agent-type branching already happened in `detect-session.sh`.)
+upload the full session transcript to Nextcloud so the page can link to the
+complete raw log. Best-effort: skip silently when there is no transcript.
+(Agent-type branching already happened in `detect-session.sh`.) Same mechanism as
+`logseq-write`'s `--asset`; credentials come from passage, not `~/.agent/logseq.json`.
 
 ```bash
 RAW_TRANSCRIPT_REF=""
 if [ "$USE_LOGSEQ" = true ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-  # Resolve the current graph's on-disk path, then its assets/ dir
-  _GRAPH_PATH=$(curl -sf \
-    -H "Authorization: Bearer $_TOK" -H "Content-Type: application/json" \
-    -d '{"method":"logseq.App.getCurrentGraph","args":[]}' \
-    "$_URL/api" | jq -r '.path // empty')
-  if [ -n "$_GRAPH_PATH" ] && [ -d "$_GRAPH_PATH/assets" ]; then
-    _ASSET_NAME="session-${SESSION_ID}.jsonl"
-    cp "$TRANSCRIPT_PATH" "$_GRAPH_PATH/assets/$_ASSET_NAME"
-    # Logseq asset links are graph-relative: ../assets/<name>
-    RAW_TRANSCRIPT_REF="[session.jsonl](../assets/${_ASSET_NAME})"
+  _ASSET_NAME="session-${SESSION_ID}.jsonl"
+  _NC_HOST=$(passage show homelab/nextcloud/host)
+  _NC_ID=$(passage show homelab/nextcloud/logseq/ryu/id)
+  _NC_PASSWORD=$(passage show homelab/nextcloud/logseq/ryu/password)
+  _NC_DIR="logseq-assets"
+  curl -s -o /dev/null -u "$_NC_ID:$_NC_PASSWORD" -X MKCOL \
+    "$_NC_HOST/remote.php/dav/files/$_NC_ID/$_NC_DIR/"   # ignore result — no-op if it already exists
+  if curl -sf -u "$_NC_ID:$_NC_PASSWORD" -T "$TRANSCRIPT_PATH" \
+       "$_NC_HOST/remote.php/dav/files/$_NC_ID/$_NC_DIR/$_ASSET_NAME"; then
+    # PROPFIND for the Nextcloud fileid to build the internal link (/f/<id>).
+    _FILEID=$(curl -sf -u "$_NC_ID:$_NC_PASSWORD" -X PROPFIND -H "Depth: 0" \
+      --data '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><oc:fileid/></d:prop></d:propfind>' \
+      "$_NC_HOST/remote.php/dav/files/$_NC_ID/$_NC_DIR/$_ASSET_NAME" \
+      | grep -oP '(?<=<oc:fileid>)[0-9]+')
+    [ -n "$_FILEID" ] && RAW_TRANSCRIPT_REF="[session.jsonl](${_NC_HOST}/f/${_FILEID})"
   fi
 fi
 ```
