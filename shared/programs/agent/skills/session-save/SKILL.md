@@ -111,9 +111,9 @@ complete raw log. Best-effort: skip silently when there is no transcript.
 RAW_TRANSCRIPT_REF=""
 if [ "$USE_LOGSEQ" = true ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
   _ASSET_NAME="session-${SESSION_ID}.jsonl"
-  _NC_HOST=$(passage show homelab/nextcloud/host)
-  _NC_ID=$(passage show homelab/nextcloud/logseq/ryu/id)
-  _NC_PASSWORD=$(passage show homelab/nextcloud/logseq/ryu/password)
+  _NC_HOST=$(passage show logseq-assets/nextcloud/host)
+  _NC_ID=$(passage show logseq-assets/nextcloud/ryu/id)
+  _NC_PASSWORD=$(passage show logseq-assets/nextcloud/ryu/password)
   _NC_DIR="logseq-assets"
   curl -s -o /dev/null -u "$_NC_ID:$_NC_PASSWORD" -X MKCOL \
     "$_NC_HOST/remote.php/dav/files/$_NC_ID/$_NC_DIR/"   # ignore result — no-op if it already exists

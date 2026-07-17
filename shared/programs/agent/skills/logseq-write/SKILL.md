@@ -91,9 +91,9 @@ objects) for appending in Step 4. Credentials come from passage, not
 `~/.agent/logseq.json`.
 
 ```bash
-NC_HOST=$(passage show homelab/nextcloud/host)
-NC_ID=$(passage show homelab/nextcloud/logseq/ryu/id)
-NC_PASSWORD=$(passage show homelab/nextcloud/logseq/ryu/password)
+NC_HOST=$(passage show logseq-assets/nextcloud/host)
+NC_ID=$(passage show logseq-assets/nextcloud/ryu/id)
+NC_PASSWORD=$(passage show logseq-assets/nextcloud/ryu/password)
 NC_DIR="logseq-assets"
 
 ASSET_BLOCKS='[]'
