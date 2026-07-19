@@ -17,9 +17,18 @@
 # the only way to get a Hidden field, and updating an already-existing item's
 # field preserves whatever type it already has (verified live).
 #
-# To bring a new path into scope, use `push --path <path>` (registers an
-# existing passage value as a new pass-cli item). Otherwise pull/push/sync
-# never expand the scope (= the vault's existing item set).
+# To bring a new path into scope, use `push --path <path>` (registers one
+# existing passage value as a new pass-cli item) or `push --prefix
+# <namespace>` (registers every passage path under that namespace that isn't
+# already a vault item, in addition to updating the ones that already are).
+# Otherwise pull/push/sync never expand the scope (= the vault's existing
+# item set).
+#
+# push has no unscoped form: it always requires --prefix and/or --path.
+# push overwrites the vault (the source of truth pull/sync read from) with
+# whatever passage currently holds, so running it with no scope at all would
+# silently clobber every tracked secret from local, possibly-stale passage
+# values in one shot.
 #
 # --prefix <namespace> narrows the target to paths where "path == namespace"
 # or "path starts with namespace/" (e.g. --prefix address-manager limits the
@@ -27,13 +36,13 @@
 #
 # Usage:
 #   pass-cli-passage-sync.sh pull [--vault NAME] [--prefix NAMESPACE] [--dry-run]
-#   pass-cli-passage-sync.sh push [--vault NAME] [--prefix NAMESPACE] [--path PATH]... [--dry-run]
+#   pass-cli-passage-sync.sh push [--vault NAME] --prefix NAMESPACE | --path PATH... [--dry-run]
 #   pass-cli-passage-sync.sh sync [--vault NAME] [--prefix NAMESPACE] [--prefer passage|pass-cli] [--dry-run]
 #   pass-cli-passage-sync.sh list [--vault NAME] [--prefix NAMESPACE]
 #
 # pull: writes each pass-cli item's value into passage (pass-cli wins, overwrites passage).
 # push: writes each passage value into its matching pass-cli item (passage wins, overwrites pass-cli).
-#       Use --path <path> to register a not-yet-tracked path.
+#       Requires --prefix and/or --path (see above) — there is no unscoped push.
 # sync: bidirectional. Fills in whichever side is missing a path. Where both
 #       sides have a path but the values differ, it is reported as a CONFLICT
 #       and left untouched by default (use --prefer to pick a resolution side).
@@ -52,7 +61,7 @@ DRY_RUN=0
 ADD_PATHS=()
 
 usage() {
-  sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,52p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 if [ $# -eq 0 ]; then
@@ -79,6 +88,13 @@ case "$MODE" in
   pull|push|sync|list) ;;
   *) echo "unknown command: $MODE (expected pull, push, sync, or list)" >&2; exit 1 ;;
 esac
+
+# push has no unscoped form: without --prefix or --path it would silently
+# overwrite every vault item from whatever passage currently holds.
+if [ "$MODE" = "push" ] && [ -z "$PREFIX" ] && [ "${#ADD_PATHS[@]}" -eq 0 ]; then
+  echo "push requires a scope: --prefix NAMESPACE and/or --path PATH. There is no unscoped push." >&2
+  exit 1
+fi
 
 if [ -n "$PREFER" ] && [ "$PREFER" != "passage" ] && [ "$PREFER" != "pass-cli" ]; then
   echo "--prefer must be 'passage' or 'pass-cli'" >&2
@@ -117,6 +133,13 @@ fetch_vault_paths() {
     exit 1
   fi
   printf '%s' "$json" | jq -r '.items[].title'
+}
+
+# Emits one passage path per line, derived directly from the store's *.age
+# files (passage itself has no flat "list all paths" command).
+fetch_passage_paths() {
+  local store="${PASSAGE_DIR:-$HOME/.passage/store}"
+  find "$store" -type f -name '*.age' 2>/dev/null | sed "s|^$store/||; s|\.age\$||"
 }
 
 passage_show() {
@@ -167,25 +190,50 @@ cmd_pull() {
 }
 
 cmd_push() {
-  local path value current
-  while IFS= read -r path; do
-    [ -z "$path" ] && continue
-    prefix_match "$path" || continue
-    if ! current=$(passage_show "$path"); then
-      echo "push: skip $path (not found in passage)" >&2
-      continue
-    fi
-    value=$(pass_cli_read "$path")
-    if [ "$current" = "$value" ]; then
-      continue
-    fi
-    if [ "$DRY_RUN" = 1 ]; then
-      echo "[dry-run] push: $path (passage -> pass-cli)"
-      continue
-    fi
-    pass_cli_write "$path" "$current"
-    echo "push: $path updated"
-  done < <(fetch_vault_paths)
+  # The vault-wide update pass (and the --prefix discovery pass below it)
+  # only run when --prefix is given — a bare `push --path X` must touch only
+  # X, not silently sweep the entire vault too (prefix_match is a no-op
+  # match-everything filter when $PREFIX is empty, so without this guard
+  # this loop would still walk every vault item).
+  if [ -n "$PREFIX" ]; then
+    local path value current vault_paths
+    vault_paths="$(fetch_vault_paths)"
+
+    while IFS= read -r path; do
+      [ -z "$path" ] && continue
+      prefix_match "$path" || continue
+      if ! current=$(passage_show "$path"); then
+        echo "push: skip $path (not found in passage)" >&2
+        continue
+      fi
+      value=$(pass_cli_read "$path")
+      if [ "$current" = "$value" ]; then
+        continue
+      fi
+      if [ "$DRY_RUN" = 1 ]; then
+        echo "[dry-run] push: $path (passage -> pass-cli)"
+        continue
+      fi
+      pass_cli_write "$path" "$current"
+      echo "push: $path updated"
+    done <<< "$vault_paths"
+
+    # Also register any passage path under that namespace that isn't already
+    # a vault item (discovered, not just named).
+    local discovered_path discovered_value
+    while IFS= read -r discovered_path; do
+      [ -z "$discovered_path" ] && continue
+      prefix_match "$discovered_path" || continue
+      grep -qxF "$discovered_path" <<< "$vault_paths" && continue
+      discovered_value=$(passage_show "$discovered_path") || continue
+      if [ "$DRY_RUN" = 1 ]; then
+        echo "[dry-run] push --prefix: $discovered_path (new item, discovered under $PREFIX)"
+        continue
+      fi
+      pass_cli_write "$discovered_path" "$discovered_value"
+      echo "push --prefix: $discovered_path registered as a new pass-cli item (discovered under $PREFIX)"
+    done < <(fetch_passage_paths)
+  fi
 
   local add_path add_value
   for add_path in "${ADD_PATHS[@]:-}"; do
