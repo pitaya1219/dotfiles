@@ -36,6 +36,10 @@ fi
 # Task completion (taskfile.dev)
 if [ -x "$(command -v task)" ]; then
   eval "$(task --completion bash)"
+
+  # Extends the completion above so args after `--` complete too, for
+  # secrets:* sync tasks.
+  ${builtins.readFile ./pass-cli-passage-sync-task-completion.sh}
 fi
 
 # Color support for ls

@@ -1,4 +1,7 @@
-# pass-cli-passage-sync.sh completion.
+# pass-cli-passage-sync.sh completion, for both direct invocation
+# (./scripts/pass-cli-passage-sync.sh) and `task secrets:pull/push/sync/list --
+# ...` (go-task's own completion gives up entirely once it sees `--`, so
+# task's wrapper below takes over from there for the secrets:* sync tasks).
 #
 # --path completes from local passage paths (--path registers an existing
 # passage path as a new pass-cli item). --prefix completes from the pass-cli
@@ -27,11 +30,12 @@ _pass_cli_passage_sync_timeout() {
   return "$rc"
 }
 
-_pass_cli_passage_sync_completions() {
-  local cur prev vault i store
-
-  cur="${COMP_WORDS[COMP_CWORD]}"
-  prev="${COMP_WORDS[COMP_CWORD - 1]}"
+# Fills COMPREPLY for a --path/--prefix/other flag at $cur, given $prev and
+# the preceding words on the line (used to find an already-typed --vault).
+_pass_cli_passage_sync_reply() {
+  local cur="$1" prev="$2"
+  shift 2
+  local words=("$@") vault i store
 
   case "$prev" in
     --path)
@@ -41,9 +45,9 @@ _pass_cli_passage_sync_completions() {
       ;;
     --prefix)
       vault="Passage"
-      for ((i = 1; i < COMP_CWORD; i++)); do
-        if [ "${COMP_WORDS[i]}" = "--vault" ]; then
-          vault="${COMP_WORDS[i + 1]}"
+      for ((i = 0; i + 1 < ${#words[@]}; i++)); do
+        if [ "${words[i]}" = "--vault" ]; then
+          vault="${words[i + 1]}"
         fi
       done
       COMPREPLY=($(compgen -W "$(_pass_cli_passage_sync_timeout 3 pass-cli item list --vault-name "$vault" --filter-state active --output json 2>/dev/null | jq -r '.items[].title' 2>/dev/null)" -- "$cur"))
@@ -56,9 +60,20 @@ _pass_cli_passage_sync_completions() {
 
   if [[ "$cur" == -* ]]; then
     COMPREPLY=($(compgen -W "--vault --path --prefer --prefix --dry-run -h --help" -- "$cur"))
-  elif [ "$COMP_CWORD" -eq 1 ]; then
-    COMPREPLY=($(compgen -W "pull push sync list" -- "$cur"))
   fi
+}
+
+_pass_cli_passage_sync_completions() {
+  local cur prev
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD - 1]}"
+
+  if [ "$COMP_CWORD" -eq 1 ]; then
+    COMPREPLY=($(compgen -W "pull push sync list" -- "$cur"))
+    return
+  fi
+
+  _pass_cli_passage_sync_reply "$cur" "$prev" "${COMP_WORDS[@]:1:COMP_CWORD-1}"
 }
 
 complete -F _pass_cli_passage_sync_completions pass-cli-passage-sync.sh ./scripts/pass-cli-passage-sync.sh scripts/pass-cli-passage-sync.sh
