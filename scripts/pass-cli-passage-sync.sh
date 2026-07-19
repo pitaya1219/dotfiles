@@ -29,6 +29,7 @@
 #   pass-cli-passage-sync.sh pull [--vault NAME] [--prefix NAMESPACE] [--dry-run]
 #   pass-cli-passage-sync.sh push [--vault NAME] [--prefix NAMESPACE] [--add PATH]... [--dry-run]
 #   pass-cli-passage-sync.sh sync [--vault NAME] [--prefix NAMESPACE] [--prefer passage|pass-cli] [--dry-run]
+#   pass-cli-passage-sync.sh list [--vault NAME] [--prefix NAMESPACE]
 #
 # pull: writes each pass-cli item's value into passage (pass-cli wins, overwrites passage).
 # push: writes each passage value into its matching pass-cli item (passage wins, overwrites pass-cli).
@@ -36,6 +37,8 @@
 # sync: bidirectional. Fills in whichever side is missing a path. Where both
 #       sides have a path but the values differ, it is reported as a CONFLICT
 #       and left untouched by default (use --prefer to pick a resolution side).
+# list: prints the passage paths currently tracked in the pass-cli vault (one
+#       per line, no values read or shown).
 #
 # Secret values are never printed or logged — only whether something changed.
 
@@ -49,7 +52,7 @@ DRY_RUN=0
 ADD_PATHS=()
 
 usage() {
-  sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 if [ $# -eq 0 ]; then
@@ -73,8 +76,8 @@ while [ $# -gt 0 ]; do
 done
 
 case "$MODE" in
-  pull|push|sync) ;;
-  *) echo "unknown command: $MODE (expected pull, push, or sync)" >&2; exit 1 ;;
+  pull|push|sync|list) ;;
+  *) echo "unknown command: $MODE (expected pull, push, sync, or list)" >&2; exit 1 ;;
 esac
 
 if [ -n "$PREFER" ] && [ "$PREFER" != "passage" ] && [ "$PREFER" != "pass-cli" ]; then
@@ -200,6 +203,15 @@ cmd_push() {
   done
 }
 
+cmd_list() {
+  local path
+  while IFS= read -r path; do
+    [ -z "$path" ] && continue
+    prefix_match "$path" || continue
+    echo "$path"
+  done < <(fetch_vault_paths)
+}
+
 cmd_sync() {
   local path pc_value pg_value conflicts=0
   while IFS= read -r path; do
@@ -254,4 +266,5 @@ case "$MODE" in
   pull) cmd_pull ;;
   push) cmd_push ;;
   sync) cmd_sync ;;
+  list) cmd_list ;;
 esac
