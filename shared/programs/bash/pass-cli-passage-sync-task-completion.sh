@@ -16,7 +16,7 @@ _pass_cli_passage_sync_task_completions() {
   # separate words instead of "secrets:push" as one, and the case match
   # below would never fire. _init_completion -n : (the same flag go-task's
   # own _task uses) reassembles across ':' into $words/$cword.
-  local cur prev words cword dashdash i
+  local cur prev words cword dashdash i mode
   _init_completion -n : || return
 
   dashdash=-1
@@ -28,12 +28,17 @@ _pass_cli_passage_sync_task_completions() {
   done
 
   if [ "$dashdash" -ge 0 ] && [ "$cword" -gt "$dashdash" ]; then
+    mode=""
     case "${words[1]}" in
-      secrets:pull | secrets:push | secrets:sync | secrets:sync:test | secrets:list)
-        _pass_cli_passage_sync_reply "$cur" "$prev" "${words[@]:dashdash+1:cword-dashdash-1}"
-        return
-        ;;
+      secrets:pull) mode=pull ;;
+      secrets:push) mode=push ;;
+      secrets:sync | secrets:sync:test) mode=sync ;;
+      secrets:list) mode=list ;;
     esac
+    if [ -n "$mode" ]; then
+      _pass_cli_passage_sync_reply "$mode" "$cur" "$prev" "${words[@]:dashdash+1:cword-dashdash-1}"
+      return
+    fi
   fi
 
   _task
