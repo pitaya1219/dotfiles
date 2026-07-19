@@ -17,7 +17,7 @@
 # the only way to get a Hidden field, and updating an already-existing item's
 # field preserves whatever type it already has (verified live).
 #
-# To bring a new path into scope, use `push --add <path>` (registers an
+# To bring a new path into scope, use `push --path <path>` (registers an
 # existing passage value as a new pass-cli item). Otherwise pull/push/sync
 # never expand the scope (= the vault's existing item set).
 #
@@ -27,13 +27,13 @@
 #
 # Usage:
 #   pass-cli-passage-sync.sh pull [--vault NAME] [--prefix NAMESPACE] [--dry-run]
-#   pass-cli-passage-sync.sh push [--vault NAME] [--prefix NAMESPACE] [--add PATH]... [--dry-run]
+#   pass-cli-passage-sync.sh push [--vault NAME] [--prefix NAMESPACE] [--path PATH]... [--dry-run]
 #   pass-cli-passage-sync.sh sync [--vault NAME] [--prefix NAMESPACE] [--prefer passage|pass-cli] [--dry-run]
 #   pass-cli-passage-sync.sh list [--vault NAME] [--prefix NAMESPACE]
 #
 # pull: writes each pass-cli item's value into passage (pass-cli wins, overwrites passage).
 # push: writes each passage value into its matching pass-cli item (passage wins, overwrites pass-cli).
-#       Use --add <path> to register a not-yet-tracked path.
+#       Use --path <path> to register a not-yet-tracked path.
 # sync: bidirectional. Fills in whichever side is missing a path. Where both
 #       sides have a path but the values differ, it is reported as a CONFLICT
 #       and left untouched by default (use --prefer to pick a resolution side).
@@ -66,7 +66,7 @@ shift
 while [ $# -gt 0 ]; do
   case "$1" in
     --vault) VAULT="${2:?--vault requires a value}"; shift 2 ;;
-    --add) ADD_PATHS+=("${2:?--add requires a path}"); shift 2 ;;
+    --path) ADD_PATHS+=("${2:?--path requires a path}"); shift 2 ;;
     --prefer) PREFER="${2:?--prefer requires passage or pass-cli}"; shift 2 ;;
     --prefix) PREFIX="${2:?--prefix requires a namespace}"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
@@ -191,15 +191,15 @@ cmd_push() {
   for add_path in "${ADD_PATHS[@]:-}"; do
     [ -z "$add_path" ] && continue
     if ! add_value=$(passage_show "$add_path"); then
-      echo "push --add: $add_path not found in passage" >&2
+      echo "push --path: $add_path not found in passage" >&2
       exit 1
     fi
     if [ "$DRY_RUN" = 1 ]; then
-      echo "[dry-run] push --add: $add_path (new item)"
+      echo "[dry-run] push --path: $add_path (new item)"
       continue
     fi
     pass_cli_write "$add_path" "$add_value"
-    echo "push --add: $add_path registered as a new pass-cli item"
+    echo "push --path: $add_path registered as a new pass-cli item"
   done
 }
 
