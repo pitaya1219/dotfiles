@@ -5,6 +5,9 @@
 # shellm - LLM-powered shell completion
 ${builtins.readFile ./shellm.sh}
 
+# pass-cli-passage-sync.sh completion
+${builtins.readFile ./pass-cli-passage-sync-completion.sh}
+
 # Source Nix daemon if available
 if [ -e ~/.nix-profile/etc/profile.d/nix-daemon.sh ]; then
   . ~/.nix-profile/etc/profile.d/nix-daemon.sh
