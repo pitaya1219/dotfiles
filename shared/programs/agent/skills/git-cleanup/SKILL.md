@@ -60,7 +60,53 @@ git log --oneline main..HEAD | wc -l
 
 **DO NOT use original positions after state changes!**
 
+**Fixing up ONE commit into another (not a whole range) is where off-by-one
+mistakes actually bite.** The rebase todo list is oldest-first, but
+`git log --oneline` is newest-first — mixing the two up silently fixups the
+*wrong* commit, and the result still looks plausible (right commit count,
+sensible-looking messages) unless you check the diff:
+
+```bash
+# ALWAYS print the numbered, oldest-first todo list before writing a
+# targeted sed line number:
+git log --oneline --reverse main..HEAD | nl
+
+# After the rebase, don't just eyeball the commit *messages* — check what
+# actually landed in each one:
+git show --stat <commit>
+git diff backup/<branch> HEAD --stat   # empty output = total content unchanged
+```
+
+A fixup targeting the wrong line still "succeeds" with no error — the only
+way to catch it is checking the diff, not the message.
+
 See `MISTRAL_VIBE_GUIDE.md` for detailed examples.
+
+## Squash vs. Split: A Decision Heuristic
+
+Squashing every fix into the feature commit is the easy default (Scenario 1
+below), but it's not always the right call — it can bury independent
+root-cause fixes as an unreadable "Also ..." paragraph in one commit message.
+Before squashing a fix commit, ask:
+
+- **Does the fix have its own root-cause story?** A fix that needed its own
+  diagnosis — e.g. "Windows Firewall silently drops inbound traffic with no
+  rule" or "PowerShell treats native stderr as a terminating error under
+  `$ErrorActionPreference = Stop`" — is worth its own commit. A reviewer
+  benefits from seeing symptom → cause → fix as a unit, and it stays
+  independently revertible if the fix turns out to be wrong.
+- **Is it trivial and config-only?** A one-line value tweak (a port number, a
+  default changed on request) has no root-cause story — fold it into the
+  base feature commit instead of leaving a noise commit like "fix: change
+  port to 11434".
+- **"Discovered while building this PR" is not the same as "trivial".** Fixes
+  found while first bringing up code introduced *in this same PR* still
+  deserve their own commit if the first bullet applies — how it was found
+  doesn't change whether it has an independent story worth preserving.
+
+When unsure, keep root-caused fixes separate and fold only the trivial ones
+in. See `examples/koi-bonsai.md` for a real case that did both in the same
+cleanup, including recovering from a line-number mistake.
 
 ## When to Use
 
@@ -272,6 +318,24 @@ GIT_SEQUENCE_EDITOR="sed -i '2s/^pick/edit/'" git rebase -i main
 GIT_SEQUENCE_EDITOR="sed -i '3s/^pick/drop/'" git rebase -i main
 ```
 
+## Rewriting Author Across Multiple Commits
+
+For a short feature branch (a handful of commits, not the whole repo
+history), prefer rebase with `exec` steps over `git filter-branch` — the
+latter prints its own deprecation warning and is overkill at this scale:
+
+```bash
+GIT_SEQUENCE_EDITOR="sed -i -E 's/^pick ([a-f0-9]+)/pick \1\nexec git commit --amend --no-edit --author=\"Name <email@example.com>\"/'" \
+  git rebase -i main
+
+# Verify every commit picked up the new author:
+git log main..HEAD --format='%h %an <%ae> | %s'
+```
+
+This inserts an `exec` line after every `pick`, so each commit gets amended
+in place as the rebase walks forward — no separate history-rewrite pass, and
+it composes naturally with a squash/fixup rebase done in the same pass.
+
 ## Safety Checklist
 
 Before cleanup:
@@ -351,6 +415,10 @@ git push --force-with-lease origin my-branch
 - `guide.md` - Comprehensive technical guide (407 lines)
 - `git-cleanup-commits.sh` - Interactive helper script
 - `examples/pr73.md` - Real-world example from VisionPipe PR #73
+- `examples/koi-bonsai.md` - Squash-then-split example (homelab PR #170):
+  when to keep root-caused fixes separate, folding a trivial config tweak
+  into the base commit, recovering from an off-by-one fixup mistake, and
+  rewriting commit authors
 
 ## Tips for Success
 
