@@ -43,4 +43,11 @@
     source = ./git/hooks/commit-msg;
     executable = true;
   };
+
+  # Install pre-commit hook to prevent commits authored as an AI tool's own
+  # identity (Claude, Mistral Vibe, etc.) instead of the human's
+  home.file.".config/git/hooks/pre-commit" = {
+    source = ./git/hooks/pre-commit;
+    executable = true;
+  };
 }

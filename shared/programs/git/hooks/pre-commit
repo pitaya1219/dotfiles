@@ -1,0 +1,39 @@
+#!/bin/sh
+# Git pre-commit hook to prevent commits authored as an AI coding tool's own
+# identity (e.g. Claude Code's default "Claude <claude@anthropic.com>",
+# Mistral Vibe's default identity, a "claude-bot"/"vibe" service account,
+# etc). Local commits should always be attributed to a human, even when an
+# AI coding agent is the one running `git commit`.
+#
+# This only checks the AUTHOR/COMMITTER identity that would be used for the
+# commit (git config user.name/user.email, or GIT_AUTHOR_*/GIT_COMMITTER_*
+# env var overrides) — it does not touch commit message content (see the
+# commit-msg hook for that).
+
+AI_IDENTITY_PATTERN="claude|anthropic|mistral|vibe|opencode|copilot|chatgpt|openai|gemini"
+
+check_ident() {
+  label="$1"
+  ident="$2"
+  if echo "$ident" | grep -qiE "$AI_IDENTITY_PATTERN"; then
+    echo ""
+    echo "ERROR: commit $label looks like an AI tool identity, not a human:"
+    echo ""
+    echo "  $ident"
+    echo ""
+    echo "Set your own identity for this repo (or globally) and try again:"
+    echo ""
+    echo "  git config user.name \"Your Name\""
+    echo "  git config user.email \"you@example.com\""
+    echo ""
+    echo "If this is genuinely an intentional bot account (e.g. CI"
+    echo "automation), bypass with: git commit --no-verify"
+    echo ""
+    exit 1
+  fi
+}
+
+check_ident "author" "$(git var GIT_AUTHOR_IDENT)"
+check_ident "committer" "$(git var GIT_COMMITTER_IDENT)"
+
+exit 0
