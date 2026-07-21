@@ -37,6 +37,7 @@
           homeDirectory = "/home/aviateur";
           stateVersion = "23.11";
           packages = with pkgs; [
+            gitea-mcp-server
             mistral-vibe
             rclone
           ];
