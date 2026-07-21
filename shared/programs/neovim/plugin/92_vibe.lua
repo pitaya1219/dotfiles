@@ -250,7 +250,28 @@ end
 -- Common function to create vibe command
 -- session_id: 8-char hex string to resume a specific session (vibe --resume <id>)
 local function get_vibe_cmd(work_dir, session_id)
-  local cmd = 'eval "$(direnv export bash)" && vibe'
+  -- Ask user for permission mode (same as Claude Code)
+  local choice = vim.fn.confirm(
+    'Select permission mode for Vibe:',
+    "&Default\n&Bypass Permissions\n&Auto-Approve\n&Cancel",
+    1  -- Default to "Default"
+  )
+
+  -- Cancel option (choice == 4 or 0)
+  if choice == 4 or choice == 0 then
+    return nil
+  end
+
+  local permission_mode = ''
+  if choice == 2 then
+    -- Bypass Permissions -> --trust
+    permission_mode = ' --trust'
+  elseif choice == 3 then
+    -- Auto-Approve -> --auto-approve
+    permission_mode = ' --auto-approve'
+  end
+
+  local cmd = 'eval "$(direnv export bash)" && vibe' .. permission_mode
 
   if session_id and session_id ~= '' then
     cmd = cmd .. ' --resume ' .. vim.fn.shellescape(session_id)
@@ -334,6 +355,15 @@ function Vibe.toggle(work_dir, session_id)
   if vim.bo[Vibe.buf].buftype ~= 'terminal' then
     local cmd = get_vibe_cmd(work_dir, session_id)
 
+    -- If user cancelled, close the window and return
+    if not cmd then
+      if Vibe.win and vim.api.nvim_win_is_valid(Vibe.win) then
+        vim.api.nvim_win_close(Vibe.win, true)
+        Vibe.win = nil
+      end
+      return
+    end
+
     vim.fn.termopen(cmd, {
       on_exit = function()
         -- Restore ambiwidth setting
@@ -367,6 +397,11 @@ function Vibe.open_in_terminal(work_dir, session_id)
   local saved_ambiwidth = save_ambiwidth()
 
   local cmd = get_vibe_cmd(work_dir, session_id)
+
+  -- If user cancelled, return without opening terminal
+  if not cmd then
+    return
+  end
 
   vim.cmd('enew')
   local buf = vim.api.nvim_get_current_buf()
@@ -407,6 +442,11 @@ function Vibe.open_in_new_tab(work_dir, session_id)
   local saved_ambiwidth = save_ambiwidth()
 
   local cmd = get_vibe_cmd(work_dir, session_id)
+
+  -- If user cancelled, return without opening terminal
+  if not cmd then
+    return
+  end
 
   vim.cmd('tabnew')
   local buf = vim.api.nvim_get_current_buf()
