@@ -259,22 +259,25 @@ tasks:
                 conflict_page="$LOGSEQ_LOCAL/pages/conflict-${date_str}.md"
                 timestamp=$(date '+%Y-%m-%d %H:%M:%S')
                 # Build one ordered list of the versions that actually exist on
-                # disk (current file first, then each conflict). Both the Diff
-                # Summary and the Version blocks below index into this list, so
-                # their numbering always agrees. Doing it once also means the
-                # summary reflects reality instead of a generic "multiple" claim.
+                # disk (each conflict first, then the current file last). Both
+                # the Diff Summary and the Version blocks below index into this
+                # list, so their numbering always agrees, and the version number
+                # increases with recency (Version 1 = oldest, last = current/
+                # newer) matching normal version-numbering intuition. Doing it
+                # once also means the summary reflects reality instead of a
+                # generic "multiple" claim.
                 version_files=()
                 version_labels=()
-                if [[ -f "$actual_base" ]]; then
-                    version_files+=("$actual_base")
-                    version_labels+=("Current/Newer")
-                fi
                 for cf in "${conflict_array[@]}"; do
                     if [[ -f "$cf" ]]; then
                         version_files+=("$cf")
                         version_labels+=("Conflict/Older")
                     fi
                 done
+                if [[ -f "$actual_base" ]]; then
+                    version_files+=("$actual_base")
+                    version_labels+=("Current/Newer")
+                fi
                 num_versions=${#version_files[@]}
                 {
                     echo "tags:: #conflict"
@@ -300,14 +303,15 @@ tasks:
                         # the first conflict against the current file), and still
                         # works when actual_base is missing, since it then diffs the
                         # remaining conflict versions against each other.
-                        # Args are passed (later, earlier) so diff's "old new" convention
-                        # holds: "-" marks lines only in the earlier-listed version,
-                        # "+" marks lines only in the later-listed (newer) one.
+                        # Args are passed (earlier, later) matching the header's
+                        # "Version i vs Version i+1" order, so diff's "old new"
+                        # convention holds: "-" marks lines only in Version i,
+                        # "+" marks lines only in Version i+1.
                         for ((i = 1; i < num_versions; i++)); do
                             echo "### Version $i (${version_labels[$((i - 1))]}) vs Version $((i + 1)) (${version_labels[$i]})"
                             echo ""
                             echo '```'
-                            safe_diff "${version_files[$i]}" "${version_files[$((i - 1))]}"
+                            safe_diff "${version_files[$((i - 1))]}" "${version_files[$i]}"
                             echo '```'
                             echo ""
                         done
