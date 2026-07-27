@@ -2,7 +2,7 @@
 name: session-save
 description: Save current session summary to Logseq (if available) or as a local markdown file
 user-invocable: true
-version: 2.8.0
+version: 2.9.0
 ---
 
 Create a comprehensive summary of the current session and save it.
@@ -107,24 +107,35 @@ complete raw log. Best-effort: skip silently when there is no transcript.
 (Agent-type branching already happened in `detect-session.sh`.) Same mechanism as
 `logseq-write`'s `--asset`; credentials come from passage, not `~/.agent/logseq.json`.
 
+The transcript is compressed with **zstandard** (`zstd`, provided globally via
+`shared/programs/bare.nix`) before upload — jsonl logs are highly compressible, so
+the asset is stored as `session-<uuid>.jsonl.zst`. Decompress with `zstd -d` (or
+`zstdcat`) to read it.
+
 ```bash
 RAW_TRANSCRIPT_REF=""
 if [ "$USE_LOGSEQ" = true ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-  _ASSET_NAME="session-${SESSION_ID}.jsonl"
-  _NC_HOST=$(passage show logseq-assets/nextcloud/host)
-  _NC_ID=$(passage show logseq-assets/nextcloud/ryu/id)
-  _NC_PASSWORD=$(passage show logseq-assets/nextcloud/ryu/password)
-  _NC_DIR="logseq-assets"
-  curl -s -o /dev/null -u "$_NC_ID:$_NC_PASSWORD" -X MKCOL \
-    "$_NC_HOST/remote.php/dav/files/$_NC_ID/$_NC_DIR/"   # ignore result — no-op if it already exists
-  if curl -sf -u "$_NC_ID:$_NC_PASSWORD" -T "$TRANSCRIPT_PATH" \
-       "$_NC_HOST/remote.php/dav/files/$_NC_ID/$_NC_DIR/$_ASSET_NAME"; then
-    # PROPFIND for the Nextcloud fileid to build the internal link (/f/<id>).
-    _FILEID=$(curl -sf -u "$_NC_ID:$_NC_PASSWORD" -X PROPFIND -H "Depth: 0" \
-      --data '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><oc:fileid/></d:prop></d:propfind>' \
-      "$_NC_HOST/remote.php/dav/files/$_NC_ID/$_NC_DIR/$_ASSET_NAME" \
-      | grep -oP '(?<=<oc:fileid>)[0-9]+')
-    [ -n "$_FILEID" ] && RAW_TRANSCRIPT_REF="[session.jsonl](${_NC_HOST}/f/${_FILEID})"
+  _ASSET_NAME="session-${SESSION_ID}.jsonl.zst"
+  # Compress the raw transcript with zstandard before upload.
+  _UPLOAD_PATH="${TMPDIR:-/tmp}/${_ASSET_NAME}"
+  zstd -q -f -19 -o "$_UPLOAD_PATH" "$TRANSCRIPT_PATH" 2>/dev/null || _UPLOAD_PATH=""
+  if [ -n "$_UPLOAD_PATH" ] && [ -f "$_UPLOAD_PATH" ]; then
+    _NC_HOST=$(passage show logseq-assets/nextcloud/host)
+    _NC_ID=$(passage show logseq-assets/nextcloud/ryu/id)
+    _NC_PASSWORD=$(passage show logseq-assets/nextcloud/ryu/password)
+    _NC_DIR="logseq-assets"
+    curl -s -o /dev/null -u "$_NC_ID:$_NC_PASSWORD" -X MKCOL \
+      "$_NC_HOST/remote.php/dav/files/$_NC_ID/$_NC_DIR/"   # ignore result — no-op if it already exists
+    if curl -sf -u "$_NC_ID:$_NC_PASSWORD" -T "$_UPLOAD_PATH" \
+         "$_NC_HOST/remote.php/dav/files/$_NC_ID/$_NC_DIR/$_ASSET_NAME"; then
+      # PROPFIND for the Nextcloud fileid to build the internal link (/f/<id>).
+      _FILEID=$(curl -sf -u "$_NC_ID:$_NC_PASSWORD" -X PROPFIND -H "Depth: 0" \
+        --data '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><oc:fileid/></d:prop></d:propfind>' \
+        "$_NC_HOST/remote.php/dav/files/$_NC_ID/$_NC_DIR/$_ASSET_NAME" \
+        | grep -oP '(?<=<oc:fileid>)[0-9]+')
+      [ -n "$_FILEID" ] && RAW_TRANSCRIPT_REF="[session.jsonl.zst](${_NC_HOST}/f/${_FILEID})"
+    fi
+    rm -f "$_UPLOAD_PATH"
   fi
 fi
 ```
@@ -175,7 +186,7 @@ Field values:
 - `<model-name>`: the Claude/AI model in use (e.g. `claude-sonnet-4-6`)
 - `<pr-url>`: PR URL if one was created during the session, else omit
 - `<caller>`: the orchestrator that delegated this session, when it was run as a sub-agent (e.g. `claude` when delegated via the `vibe-delegate` skill). Omit the property entirely for normal, directly-run sessions.
-- `<RAW_TRANSCRIPT_REF>`: the value computed in "Attach Raw Transcript as a Logseq Asset" (e.g. `[session.jsonl](../assets/session-<uuid>.jsonl)`). Omit the property entirely when empty (asset was not attached).
+- `<RAW_TRANSCRIPT_REF>`: the value computed in "Attach Raw Transcript as a Logseq Asset" (e.g. `[session.jsonl.zst](../assets/session-<uuid>.jsonl.zst)`). Omit the property entirely when empty (asset was not attached).
 
 The generated summary (without a top-level `#` heading — the page title serves that role) is the content to write.
 
