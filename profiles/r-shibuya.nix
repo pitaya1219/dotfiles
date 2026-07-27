@@ -24,6 +24,7 @@ let
     overlays.neovim-nightly
     overlays.mistral-vibe
     overlays.pipx-no-check
+    overlays.poetry-no-check
     overlays.fix-neovim-lua-passthru
     overlays.logseq-view
     overlays.nix-claude-code

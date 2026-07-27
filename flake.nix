@@ -65,6 +65,24 @@
           ];
         };
 
+        # WORKAROUND: On the current nixpkgs pin (python3.14), poetry's pytest
+        # suite has a handful of failing tests (test_executor batch/yanked-package
+        # assertions, test_env full-pipe) that abort the derivation build. They are
+        # upstream test issues, not a problem with poetry itself, so disable the
+        # test suite.
+        #
+        # Override the top-level `poetry` directly (not via pythonPackagesExtensions):
+        # pkgs.poetry builds its unwrapped module through a private `python3.override`
+        # package set in its own package.nix, so there is no `python3Packages.poetry`
+        # for a python-set extension to hook. pkgs.poetry is a toPythonApplication, so
+        # overridePythonAttrs threads to the underlying module; setting the
+        # python-level `doCheck = false` makes mk-python-derivation skip the pytest
+        # install-check phase (it derives stdenv doInstallCheck from that attr).
+        # Should be removed once upstream fixes land on our nixpkgs pin.
+        poetry-no-check = final: prev: {
+          poetry = prev.poetry.overridePythonAttrs (_: { doCheck = false; });
+        };
+
         # WORKAROUND: nixpkgs bumped pandas past parquet-tools' pinned <3.0.0
         # upper bound, breaking pythonRuntimeDepsCheckHook. parquet-tools already
         # relaxes halo/tabulate/thrift the same way upstream; extend that to pandas.
