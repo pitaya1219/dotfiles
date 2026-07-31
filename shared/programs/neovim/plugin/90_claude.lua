@@ -141,7 +141,7 @@ local function get_claude_cmd(work_dir, session_id)
   -- Ask user for permission mode
   local choice = vim.fn.confirm(
     'Select permission mode for Claude Code:',
-    "&Default\n&Bypass Permissions\nDon't As&k\n&Accept Edits\n&Cancel",
+    "&Default\nA&uto\nDon't As&k\n&Accept Edits\n&Cancel",
     1  -- Default to "Default"
   )
 
@@ -152,7 +152,7 @@ local function get_claude_cmd(work_dir, session_id)
 
   local permission_mode = ''
   if choice == 2 then
-    permission_mode = ' --permission-mode bypassPermissions'
+    permission_mode = ' --permission-mode auto'
   elseif choice == 3 then
     permission_mode = ' --permission-mode dontAsk'
   elseif choice == 4 then

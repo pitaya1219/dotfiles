@@ -253,20 +253,17 @@ local function get_vibe_cmd(work_dir, session_id)
   -- Ask user for permission mode (same as Claude Code)
   local choice = vim.fn.confirm(
     'Select permission mode for Vibe:',
-    "&Default\n&Bypass Permissions\n&Auto-Approve\n&Cancel",
+    "&Default\n&Auto-Approve\n&Cancel",
     1  -- Default to "Default"
   )
 
-  -- Cancel option (choice == 4 or 0)
-  if choice == 4 or choice == 0 then
+  -- Cancel option (choice == 3 or 0)
+  if choice == 3 or choice == 0 then
     return nil
   end
 
   local permission_mode = ''
   if choice == 2 then
-    -- Bypass Permissions -> --trust
-    permission_mode = ' --trust'
-  elseif choice == 3 then
     -- Auto-Approve -> --auto-approve
     permission_mode = ' --auto-approve'
   end
