@@ -7,6 +7,7 @@ mtg-minutes — OBS録音から「話者ラベル付き文字起こし」と「�
 
 使い方:
     mtg-minutes RECORDING.mkv [--title "1on1 田中さん"] [options]
+    mtg-minutes --transcript LIVE.txt [--title ...]   # 既存の文字起こしから作る
 
 前提:
     - ffmpeg (brew)
@@ -376,8 +377,13 @@ def write_to_logseq(cfg, page_name, minutes_md, transcript, meta,
 # main
 # ---------------------------------------------------------------------------
 def main():
-    ap = argparse.ArgumentParser(description="OBS録音 → 文字起こし → 議事録 → Logseq")
-    ap.add_argument("recording", help="OBSの録音ファイル (mkv/mp4/m4a/wav)")
+    ap = argparse.ArgumentParser(prog="mtg-minutes",
+                                 description="録音 → 文字起こし → 議事録 → Logseq")
+    ap.add_argument("recording", nargs="?", default=None,
+                    help="録音ファイル (mkv/mp4/m4a/wav)")
+    ap.add_argument("--transcript", default=None, metavar="PATH",
+                    help="録音の代わりに既存の文字起こしテキストから議事録を作る"
+                         "(mtg / mtg-live のライブ字幕ログなど)")
     ap.add_argument("--title", default="", help="会議タイトル(Logseqページ名に使用)")
     ap.add_argument("--self-track", type=int, default=0, help="自分のマイクのトラック番号 (既定:0)")
     ap.add_argument("--other-track", type=int, default=1, help="相手の音声のトラック番号 (既定:1)")
@@ -391,44 +397,65 @@ def main():
     args = ap.parse_args()
 
     cfg = load_config()
-    src = Path(args.recording).expanduser()
-    if not src.exists():
-        die(f"録音ファイルが見つかりません: {src}")
-    if not Path(cfg["model"]).exists():
-        die(f"whisperモデルが見つかりません: {cfg['model']}\n  先にモデルをダウンロードしてください。")
+    if bool(args.recording) == bool(args.transcript):
+        die("録音ファイル か --transcript のどちらか一方を指定してください。")
 
     now = dt.datetime.now()
-    title = args.title or src.stem
+    src = None          # 文字起こしモードでは録音が無い(音声添付もスキップされる)
+    n_tracks = 0
+    if args.transcript:
+        tr_path = Path(args.transcript).expanduser()
+        if not tr_path.exists():
+            die(f"文字起こしファイルが見つかりません: {tr_path}")
+        title = args.title or tr_path.stem
+        source_name = tr_path.name
+    else:
+        src = Path(args.recording).expanduser()
+        if not src.exists():
+            die(f"録音ファイルが見つかりません: {src}")
+        if not Path(cfg["model"]).exists():
+            die(f"whisperモデルが見つかりません: {cfg['model']}\n  先にモデルをダウンロードしてください。")
+        title = args.title or src.stem
+        source_name = src.name
+
     out_dir = Path(cfg["output_dir"]).expanduser() / now.strftime("%Y%m%d_%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    n_tracks = count_audio_tracks(src)
-    info(f"音声トラック数: {n_tracks}")
-
-    tmpdir = tempfile.mkdtemp(prefix="mtg_")
-    tracks_to_process = []
-    if n_tracks >= 2:
-        plan = [(args.self_track, cfg["self_label"]), (args.other_track, cfg["other_label"])]
-        with_labels = True
+    if args.transcript:
+        # ライブ字幕ログ等、すでに話者ラベル付きのテキストをそのまま使う
+        transcript = tr_path.read_text()
+        if not transcript.strip():
+            die(f"文字起こしファイルが空です: {tr_path}")
+        info(f"文字起こしを読み込みました: {tr_path} ({len(transcript.splitlines())}行)")
     else:
-        plan = [(0, cfg["self_label"])]
-        with_labels = False
-        warn("トラックが1つのみ。話者ラベルなしで処理します。")
+        n_tracks = count_audio_tracks(src)
+        info(f"音声トラック数: {n_tracks}")
 
-    for idx, label in plan:
-        wav = Path(tmpdir) / f"track{idx}.wav"
-        info(f"トラック{idx} ({label}) を抽出中…")
-        extract_track(src, idx, wav)
-        info(f"トラック{idx} ({label}) を文字起こし中… (whisper)")
-        segs = transcribe(wav, cfg, tmpdir)
-        info(f"  → {len(segs)} セグメント")
-        tracks_to_process.append((label, segs))
-        if args.keep_wav:
-            import shutil
-            shutil.copy(wav, out_dir / wav.name)
+        tmpdir = tempfile.mkdtemp(prefix="mtg_")
+        tracks_to_process = []
+        if n_tracks >= 2:
+            plan = [(args.self_track, cfg["self_label"]), (args.other_track, cfg["other_label"])]
+            with_labels = True
+        else:
+            plan = [(0, cfg["self_label"])]
+            with_labels = False
+            warn("トラックが1つのみ。話者ラベルなしで処理します。")
 
-    merged = merge_segments(tracks_to_process)
-    transcript = format_transcript(merged, with_labels)
+        for idx, label in plan:
+            wav = Path(tmpdir) / f"track{idx}.wav"
+            info(f"トラック{idx} ({label}) を抽出中…")
+            extract_track(src, idx, wav)
+            info(f"トラック{idx} ({label}) を文字起こし中… (whisper)")
+            segs = transcribe(wav, cfg, tmpdir)
+            info(f"  → {len(segs)} セグメント")
+            tracks_to_process.append((label, segs))
+            if args.keep_wav:
+                import shutil
+                shutil.copy(wav, out_dir / wav.name)
+
+        merged = merge_segments(tracks_to_process)
+        transcript = format_transcript(merged, with_labels)
+
     (out_dir / "transcript.txt").write_text(transcript)
     info(f"文字起こし保存: {out_dir/'transcript.txt'}")
 
@@ -452,9 +479,9 @@ def main():
             tr_name = f"transcript_{ts}.txt"
             (assets / tr_name).write_text(transcript)
             transcript_rel = f"../assets/{tr_name}"
-            # 録音音声の添付
+            # 録音音声の添付(--transcript モードでは元音声が無いのでスキップ)
             attach = cfg["attach_audio"] if args.attach_audio is None else args.attach_audio
-            if attach:
+            if attach and src is not None:
                 asset_name = f"mtg_{ts}.m4a"
                 info(f"録音音声を変換・添付中… ({asset_name})")
                 try:
@@ -467,7 +494,7 @@ def main():
         info(f"Logseqページ作成中: {page_name}")
         ok = write_to_logseq(cfg, page_name,
                              minutes_md, transcript,
-                             {"date": now.strftime("%Y-%m-%d"), "source": src.name},
+                             {"date": now.strftime("%Y-%m-%d"), "source": source_name},
                              audio_rel=audio_rel, transcript_rel=transcript_rel)
         if ok:
             info(f"Logseq書き込み完了: 「{page_name}」")

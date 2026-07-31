@@ -1,0 +1,313 @@
+#!/usr/bin/env python3
+"""
+mtg — 会議を録音しながら、自分と相手の発言を1つのターミナルに時系列で流す。
+
+これまで mtg-rec(録音)と mtg-live(相手の字幕)を別セッションで並べて使う必要が
+あったのを、1コマンド・1プロセスにまとめたもの。
+
+    mtg ─┬─ mtg-rec  をサブプロセスで起動 ── 2トラック .mkv を ~/Movies へ
+         ├─ whisper-stream (BlackHole 2ch)  ── 自分の字幕  ┐ このプロセス内で
+         └─ whisper-stream (BlackHole 16ch) ── 相手の字幕  ┘ 直接回す
+
+表示例:
+    [00:12] 相手: 来週のリリースなんですけど
+    [00:18] 自分: はい、木曜で調整してます
+
+BlackHole は複数プロセスからの同時読み出しに対応しているので、
+「録音本体 + 無音検知 + ライブ字幕」が同じデバイスを同時に開いても競合しない。
+
+使い方:
+    mtg                          # 録音 + 両サイド字幕、Ctrl-C で停止
+    mtg --minutes "1on1 田中"     # 停止後そのまま議事録生成まで実行
+    mtg --live other             # 相手の字幕だけ(録音はする)
+    mtg --no-rec                 # 録音せず字幕だけ
+    mtg --duration 30            # 30秒で自動停止(テスト用)
+    mtg --list                   # デバイス一覧(録音用 / 字幕用の両方)
+
+字幕は ~/Documents/mtg-minutes/live/live_<日時>.txt にも保存される。
+録音が失敗していた場合は、このファイルを mtg-minutes --transcript に渡せば
+ライブ字幕から議事録を作れる。
+
+議事録の本体は録音からのバッチ文字起こし(turbo)で作られるので、
+ライブ字幕のモデル選択は最終的な議事録の精度には影響しない。
+"""
+import argparse
+import datetime as dt
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from mtgcommon import (  # noqa: E402
+    MODELS, SIDES, LiveLog, LiveTranscriber, LIVE_LOG_DIR,
+    die, enumerate_capture_devices, info, print_capture_devices, print_utterance,
+    resolve_capture_device, resolve_model, stamp, warn,
+)
+
+OUT_DIR = Path.home() / "Movies"
+MEETING_OUTPUT_DEVICE = "会議用"
+LIVE_SILENCE_ALERT_SEC_DEFAULT = 120
+# 録音停止後、mtg-rec が finalize と無音チェックを終えるのを待つ上限
+REC_SHUTDOWN_TIMEOUT_SEC = 300
+
+
+def sibling(name):
+    """PATH に頼らず、自分の隣にある mtg-* を絶対パスで解決する"""
+    p = Path(__file__).resolve().parent / name
+    return str(p) if p.exists() else name
+
+
+def build_parser():
+    # prog を明示するのは、nix の wrapProgram 経由だと argv[0] が
+    # '.mtg-wrapped' になり usage 行がその名前で出てしまうため。
+    ap = argparse.ArgumentParser(
+        prog="mtg", description="会議を録音しながら自分/相手のライブ字幕を1画面に流す")
+    ap.add_argument("--list", action="store_true",
+                    help="デバイス一覧(録音用 / 字幕用)を表示して終了")
+    ap.add_argument("--minutes", nargs="?", const="", default=None, metavar="TITLE",
+                    help="停止後に mtg-minutes を実行(タイトル任意)")
+    ap.add_argument("--live", choices=["both", "self", "other", "none"], default="both",
+                    help="ライブ字幕を出すサイド (既定: both)")
+    ap.add_argument("--no-rec", action="store_true", help="録音せず字幕だけ表示する")
+    ap.add_argument("--duration", type=int, default=0, help="指定秒で自動停止(0=Ctrl-Cまで)")
+    ap.add_argument("--out", default="", help="録音の出力パス(既定: ~/Movies/mtg_日時.mkv)")
+
+    g = ap.add_argument_group("デバイス / モデル")
+    g.add_argument("--self-device", default=SIDES["self"]["device"],
+                   help=f"自分の音声デバイス名 (既定: {SIDES['self']['device']})")
+    g.add_argument("--other-device", default=SIDES["other"]["device"],
+                   help=f"相手の音声デバイス名 (既定: {SIDES['other']['device']})")
+    g.add_argument("--self-model", choices=list(MODELS), default=SIDES["self"]["model"],
+                   help=f"自分側の字幕モデル (既定: {SIDES['self']['model']})")
+    g.add_argument("--other-model", choices=list(MODELS), default=SIDES["other"]["model"],
+                   help=f"相手側の字幕モデル (既定: {SIDES['other']['model']})")
+
+    g = ap.add_argument_group("字幕チューニング")
+    g.add_argument("--language", default="ja")
+    g.add_argument("--step", type=int, default=0,
+                   help="0=VAD(発話区切りで確定) / >0=スライディング(ms)")
+    g.add_argument("--length", type=int, default=10000, help="1チャンクの最大長(ms)")
+    g.add_argument("--vad-thold", type=float, default=0.6, help="VAD感度(0=厳しい〜1=緩い)")
+    g.add_argument("--translate", action="store_true",
+                   help="相手の発言を英語にライブ翻訳(自分側には適用しない)")
+    g.add_argument("--no-save", action="store_true", help="字幕ログを保存しない")
+
+    g = ap.add_argument_group("録音")
+    g.add_argument("--output-device", default=MEETING_OUTPUT_DEVICE,
+                   help=f"録音中に切り替えるシステム出力デバイス名 (既定: {MEETING_OUTPUT_DEVICE})")
+    g.add_argument("--no-switch-output", action="store_true",
+                   help="システム出力デバイスの自動切り替えをスキップ")
+    g.add_argument("--live-silence-sec", type=int, default=LIVE_SILENCE_ALERT_SEC_DEFAULT,
+                   help=f"録音中この秒数以上無音が続いたら警告 "
+                        f"(既定: {LIVE_SILENCE_ALERT_SEC_DEFAULT}秒、0で無効化)")
+    return ap
+
+
+def start_recorder(args, out):
+    """mtg-rec をサブプロセスとして起動する。
+
+    start_new_session=True で別プロセスグループに置くのがポイント。
+    同じグループのままだと端末の Ctrl-C が mtg-rec にも直接届き、こちらからの
+    停止指示と二重になって、mtg-rec の finalize / 無音チェックの最中に
+    2発目の SIGINT が刺さる。停止の指示元をこのプロセスに一本化し、
+    停止時は killpg でグループごと送る(= 端末の Ctrl-C と同じ効き方を再現し、
+    mtg-rec 配下の ffmpeg にもちゃんと届く)。
+    """
+    cmd = [
+        sibling("mtg-rec"),
+        "--out", str(out),
+        "--self-device", args.self_device,
+        "--other-device", args.other_device,
+        "--output-device", args.output_device,
+        "--live-silence-sec", str(args.live_silence_sec),
+        "--no-hint",             # 終了時の案内はこちらでまとめて出す
+    ]
+    if args.duration > 0:
+        cmd += ["--duration", str(args.duration)]
+    if args.no_switch_output:
+        cmd.append("--no-switch-output")
+    try:
+        return subprocess.Popen(cmd, stdin=subprocess.DEVNULL, start_new_session=True)
+    except FileNotFoundError:
+        die("mtg-rec が見つかりません。--no-rec で字幕のみ実行できます。")
+
+
+def stop_recorder(proc):
+    """録音プロセスグループに SIGINT を送り、finalize を待つ"""
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGINT)
+    except ProcessLookupError:
+        return
+    info("録音を停止しています(finalize と無音チェック)…")
+    try:
+        proc.wait(timeout=REC_SHUTDOWN_TIMEOUT_SEC)
+    except subprocess.TimeoutExpired:
+        warn("録音プロセスが終了しないため強制終了します")
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.wait()
+
+
+def start_transcribers(args, sides, session_zero):
+    """指定サイドの whisper-stream を起動する。字幕の出力先も配線する。"""
+    log = None if args.no_save else LiveLog(LIVE_LOG_DIR / f"live_{stamp()}.txt")
+
+    def on_utterance(side, t, text):
+        print_utterance(t, SIDES[side], text)
+        if log:
+            log.add(t, SIDES[side]["label"], text)
+
+    # デバイス列挙は whisper-stream を一瞬起動するので1回だけ行って使い回す
+    probe_model = resolve_model(SIDES[sides[0]]["model"], quiet=True)[1]
+    info("キャプチャデバイスを列挙中…")
+    devices = enumerate_capture_devices(probe_model)
+
+    transcribers = []
+    for side in sides:
+        name = getattr(args, f"{side}_device")
+        cap_id, cap_name = resolve_capture_device(devices, name)
+        if cap_id is None:
+            warn(f"{SIDES[side]['label']}側のデバイス '{name}' が見つかりません"
+                 f"(このサイドの字幕は無効)")
+            if devices:
+                warn("検出されたデバイス: " + ", ".join(f"#{i}:{n}" for i, n in devices))
+            continue
+        model_name, model_path = resolve_model(getattr(args, f"{side}_model"))
+        tr = LiveTranscriber(
+            side, cap_id, model_path,
+            language=args.language, step=args.step, length=args.length,
+            vad_thold=args.vad_thold,
+            translate=args.translate and side == "other",
+            on_utterance=on_utterance, session_zero=session_zero,
+        )
+        info(f"{SIDES[side]['label']}: デバイス #{cap_id} ({cap_name}) / モデル {model_name}")
+        tr.start()
+        transcribers.append(tr)
+
+    # モデルロードを待って、起動できなかったサイドをその場で知らせる
+    alive = []
+    for tr in transcribers:
+        if tr.wait_ready():
+            alive.append(tr)
+        else:
+            warn(f"{tr.meta['label']}側の字幕を開始できませんでした。")
+            for line in list(tr.stderr_tail)[-5:]:
+                warn(f"  {line}")
+            tr.stop()
+    return alive, log
+
+
+def show_devices(args):
+    probe_model = resolve_model(SIDES["other"]["model"], quiet=True)[1]
+    print("=== 字幕用(whisper-stream / SDL) ===")
+    print_capture_devices(enumerate_capture_devices(probe_model), args.other_device)
+    print()
+    print("=== 録音用(ffmpeg / avfoundation) ===")
+    sys.stdout.flush()
+    subprocess.run([sibling("mtg-rec"), "--list",
+                    "--self-device", args.self_device,
+                    "--other-device", args.other_device])
+
+
+def main():
+    args = build_parser().parse_args()
+
+    if args.list:
+        show_devices(args)
+        return
+
+    sides = {"both": ["self", "other"], "self": ["self"],
+             "other": ["other"], "none": []}[args.live]
+    if args.no_rec and not sides:
+        die("--no-rec と --live none の両方は指定できません(何もしなくなります)。")
+
+    out = None
+    if not args.no_rec:
+        if args.out:
+            out = Path(args.out).expanduser()
+            out.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            OUT_DIR.mkdir(parents=True, exist_ok=True)
+            out = OUT_DIR / f"mtg_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.mkv"
+
+    # 字幕のタイムスタンプの原点。録音開始とほぼ同時にしておくと、
+    # ライブ字幕の時刻と録音ファイル内の時刻がだいたい一致する。
+    session_zero = time.monotonic()
+    rec_proc = start_recorder(args, out) if not args.no_rec else None
+
+    transcribers, log = ([], None)
+    try:
+        if sides:
+            transcribers, log = start_transcribers(args, sides, session_zero)
+        if not transcribers and rec_proc is None:
+            die("字幕も録音も開始できませんでした。")
+
+        if log:
+            info(f"字幕ログ: {log.path}")
+        if args.duration > 0:
+            if rec_proc is None:        # 録音時は mtg-rec 側が同じ案内を出す
+                info(f"{args.duration}秒で自動停止します")
+        else:
+            info("進行中… \033[1mCtrl-C で停止\033[0m")
+        print("\033[2m" + "─" * 60 + "\033[0m", file=sys.stderr)
+
+        deadline = session_zero + args.duration if args.duration > 0 else None
+        while True:
+            if rec_proc is not None and rec_proc.poll() is not None:
+                break                      # 録音が自分から終わった(--duration / 異常終了)
+            if rec_proc is None and deadline and time.monotonic() >= deadline:
+                break
+            if transcribers and all(t.proc.poll() is not None for t in transcribers) \
+                    and rec_proc is None:
+                break                      # 字幕だけの実行で全部落ちた
+            time.sleep(0.3)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for tr in transcribers:
+            tr.stop()
+        stop_recorder(rec_proc)
+        if log:
+            log.close()
+
+    print()
+    if rec_proc is not None and rec_proc.returncode not in (0, None):
+        warn(f"mtg-rec が異常終了しました (rc={rec_proc.returncode})")
+    if log:
+        info(f"字幕ログ: {log.path}")
+
+    recording_ok = out is not None and out.exists() and out.stat().st_size >= 1024
+
+    if args.minutes is None:
+        if recording_ok:
+            print("\n次のコマンドで議事録化できます:")
+            print(f"  mtg-minutes {out} --title \"会議名\"")
+        elif log:
+            print("\nライブ字幕から議事録化するなら:")
+            print(f"  mtg-minutes --transcript {log.path} --title \"会議名\"")
+        return
+
+    # --minutes: 録音があればそちら(バッチ文字起こしなので精度が高い)、
+    # 録音に失敗していればライブ字幕ログから議事録を作る。
+    exe = sibling("mtg-minutes")
+    if recording_ok:
+        title = args.minutes or out.stem
+        info(f"議事録を生成します(録音から): {out}")
+        os.execvp(exe, [exe, str(out), "--title", title])
+    elif log and log.path.exists() and log.path.stat().st_size > 0:
+        title = args.minutes or log.path.stem
+        warn("録音が無い/空のため、ライブ字幕ログから議事録を生成します。")
+        os.execvp(exe, [exe, "--transcript", str(log.path), "--title", title])
+    else:
+        die("録音もライブ字幕も残っていないため、議事録を生成できません。")
+
+
+if __name__ == "__main__":
+    main()

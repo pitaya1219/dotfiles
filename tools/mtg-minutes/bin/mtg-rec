@@ -226,7 +226,7 @@ class SilenceMonitor:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="OBSなしで会議を2トラック録音")
+    ap = argparse.ArgumentParser(prog="mtg-rec", description="OBSなしで会議を2トラック録音")
     ap.add_argument("--list", action="store_true", help="録音デバイス一覧を表示して終了")
     ap.add_argument("--self-device", default=SELF_DEVICE, help=f"自分のマイク (既定: {SELF_DEVICE})")
     ap.add_argument("--other-device", default=OTHER_DEVICE, help=f"相手の声 (既定: {OTHER_DEVICE})")
@@ -240,6 +240,8 @@ def main():
                     help="システム出力デバイスの自動切り替えをスキップ")
     ap.add_argument("--live-silence-sec", type=int, default=LIVE_SILENCE_ALERT_SEC_DEFAULT,
                     help=f"録音中この秒数以上無音が続いたら警告 (既定: {LIVE_SILENCE_ALERT_SEC_DEFAULT}秒、0で無効化)")
+    ap.add_argument("--no-hint", action="store_true",
+                    help="終了時の議事録化コマンドの案内を出さない(mtg から呼ばれる時など)")
     args = ap.parse_args()
 
     devices = list_audio_devices()
@@ -372,7 +374,7 @@ def main():
         exe = str(sibling) if sibling.exists() else MTG_MINUTES
         info(f"議事録を生成します: {exe} {out} --title \"{title}\"")
         os.execvp(exe, [exe, str(out), "--title", title])
-    else:
+    elif not args.no_hint:
         print(f"\n次のコマンドで議事録化できます:")
         print(f"  mtg-minutes {out} --title \"会議名\"")
 

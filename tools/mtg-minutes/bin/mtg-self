@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""
+mtg-self — 会議の「自分の声」をリアルタイム文字起こししてターミナルに表示する。
+mtg-live の自分側。言い間違いや言った/言わないの確認、自分の発言量の把握用。
+
+録音しながら自分/相手の両方の字幕を出したいなら `mtg` を使う(これはその片側だけ)。
+
+音声経路(mtg-rec と同じものをそのまま使う):
+    物理マイク → OBS(RNNoise) → BlackHole 2ch
+                                      │
+                                      ▼
+                     BlackHole 2ch を whisper-stream が読む → 字幕
+
+OBS を使わず生マイクで拾うなら --device "UAB-80" のように上書きする。
+
+使い方:
+    mtg-self                         # 既定デバイス(BlackHole 2ch)で開始
+    mtg-self --list                  # キャプチャデバイス一覧
+    mtg-self --model turbo           # 精度優先(既定はsmall=軽量)
+    mtg-self --no-save               # ログファイルへの保存をやめ、標準出力のみにする
+
+既定モデルが turbo ではなく small なのは、`mtg` で相手側(turbo)と同時に回した
+ときにGPUを食い合わないようにするため。単体で使うなら --model turbo でよい。
+
+Ctrl-C で終了。
+"""
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from mtgcommon import SIDES, add_live_args, run_single_side  # noqa: E402
+
+SIDE = "self"
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        prog="mtg-self", description=f"{SIDES[SIDE]['label']}の声をリアルタイム文字起こし")
+    add_live_args(ap, SIDE)
+    run_single_side(SIDE, ap.parse_args())
+
+
+if __name__ == "__main__":
+    main()

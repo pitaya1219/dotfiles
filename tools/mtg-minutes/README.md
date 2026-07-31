@@ -1,16 +1,41 @@
 # mtg-minutes
 
-OBSの2トラック録音から **話者ラベル付き文字起こし** と **議事録** を生成し、Logseqに会議ページを自動作成するローカルツール。
-
-```
-物理マイク ─┐
-            ├ OBS ─ 2トラック録音(.mkv)─ mtg-minutes ─┬ transcript.txt
-相手の音声 ─┘  Track1=自分 / Track2=相手              ├ minutes.md
-                                                       └ Logseq 会議ページ
-```
+会議を録音し、**話者ラベル付き文字起こし** と **議事録** を生成して Logseq に会議ページを
+自動作成するローカルツール群。会議中は自分/相手の発言をライブ字幕として画面に流せる。
 
 - **音声処理は全てローカル**(ffmpeg + whisper.cpp / Apple Silicon Metal)。Claudeに渡すのは最終テキストのみ。
 - 既存のノイズキャンセリング構成([[Macでノイズキャンセリング環境を構築する]])をそのまま録音機として活用。
+
+## コマンド一覧
+
+| コマンド | 役割 |
+|----------|------|
+| **`mtg`** | **会議中に叩くやつ。録音しながら自分/相手のライブ字幕を1画面に流す** |
+| `mtg-rec` | 録音だけ(2トラック .mkv) |
+| `mtg-live` | 相手のライブ字幕だけ |
+| `mtg-self` | 自分のライブ字幕だけ |
+| `mtg-minutes` | 録音(または文字起こしテキスト)から議事録を作って Logseq へ |
+
+普段は `mtg` ひとつでよく、`mtg-rec` / `mtg-live` / `mtg-self` は単体で使いたいとき用。
+
+```
+        ┌ BlackHole 2ch (自分) ┬─ ffmpeg ─────┐
+mtg ────┤                      └─ whisper-stream ─ 字幕(自分)
+        │                                     ├─ 2トラック .mkv ─ mtg-minutes ─┬ transcript.txt
+        └ BlackHole 16ch (相手)┬─ ffmpeg ─────┘                                ├ minutes.md
+                               └─ whisper-stream ─ 字幕(相手)                  └ Logseq 会議ページ
+```
+
+```
+[00:12] 相手: 来週のリリースなんですけど
+[00:18] 自分: はい、木曜で調整してます
+[00:25] 相手: じゃあ水曜までにレビューを
+```
+
+BlackHole は複数プロセスからの同時読み出しに対応しているので、同じデバイスを
+「録音本体 + 無音検知 + ライブ字幕」が同時に開いても競合しない(実機で検証済み)。
+
+OBS の2トラック録音(§2)を録音元にすることもできるが、`mtg` / `mtg-rec` を使うなら不要。
 
 ---
 
@@ -21,24 +46,38 @@ OBSの2トラック録音から **話者ラベル付き文字起こし** と **�
 | ffmpeg | 音声抽出・変換 | `which ffmpeg`（home-manager 管理） |
 | whisper-cpp | 文字起こし | `which whisper-cli`（home-manager 管理） |
 | claude (CLI) | 議事録生成 | `which claude`（別管理・ambient） |
-| whisperモデル(turbo) | `~/.cache/whisper-cpp/models/ggml-large-v3-turbo.bin` | switch で自動取得(約1.6GB) |
+| whisperモデル(turbo / small) | `~/.cache/whisper-cpp/models/` | switch で自動取得(約1.6GB + 約0.5GB) |
 
 ### モデルについて
 
-既定の **turbo (large-v3-turbo)** は `shared/programs/mtg-minutes.nix` が `fetchurl` で取得し、
-`home-manager switch` で `~/.cache/whisper-cpp/models/` に配置される（手動DL不要）。
+`shared/programs/mtg-minutes.nix` が `fetchurl` で取得し、`home-manager switch` で
+`~/.cache/whisper-cpp/models/` に配置される（手動DL不要）。
 
-`mtg-live --model base` / `--model small` を使いたい場合は **手動DL** が必要:
+| モデル | 用途 |
+|--------|------|
+| **turbo** (large-v3-turbo) | `mtg-minutes` のバッチ文字起こし / `mtg-live`(相手側)の既定 |
+| **small** | `mtg-self`(自分側)の既定。`mtg` で2本同時に回すときGPUを食い合わないため |
+
+`base` を使いたい場合だけ **手動DL** が必要:
 
 ```bash
-# whisper.cpp の配布モデルを ~/.cache に置く
 M=~/.cache/whisper-cpp/models
-curl -L -o "$M/ggml-base.bin"  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
-curl -L -o "$M/ggml-small.bin" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin
+curl -L -o "$M/ggml-base.bin" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
 ```
 
-> 既に turbo を手動DL済みなら、symlink 衝突を避けるため switch 前に
-> `rm ~/.cache/whisper-cpp/models/ggml-large-v3-turbo.bin` しておく。
+> 手動DL済みの実ファイルが同じパスにある場合、home-manager は
+> `cmp` で中身を比較し、**同一なら警告を出して symlink 作成をスキップする**
+> (`Existing file ... will be skipped since they are the same`)。
+> switch は失敗しないが、実ファイルが残るので store のコピーと二重に容量を食う。
+> symlink に寄せて容量を返すなら、switch 前に消しておく:
+> ```bash
+> rm -f ~/.cache/whisper-cpp/models/ggml-large-v3-turbo.bin \
+>       ~/.cache/whisper-cpp/models/ggml-small.bin
+> ```
+> 中身が違う場合のみ collision エラーになるが、その判定は実際のファイル配置
+> (`writeBoundary`)より前に走るので、失敗しても何も変更されない。
+
+指定したモデルが未配置でも即死はせず、turbo → small → base の順に代替して警告を出す。
 
 ## 2. OBS の設定(初回のみ・GUI操作)
 
@@ -77,6 +116,9 @@ mtg-minutes RECORDING.mkv --no-logseq
 # 議事録なし(文字起こしのみ)
 mtg-minutes RECORDING.mkv --no-minutes --no-logseq
 
+# 録音が無い/失敗した場合: ライブ字幕ログから議事録を作る
+mtg-minutes --transcript ~/Documents/mtg-minutes/live/live_20260731_100000.txt --title "1on1 田中さん"
+
 # 録音音声を添付しない(容量節約・長尺会議など)
 mtg-minutes RECORDING.mkv --no-attach-audio
 
@@ -97,7 +139,12 @@ mtg-minutes RECORDING.mkv --self-track 1 --other-track 0
 
 home-manager で管理する。`shared/programs/mtg-minutes.nix` が `bin/*` を nix パッケージ化し、
 `ffmpeg` / `whisper-cpp`(whisper-cli・whisper-stream)を runtimeInputs として固定する。
-r-shibuya プロファイルの imports に組み込み済みなので、switch すれば `mtg-rec` / `mtg-live` / `mtg-minutes` が PATH に入る。
+r-shibuya プロファイルの imports に組み込み済みなので、switch すれば
+`mtg` / `mtg-rec` / `mtg-live` / `mtg-self` / `mtg-minutes` が PATH に入る。
+
+共通コードは `lib/mtgcommon.py` にあり、`$out/lib` に置かれる。各スクリプトが自分の
+`../lib` を `sys.path` に足して読む(`PYTHONPATH` は使わない。子プロセスとして呼ぶ
+`claude` CLI などに影響させないため)。
 
 ```bash
 home-manager switch --flake .#r-shibuya
@@ -142,6 +189,63 @@ programs.mtg-minutes = {
 
 ---
 
+# 会議中の一括起動 (`mtg`)
+
+**会議中はこれ一本でよい。** 録音しながら、自分と相手の発言をライブ字幕として
+1つのターミナルに時系列で流す。以前は `mtg-rec` と `mtg-live` を別セッションで
+並べる必要があったのを1コマンド・1プロセスにまとめたもの。
+
+```bash
+mtg                          # 録音 + 両サイド字幕、Ctrl-C で停止
+mtg --minutes "1on1 田中"     # 停止後そのまま議事録生成まで実行
+mtg --live other             # 相手の字幕だけ(録音はする)
+mtg --no-rec                 # 録音せず字幕だけ
+mtg --duration 30            # 30秒で自動停止(テスト用)
+mtg --list                   # デバイス一覧(録音用 / 字幕用の両方)
+```
+
+やっていること:
+
+- `mtg-rec` をサブプロセスとして起動し、2トラック `.mkv` を `~/Movies` に録音
+- `whisper-stream` を2本(BlackHole 2ch / 16ch)このプロセス内で回してライブ字幕
+- Ctrl-C で全部止め、`--minutes` があれば `mtg-minutes` に引き渡す
+
+### 表示と保存
+
+字幕は **文字起こしが終わった順** に表示され、**発話開始時刻順** に保存される。
+whisper-stream の VAD 出力に含まれる `t0`(発話開始時刻)を拾い、
+`[Start speaking]` を観測した時刻を原点に絶対時刻へ直しているので、
+自分側(small=速い)と相手側(turbo=遅い)で処理遅延が違っても時刻は揃う。
+
+保存先は `~/Documents/mtg-minutes/live/live_<日時>.txt`。到着した順にその場で
+追記し(途中で落ちても記録が残るように)、終了時に発話順へ並べ替えて書き直す。
+
+**録音が失敗していた場合は、このファイルがそのまま救済材料になる**:
+
+```bash
+mtg-minutes --transcript ~/Documents/mtg-minutes/live/live_20260731_100000.txt --title "会議名"
+```
+
+`mtg --minutes` は録音があればそちら(バッチ文字起こしなので高精度)を使い、
+録音が無い/空なら自動でライブ字幕ログにフォールバックする。
+
+### モデル
+
+既定は **相手=turbo / 自分=small**。`whisper-stream` を2本同時に回すとGPU負荷が
+倍になるため、自分の発言は内容を知っていて精度要求が低いぶん軽いモデルに寄せている。
+議事録本体は録音からのバッチ文字起こし(turbo)なので、ここの選択は最終的な
+議事録の精度には影響しない。変えるなら `--self-model` / `--other-model`。
+
+### 停止まわり
+
+`mtg-rec` は別プロセスグループで起動している。同じグループのままだと端末の
+Ctrl-C が `mtg-rec` にも直接届き、`mtg` からの停止指示と二重になって、
+finalize や無音チェックの最中に2発目の SIGINT が刺さるため。停止の指示元を
+`mtg` に一本化し、停止時は `killpg` でグループごと送っている
+(= 端末の Ctrl-C と同じ効き方を再現し、配下の ffmpeg にもちゃんと届く)。
+
+---
+
 # コマンド録音 (`mtg-rec`)
 
 OBSを使わずにコマンドで会議を2トラック録音する。録音した `.mkv` はそのまま `mtg-minutes` に渡せる。
@@ -177,17 +281,33 @@ mtg-rec --list                # 録音デバイス一覧
 
 ---
 
-# ライブ字幕 (`mtg-live`)
+# ライブ字幕 (`mtg-live` / `mtg-self`)
 
-会議中に **相手の声** をリアルタイム文字起こししてターミナルに表示する。
-1on1などで「相手が今言ったこと」をさっと見返す補助用。録音・議事録系とは独立。
+会議中に発言をリアルタイム文字起こししてターミナルに表示する。
+**録音しながら両サイド出したいなら `mtg` を使う**(こちらはその片側だけを単体で回すもの)。
+
+| コマンド | 対象 | デバイス | 既定モデル |
+|----------|------|----------|-----------|
+| `mtg-live` | 相手の声 | BlackHole 16ch | turbo |
+| `mtg-self` | 自分の声 | BlackHole 2ch | small |
 
 ```
-通話アプリの出力 → Multi-Output Device(ヘッドホン + BlackHole 16ch)
+通話アプリの出力 → 複数出力装置(ヘッドホン + BlackHole 16ch)
                          │(自分は普通に聞ける)
                          ▼
-              BlackHole 16ch を whisper-stream が読む → ターミナルに字幕
+              BlackHole 16ch を whisper-stream が読む → ターミナルに字幕   … mtg-live
+
+物理マイク → OBS(RNNoise) → BlackHole 2ch
+                                  │
+                                  ▼
+              BlackHole 2ch を whisper-stream が読む → ターミナルに字幕    … mtg-self
 ```
+
+`mtg-self` は `mtg-rec` の自分側と同じ経路をそのまま使う。OBS を使わず生マイクで
+拾うなら `mtg-self --device "UAB-80"` のように上書きする。単体で使うなら
+`--model turbo` でよい(既定が small なのは `mtg` で2本同時に回すときのため)。
+
+字幕は `[時刻] ラベル: 本文` の形で表示・保存される。
 
 ## 初回セットアップ(音声経路・1回だけ)
 
@@ -219,12 +339,16 @@ brew install --cask blackhole-16ch
 # 既定(BlackHole 16ch・turboモデル・高精度・VADモード)で開始
 mtg-live
 
+# 自分側(BlackHole 2ch・smallモデル)
+mtg-self
+mtg-self --model turbo    # 単体で使うなら精度優先でよい
+
 # デバイス一覧(番号確認用)
 mtg-live --list
 
 # 軽くしたい(バッテリー優先など)
 mtg-live --model small    # 14倍速・良好
-mtg-live --model base     # 22倍速・最軽量
+mtg-live --model base     # 22倍速・最軽量(手動DLが必要)
 
 # 相手の発言を英語にライブ翻訳
 mtg-live --translate
@@ -243,8 +367,10 @@ Ctrl-C で終了。
 - `--step 0`(既定)= VADモード。発話の区切りで確定表示(自然な文・低負荷)。
 - `--step 700` 等にするとスライディング表示(より即時だが断片的・高負荷)。
 - `--vad-thold`(既定0.6)= 小さいほど厳しく拾う。雑音が多ければ上げる。
-- 既定はturbo(M3で8.5倍速・最高精度でライブに十分間に合う)。バッテリー優先なら `--model small`。
+- `mtg-live` の既定はturbo(M3で8.5倍速・最高精度でライブに十分間に合う)。バッテリー優先なら `--model small`。
   - 参考実測(M3・日本語30秒): base 22倍速/粗い, small 14倍速/良好, turbo 8.5倍速/最良。medium は遅い上に精度も劣るため非採用。
+- `mtg` で2本同時に回すとGPUを食い合うので、既定は 相手=turbo / 自分=small。
+  発熱・バッテリーが気になるなら `mtg --other-model small`。
 
 ---
 
@@ -254,3 +380,8 @@ Ctrl-C で終了。
 - `~/Movies` を監視(launchd / fswatch)し、新規録音が出たら自動で `mtg-minutes` 実行
 - OBS WebSocket(`localhost:4455`, 有効化が必要)で録音の開始/停止を外部制御
 - `mtg-minutes --latest` で最新録音を自動選択(未実装の小改善案)
+
+## ライブ字幕まわり
+- 話者ラベルを実名にする(`mtg --other-label "田中さん"` 等)
+- 会議中に印を打つ(キー入力で「あとで見る」マーカーを字幕ログに挿入)
+- ライブ字幕を随時 Claude に流し、会議中に要約・論点抽出を出す
