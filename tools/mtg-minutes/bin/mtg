@@ -32,7 +32,6 @@ BlackHole は複数プロセスからの同時読み出しに対応している�
 ライブ字幕のモデル選択は最終的な議事録の精度には影響しない。
 """
 import argparse
-import datetime as dt
 import os
 import signal
 import subprocess
@@ -42,22 +41,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from mtgcommon import (  # noqa: E402
-    MODELS, SIDES, LiveLog, LiveTranscriber, LIVE_LOG_DIR,
-    die, enumerate_capture_devices, info, print_capture_devices, print_utterance,
-    resolve_capture_device, resolve_model, stamp, warn,
+    LIVE_SILENCE_ALERT_SEC_DEFAULT, MEETING_OUTPUT_DEVICE, MODELS, OUT_DIR,
+    POLL_INTERVAL_SEC, READY_TIMEOUT_SEC, SIDES, LiveTranscriber,
+    add_tuning_args, die, enumerate_capture_devices, hr, info, open_live_log,
+    print_capture_devices, print_minutes_hint, resolve_model, resolve_or_report,
+    sibling, stamp, stop_all, warn,
 )
 
-OUT_DIR = Path.home() / "Movies"
-MEETING_OUTPUT_DEVICE = "会議用"
-LIVE_SILENCE_ALERT_SEC_DEFAULT = 120
 # 録音停止後、mtg-rec が finalize と無音チェックを終えるのを待つ上限
 REC_SHUTDOWN_TIMEOUT_SEC = 300
-
-
-def sibling(name):
-    """PATH に頼らず、自分の隣にある mtg-* を絶対パスで解決する"""
-    p = Path(__file__).resolve().parent / name
-    return str(p) if p.exists() else name
 
 
 def build_parser():
@@ -76,24 +68,24 @@ def build_parser():
     ap.add_argument("--out", default="", help="録音の出力パス(既定: ~/Movies/mtg_日時.mkv)")
 
     g = ap.add_argument_group("デバイス / モデル")
+    # デバイス名は録音(ffmpeg/avfoundation)とライブ字幕(whisper-stream/SDL)の
+    # 両方に同じ名前で照合する。番号の体系は別だが名前は共通なのでこれで足りる。
+    # 片方の API にしか出ない名前のデバイスを指すと、もう片方が外れる点に注意。
     g.add_argument("--self-device", default=SIDES["self"]["device"],
-                   help=f"自分の音声デバイス名 (既定: {SIDES['self']['device']})")
+                   help=f"自分の音声デバイス名。録音・字幕の両方に使う "
+                        f"(既定: {SIDES['self']['device']})")
     g.add_argument("--other-device", default=SIDES["other"]["device"],
-                   help=f"相手の音声デバイス名 (既定: {SIDES['other']['device']})")
+                   help=f"相手の音声デバイス名。録音・字幕の両方に使う "
+                        f"(既定: {SIDES['other']['device']})")
     g.add_argument("--self-model", choices=list(MODELS), default=SIDES["self"]["model"],
                    help=f"自分側の字幕モデル (既定: {SIDES['self']['model']})")
     g.add_argument("--other-model", choices=list(MODELS), default=SIDES["other"]["model"],
                    help=f"相手側の字幕モデル (既定: {SIDES['other']['model']})")
 
     g = ap.add_argument_group("字幕チューニング")
-    g.add_argument("--language", default="ja")
-    g.add_argument("--step", type=int, default=0,
-                   help="0=VAD(発話区切りで確定) / >0=スライディング(ms)")
-    g.add_argument("--length", type=int, default=10000, help="1チャンクの最大長(ms)")
-    g.add_argument("--vad-thold", type=float, default=0.6, help="VAD感度(0=厳しい〜1=緩い)")
     g.add_argument("--translate", action="store_true",
                    help="相手の発言を英語にライブ翻訳(自分側には適用しない)")
-    g.add_argument("--no-save", action="store_true", help="字幕ログを保存しない")
+    add_tuning_args(g)
 
     g = ap.add_argument_group("録音")
     g.add_argument("--output-device", default=MEETING_OUTPUT_DEVICE,
@@ -123,7 +115,7 @@ def start_recorder(args, out):
         "--other-device", args.other_device,
         "--output-device", args.output_device,
         "--live-silence-sec", str(args.live_silence_sec),
-        "--no-hint",             # 終了時の案内はこちらでまとめて出す
+        "--quiet-ui",            # トップレベル向けの案内はこちらでまとめて出す
     ]
     if args.duration > 0:
         cmd += ["--duration", str(args.duration)]
@@ -157,12 +149,7 @@ def stop_recorder(proc):
 
 def start_transcribers(args, sides, session_zero):
     """指定サイドの whisper-stream を起動する。字幕の出力先も配線する。"""
-    log = None if args.no_save else LiveLog(LIVE_LOG_DIR / f"live_{stamp()}.txt")
-
-    def on_utterance(side, t, text):
-        print_utterance(t, SIDES[side], text)
-        if log:
-            log.add(t, SIDES[side]["label"], text)
+    log, on_utterance = open_live_log(args.no_save)
 
     # デバイス列挙は whisper-stream を一瞬起動するので1回だけ行って使い回す
     probe_model = resolve_model(SIDES[sides[0]]["model"], quiet=True)[1]
@@ -171,13 +158,10 @@ def start_transcribers(args, sides, session_zero):
 
     transcribers = []
     for side in sides:
-        name = getattr(args, f"{side}_device")
-        cap_id, cap_name = resolve_capture_device(devices, name)
+        cap_id, cap_name = resolve_or_report(
+            devices, getattr(args, f"{side}_device"), SIDES[side]["label"])
         if cap_id is None:
-            warn(f"{SIDES[side]['label']}側のデバイス '{name}' が見つかりません"
-                 f"(このサイドの字幕は無効)")
-            if devices:
-                warn("検出されたデバイス: " + ", ".join(f"#{i}:{n}" for i, n in devices))
+            warn(f"{SIDES[side]['label']}側の字幕は無効になります。")
             continue
         model_name, model_path = resolve_model(getattr(args, f"{side}_model"))
         tr = LiveTranscriber(
@@ -191,10 +175,12 @@ def start_transcribers(args, sides, session_zero):
         tr.start()
         transcribers.append(tr)
 
-    # モデルロードを待って、起動できなかったサイドをその場で知らせる
+    # モデルロードを待って、起動できなかったサイドをその場で知らせる。
+    # 期限は全サイド共通にする(サイドごとに持つと待ちが本数分積み上がる)。
+    deadline = time.monotonic() + READY_TIMEOUT_SEC
     alive = []
     for tr in transcribers:
-        if tr.wait_ready():
+        if tr.wait_ready(deadline):
             alive.append(tr)
         else:
             warn(f"{tr.meta['label']}側の字幕を開始できませんでした。")
@@ -235,7 +221,7 @@ def main():
             out.parent.mkdir(parents=True, exist_ok=True)
         else:
             OUT_DIR.mkdir(parents=True, exist_ok=True)
-            out = OUT_DIR / f"mtg_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.mkv"
+            out = OUT_DIR / f"mtg_{stamp()}.mkv"
 
     # 字幕のタイムスタンプの原点。録音開始とほぼ同時にしておくと、
     # ライブ字幕の時刻と録音ファイル内の時刻がだいたい一致する。
@@ -252,27 +238,26 @@ def main():
         if log:
             info(f"字幕ログ: {log.path}")
         if args.duration > 0:
-            if rec_proc is None:        # 録音時は mtg-rec 側が同じ案内を出す
-                info(f"{args.duration}秒で自動停止します")
+            info(f"{args.duration}秒で自動停止します")
         else:
             info("進行中… \033[1mCtrl-C で停止\033[0m")
-        print("\033[2m" + "─" * 60 + "\033[0m", file=sys.stderr)
+        hr()
 
+        # 録音しているなら録音の終了に追従する。していないなら
+        # 期限切れか、字幕が全部落ちたときに抜ける。
         deadline = session_zero + args.duration if args.duration > 0 else None
         while True:
-            if rec_proc is not None and rec_proc.poll() is not None:
-                break                      # 録音が自分から終わった(--duration / 異常終了)
-            if rec_proc is None and deadline and time.monotonic() >= deadline:
+            if rec_proc is not None:
+                if rec_proc.poll() is not None:
+                    break
+            elif (deadline and time.monotonic() >= deadline) \
+                    or all(t.proc.poll() is not None for t in transcribers):
                 break
-            if transcribers and all(t.proc.poll() is not None for t in transcribers) \
-                    and rec_proc is None:
-                break                      # 字幕だけの実行で全部落ちた
-            time.sleep(0.3)
+            time.sleep(POLL_INTERVAL_SEC)
     except KeyboardInterrupt:
         pass
     finally:
-        for tr in transcribers:
-            tr.stop()
+        stop_all(transcribers)
         stop_recorder(rec_proc)
         if log:
             log.close()
@@ -283,30 +268,34 @@ def main():
     if log:
         info(f"字幕ログ: {log.path}")
 
-    recording_ok = out is not None and out.exists() and out.stat().st_size >= 1024
+    # 議事録の材料を1回だけ決める。録音があればそちら(バッチ文字起こしなので
+    # 精度が高い)、録音に失敗していればライブ字幕ログから作る。
+    # 案内を出すときと実際に生成するときで判定がずれないよう、条件はここだけ。
+    def usable(path, min_size):
+        return path is not None and path.exists() and path.stat().st_size >= min_size
+
+    from_recording = usable(out, 1024)
+    if from_recording:
+        source, args_tail = out, [str(out)]
+    elif log and usable(log.path, 1):
+        source, args_tail = log.path, ["--transcript", str(log.path)]
+    else:
+        source, args_tail = None, []
 
     if args.minutes is None:
-        if recording_ok:
-            print("\n次のコマンドで議事録化できます:")
-            print(f"  mtg-minutes {out} --title \"会議名\"")
-        elif log:
-            print("\nライブ字幕から議事録化するなら:")
-            print(f"  mtg-minutes --transcript {log.path} --title \"会議名\"")
+        if from_recording:
+            print_minutes_hint(recording=source)
+        elif source is not None:
+            print_minutes_hint(transcript=source)
         return
 
-    # --minutes: 録音があればそちら(バッチ文字起こしなので精度が高い)、
-    # 録音に失敗していればライブ字幕ログから議事録を作る。
-    exe = sibling("mtg-minutes")
-    if recording_ok:
-        title = args.minutes or out.stem
-        info(f"議事録を生成します(録音から): {out}")
-        os.execvp(exe, [exe, str(out), "--title", title])
-    elif log and log.path.exists() and log.path.stat().st_size > 0:
-        title = args.minutes or log.path.stem
-        warn("録音が無い/空のため、ライブ字幕ログから議事録を生成します。")
-        os.execvp(exe, [exe, "--transcript", str(log.path), "--title", title])
-    else:
+    if source is None:
         die("録音もライブ字幕も残っていないため、議事録を生成できません。")
+    if not from_recording:
+        warn("録音が無い/空のため、ライブ字幕ログから議事録を生成します。")
+    info(f"議事録を生成します: {source}")
+    exe = sibling("mtg-minutes")
+    os.execvp(exe, [exe, *args_tail, "--title", args.minutes or source.stem])
 
 
 if __name__ == "__main__":

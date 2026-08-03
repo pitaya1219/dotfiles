@@ -51,11 +51,11 @@ let
       runHook preInstall
 
       mkdir -p $out/bin $out/lib
-      cp ${lib.concatMapStringsSep " " (p: "bin/${p}") programs} $out/bin/
       cp lib/mtgcommon.py $out/lib/
-      patchShebangs $out/bin
 
       for prog in ${lib.concatStringsSep " " programs}; do
+        cp bin/$prog $out/bin/
+        patchShebangs $out/bin/$prog
         wrapProgram $out/bin/$prog \
           --prefix PATH : ${lib.makeBinPath runtimeInputs}
       done

@@ -26,21 +26,22 @@ mtg-rec — OBSを使わずにコマンドで会議を2トラック録音する�
 (こちらは会議中の検知漏れ・OFFにした場合のフォールバック)。
 """
 import argparse
-import datetime as dt
 import os
 import re
-import signal
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 
-SELF_DEVICE = "BlackHole 2ch"
-OTHER_DEVICE = "BlackHole 16ch"
-MEETING_OUTPUT_DEVICE = "会議用"
-OUT_DIR = Path.home() / "Movies"
-MTG_MINUTES = "mtg-minutes"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from mtgcommon import (  # noqa: E402
+    LIVE_SILENCE_ALERT_SEC_DEFAULT, MEETING_OUTPUT_DEVICE, OUT_DIR, SIDES,
+    die, info, print_minutes_hint, resolve_device, sibling, stamp, warn,
+)
+
+SELF_DEVICE = SIDES["self"]["device"]
+OTHER_DEVICE = SIDES["other"]["device"]
 
 # 無音チェック: 録音全体に等間隔でサンプル窓をとり、無音(閾値未満)だった窓の
 # 割合が高ければ「そのトラックは録れていない疑いがある」と警告する。
@@ -55,28 +56,15 @@ SILENCE_MAX_SAMPLES = 15
 SILENCE_FRACTION_THRESHOLD = 0.6  # サンプル窓のこの割合以上が無音なら警告
 
 # ライブ無音検知: 録音本体とは別に、同じデバイスをもう一系統 ffmpeg で開いて
-# silencedetect フィルタだけ回し、この秒数以上無音が続いたらその場で警告する。
+# silencedetect フィルタだけ回し、既定秒数以上無音が続いたらその場で警告する
+# (秒数の既定値は mtgcommon の LIVE_SILENCE_ALERT_SEC_DEFAULT)。
 # BlackHole は複数プロセスからの同時読み出しに対応しているため競合しない
 # (実機で検証済み)。事後チェック(check_track_silence)は「会議後に気づく」
 # ためのフォールバックであり、会議中に気づけないと対処のしようがないので
 # こちらが本命。
-LIVE_SILENCE_ALERT_SEC_DEFAULT = 120
 
 DEV_RE = re.compile(r"\[(\d+)\]\s+(.+)")
 MEAN_VOLUME_RE = re.compile(r"mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB")
-
-
-def info(msg):
-    print(f"\033[36m▶\033[0m {msg}", file=sys.stderr)
-
-
-def warn(msg):
-    print(f"\033[33m⚠\033[0m {msg}", file=sys.stderr)
-
-
-def die(msg, code=1):
-    print(f"\033[31m✖\033[0m {msg}", file=sys.stderr)
-    sys.exit(code)
 
 
 def get_audio_output():
@@ -114,14 +102,6 @@ def list_audio_devices():
             if m:
                 devices.append((int(m.group(1)), m.group(2).strip()))
     return devices
-
-
-def resolve(devices, name):
-    nl = name.lower()
-    for idx, dname in devices:
-        if nl in dname.lower():
-            return idx, dname
-    return None, None
 
 
 def probe_duration(path):
@@ -240,8 +220,12 @@ def main():
                     help="システム出力デバイスの自動切り替えをスキップ")
     ap.add_argument("--live-silence-sec", type=int, default=LIVE_SILENCE_ALERT_SEC_DEFAULT,
                     help=f"録音中この秒数以上無音が続いたら警告 (既定: {LIVE_SILENCE_ALERT_SEC_DEFAULT}秒、0で無効化)")
-    ap.add_argument("--no-hint", action="store_true",
-                    help="終了時の議事録化コマンドの案内を出さない(mtg から呼ばれる時など)")
+    # mtg から呼ばれるとき用。トップレベルのコマンドとして喋る前提の案内
+    # (自動停止の予告、終了時の議事録化コマンド)をまとめて黙らせる。
+    # 個別のメッセージごとにフラグを足すと、mtg 側にも「これは出す/出さない」
+    # の分岐が増えていくので、まとめて1つのスイッチにしてある。
+    ap.add_argument("--quiet-ui", action="store_true",
+                    help="トップレベル向けの案内を出さない(mtg から呼ばれる時など)")
     args = ap.parse_args()
 
     devices = list_audio_devices()
@@ -256,8 +240,8 @@ def main():
             print(f"  [{idx}] {name}{tag}")
         return
 
-    self_idx, self_name = resolve(devices, args.self_device)
-    other_idx, other_name = resolve(devices, args.other_device)
+    self_idx, self_name = resolve_device(devices, args.self_device)
+    other_idx, other_name = resolve_device(devices, args.other_device)
     if self_idx is None:
         die(f"自分のマイク '{args.self_device}' が見つかりません。--list で確認を。")
     if other_idx is None:
@@ -268,7 +252,7 @@ def main():
         out = Path(args.out).expanduser()
     else:
         OUT_DIR.mkdir(parents=True, exist_ok=True)
-        out = OUT_DIR / f"mtg_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.mkv"
+        out = OUT_DIR / f"mtg_{stamp()}.mkv"
 
     # 単一ffmpegで2入力 → 2トラック録音。
     # 相手(BlackHole 16ch)は先頭2chをモノラルに集約(残り14chは無音のため)。
@@ -286,10 +270,11 @@ def main():
 
     info(f"自分: [{self_idx}] {self_name}  /  相手: [{other_idx}] {other_name}")
     info(f"録音先: {out}")
-    if args.duration > 0:
-        info(f"{args.duration}秒で自動停止します")
-    else:
-        info("録音中… \033[1mCtrl-C で停止\033[0m")
+    if not args.quiet_ui:
+        if args.duration > 0:
+            info(f"{args.duration}秒で自動停止します")
+        else:
+            info("録音中… \033[1mCtrl-C で停止\033[0m")
 
     # 録音前: システム出力デバイスを「会議用」に切り替え
     prev_output = None
@@ -369,14 +354,11 @@ def main():
     # そのまま議事録生成
     if args.minutes is not None:
         title = args.minutes or out.stem
-        # PATHに頼らず、自分の隣にある mtg-minutes を絶対パスで解決
-        sibling = Path(__file__).resolve().parent / "mtg-minutes"
-        exe = str(sibling) if sibling.exists() else MTG_MINUTES
+        exe = sibling("mtg-minutes")
         info(f"議事録を生成します: {exe} {out} --title \"{title}\"")
         os.execvp(exe, [exe, str(out), "--title", title])
-    elif not args.no_hint:
-        print(f"\n次のコマンドで議事録化できます:")
-        print(f"  mtg-minutes {out} --title \"会議名\"")
+    elif not args.quiet_ui:
+        print_minutes_hint(recording=out)
 
 
 if __name__ == "__main__":

@@ -24,22 +24,11 @@ OBS を使わず生マイクで拾うなら --device "UAB-80" のように上書
 
 Ctrl-C で終了。
 """
-import argparse
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from mtgcommon import SIDES, add_live_args, run_single_side  # noqa: E402
-
-SIDE = "self"
-
-
-def main():
-    ap = argparse.ArgumentParser(
-        prog="mtg-self", description=f"{SIDES[SIDE]['label']}の声をリアルタイム文字起こし")
-    add_live_args(ap, SIDE)
-    run_single_side(SIDE, ap.parse_args())
-
+from mtgcommon import live_main  # noqa: E402
 
 if __name__ == "__main__":
-    main()
+    live_main("mtg-self", "self")

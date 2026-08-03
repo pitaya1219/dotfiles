@@ -30,15 +30,20 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from mtgcommon import CONFIG_FILE, MODELS, SIDES, die, info, warn  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # 設定(環境変数 or ~/.config/mtg-minutes/config.json で上書き可)
 # ---------------------------------------------------------------------------
 DEFAULTS = {
-    "model": str(Path.home() / ".cache/whisper-cpp/models/ggml-large-v3-turbo.bin"),
+    "model": str(MODELS["turbo"]),
     "whisper_bin": "whisper-cli",
     "language": "ja",
-    "self_label": "自分",
-    "other_label": "相手",
+    # ライブ字幕(mtgcommon.SIDES)と同じ値を使う。こことライブ側で食い違うと、
+    # 同じ会議なのに録音経由と --transcript 経由で話者名が変わってしまう。
+    "self_label": SIDES["self"]["label"],
+    "other_label": SIDES["other"]["label"],
     "logseq_url": "http://127.0.0.1:12315/api",
     "logseq_token": "",          # configs.edn の :server/tokens から取得しても良い
     "logseq_token_cmd": "",      # トークン取得コマンド(例: passage show ...)。logseq_token 未設定時に実行
@@ -53,10 +58,9 @@ DEFAULTS = {
 
 def load_config():
     cfg = dict(DEFAULTS)
-    cfg_file = Path.home() / ".config/mtg-minutes/config.json"
-    if cfg_file.exists():
+    if CONFIG_FILE.exists():
         try:
-            cfg.update(json.loads(cfg_file.read_text()))
+            cfg.update(json.loads(CONFIG_FILE.read_text()))
         except Exception as e:
             warn(f"config.json の読み込みに失敗: {e}")
     # 環境変数 (MTG_MODEL, MTG_LOGSEQ_TOKEN, ...) で上書き
@@ -96,19 +100,6 @@ def read_logseq_token():
 # ---------------------------------------------------------------------------
 # ユーティリティ
 # ---------------------------------------------------------------------------
-def info(msg):
-    print(f"\033[36m▶\033[0m {msg}", file=sys.stderr)
-
-
-def warn(msg):
-    print(f"\033[33m⚠\033[0m {msg}", file=sys.stderr)
-
-
-def die(msg, code=1):
-    print(f"\033[31m✖\033[0m {msg}", file=sys.stderr)
-    sys.exit(code)
-
-
 def run(cmd, **kw):
     return subprocess.run(cmd, check=True, **kw)
 
