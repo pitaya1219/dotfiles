@@ -104,6 +104,40 @@ def list_audio_devices():
     return devices
 
 
+def probe_channels(dev_idx):
+    """デバイスのチャンネル数を返す。取れなければ 0。
+
+    avfoundation は開いてみるまでチャンネル数が分からないので、
+    ごく短時間だけ開いて astats のチャンネル別出力を数える。
+    """
+    res = subprocess.run(
+        ["ffmpeg", "-f", "avfoundation", "-i", f":{dev_idx}", "-t", "0.3",
+         "-af", "astats=metadata=1:reset=0", "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    chans = [int(m.group(1)) for m in re.finditer(r"Channel:\s*(\d+)", res.stderr)]
+    return max(chans) if chans else 0
+
+
+def downmix_filter(n_channels):
+    """全チャンネルを素直に足してモノラルに落とす pan 式を作る。
+
+    チャンネル位置を決め打ちできないため、全部足す。
+    BlackHole 16ch のような多chデバイスでは、複数出力装置が音声を
+    どのチャンネルに書くかがユーザーの Audio MIDI 設定次第で変わる
+    (実機では ch3 に乗っていて、先頭2chには -46dB の残留しか無かった)。
+    先頭2ch決め打ちだと、そこが無音のとき「録れているのにノイズだけ」という
+    最悪の失敗をする。無音チャンネルは足しても 0 なので、全部足すのが安全。
+
+    ffmpeg 標準のダウンミックス(-ac 1)でも音は拾えるが、レイアウト上の
+    役割ごとに係数がかかって 17dB ほど痩せる(実測)。等倍で足す方を採る。
+    """
+    if n_channels <= 1:
+        return None
+    terms = "+".join(f"c{i}" for i in range(n_channels))
+    return f"pan=mono|c0={terms}"
+
+
 def probe_duration(path):
     """ffprobe で録音時間(秒)を取得。失敗時は None。"""
     res = subprocess.run(
@@ -254,21 +288,31 @@ def main():
         OUT_DIR.mkdir(parents=True, exist_ok=True)
         out = OUT_DIR / f"mtg_{stamp()}.mkv"
 
-    # 単一ffmpegで2入力 → 2トラック録音。
-    # 相手(BlackHole 16ch)は先頭2chをモノラルに集約(残り14chは無音のため)。
-    cmd = [
-        "ffmpeg", "-y",
-        "-f", "avfoundation", "-i", f":{self_idx}",
-        "-f", "avfoundation", "-i", f":{other_idx}",
-        "-filter_complex", "[1:a]pan=mono|c0=0.5*c0+0.5*c1[other]",
-        "-map", "0:a", "-map", "[other]",
-        "-c:a", "aac", "-b:a", "128k",
-    ]
+    # 単一ffmpegで2入力 → 2トラック録音。各入力は全チャンネルを足して
+    # モノラルに落とす(どのチャンネルに音が乗るかは環境依存のため)。
+    self_ch = probe_channels(self_idx)
+    other_ch = probe_channels(other_idx)
+    filters, maps = [], []
+    for i, (label, n_ch) in enumerate((("self", self_ch), ("other", other_ch))):
+        f = downmix_filter(n_ch)
+        if f:
+            filters.append(f"[{i}:a]{f}[{label}]")
+            maps += ["-map", f"[{label}]"]
+        else:
+            maps += ["-map", f"{i}:a"]
+
+    cmd = ["ffmpeg", "-y",
+           "-f", "avfoundation", "-i", f":{self_idx}",
+           "-f", "avfoundation", "-i", f":{other_idx}"]
+    if filters:
+        cmd += ["-filter_complex", ";".join(filters)]
+    cmd += maps + ["-c:a", "aac", "-b:a", "128k"]
     if args.duration > 0:
         cmd += ["-t", str(args.duration)]
     cmd.append(str(out))
 
-    info(f"自分: [{self_idx}] {self_name}  /  相手: [{other_idx}] {other_name}")
+    info(f"自分: [{self_idx}] {self_name} ({self_ch}ch)"
+         f"  /  相手: [{other_idx}] {other_name} ({other_ch}ch)")
     info(f"録音先: {out}")
     if not args.quiet_ui:
         if args.duration > 0:
@@ -289,11 +333,12 @@ def main():
     # ライブ無音検知: 録音本体とは別プロセスで同じデバイスをもう一系統開く
     self_monitor = other_monitor = None
     if args.live_silence_sec > 0:
-        self_monitor = SilenceMonitor(self_idx, "自分", None,
+        # 録音本体と同じダウンミックスをかけてから判定する。多chデバイスを
+        # そのまま silencedetect に通すと、無音チャンネルに引きずられて
+        # 「音は録れているのに無音」と誤検知する。
+        self_monitor = SilenceMonitor(self_idx, "自分", downmix_filter(self_ch),
                                        SILENCE_THRESHOLD_DB, args.live_silence_sec)
-        # 相手トラックは録音本体と同じくBlackHole 16chの先頭2chをモノラル集約してから判定
-        # (残り14chが常時無音なため、集約しないとsilencedetectが誤判定する)
-        other_monitor = SilenceMonitor(other_idx, "相手", "pan=mono|c0=0.5*c0+0.5*c1",
+        other_monitor = SilenceMonitor(other_idx, "相手", downmix_filter(other_ch),
                                         SILENCE_THRESHOLD_DB, args.live_silence_sec)
         self_monitor.start()
         other_monitor.start()
