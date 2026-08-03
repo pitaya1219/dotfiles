@@ -270,28 +270,33 @@ def main():
         OUT_DIR.mkdir(parents=True, exist_ok=True)
         out = OUT_DIR / f"mtg_{stamp()}.mkv"
 
-    # 単一ffmpegで2入力 → 2トラック録音。各入力は全チャンネルを足して
-    # モノラルに落とす(どのチャンネルに音が乗るかは環境依存のため)。
+    # デバイスごとに別プロセスで録り、停止後に1本の mkv へ束ねる。
+    #
+    # 単一の ffmpeg で avfoundation を2つ開くと「最初の入力」が壊れる。
+    # 音量は正常に見えるのに中身が音声にならず、whisper が延々と
+    # 「ご視聴ありがとうございました」を返す形で表面化した。実機での確認:
+    #   :0 単独            → 正しく文字起こしできる
+    #   :0 を先、:3 を後   → :0 が壊れる
+    #   :3 を先、:0 を後   → :0 は正常(壊れるのは常に先頭の入力)
+    # 相手側が2番目だったため、相手だけ無事という分かりにくい壊れ方をしていた。
+    #
+    # 各入力は全チャンネルを足してモノラルに落とす
+    # (どのチャンネルに音が乗るかは環境依存のため)。
     self_ch = probe_channels(self_idx)
     other_ch = probe_channels(other_idx)
-    filters, maps = [], []
-    for i, (label, n_ch) in enumerate((("self", self_ch), ("other", other_ch))):
+    parts, procs = [], []
+    for label, dev_idx, n_ch in (("self", self_idx, self_ch),
+                                 ("other", other_idx, other_ch)):
+        part = out.with_suffix(f".{label}.mka")
+        cmd = ["ffmpeg", "-y", "-f", "avfoundation", "-i", f":{dev_idx}"]
         f = downmix_filter(n_ch)
         if f:
-            filters.append(f"[{i}:a]{f}[{label}]")
-            maps += ["-map", f"[{label}]"]
-        else:
-            maps += ["-map", f"{i}:a"]
-
-    cmd = ["ffmpeg", "-y",
-           "-f", "avfoundation", "-i", f":{self_idx}",
-           "-f", "avfoundation", "-i", f":{other_idx}"]
-    if filters:
-        cmd += ["-filter_complex", ";".join(filters)]
-    cmd += maps + ["-c:a", "aac", "-b:a", "128k"]
-    if args.duration > 0:
-        cmd += ["-t", str(args.duration)]
-    cmd.append(str(out))
+            cmd += ["-af", f]
+        cmd += ["-c:a", "aac", "-b:a", "128k"]
+        if args.duration > 0:
+            cmd += ["-t", str(args.duration)]
+        cmd.append(str(part))
+        parts.append((label, part, cmd))
 
     info(f"自分: [{self_idx}] {self_name} ({self_ch}ch)"
          f"  /  相手: [{other_idx}] {other_name} ({other_ch}ch)")
@@ -335,17 +340,22 @@ def main():
     # ffmpegのstderrは事後診断のためログファイルに残す(DEVNULLに捨てない)
     ffmpeg_log = out.with_suffix(".log")
     with open(ffmpeg_log, "w") as logf:
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=logf)
+        for label, part, cmd in parts:
+            logf.write(f"=== {label}: {' '.join(cmd)}\n")
+            logf.flush()
+            procs.append(subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=logf))
         try:
             try:
-                proc.wait()
+                for p in procs:
+                    p.wait()
             except KeyboardInterrupt:
                 # Ctrl-C は ffmpeg にも届く。finalize を待つ。
-                try:
-                    proc.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    proc.terminate()
-                    proc.wait()
+                for p in procs:
+                    try:
+                        p.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        p.terminate()
+                        p.wait()
         finally:
             if self_monitor:
                 self_monitor.stop()
@@ -353,9 +363,24 @@ def main():
                 other_monitor.stop()
             # 録音後: 出力デバイスを元に戻す
             meeting_output.__exit__()
+
+        # 別々に録った2本を1本の mkv(トラック0=自分 / 1=相手)にまとめる。
+        # 再エンコードはしないので大きさに関わらず一瞬で終わる。
+        missing = [str(p) for _, p, _ in parts if not p.exists() or p.stat().st_size < 1024]
+        if missing:
+            die(f"録音ファイルが作成されませんでした。ffmpegのログを確認してください: {ffmpeg_log}")
+        merge = ["ffmpeg", "-y"]
+        for _, part, _ in parts:
+            merge += ["-i", str(part)]
+        merge += ["-map", "0:a", "-map", "1:a", "-c", "copy", str(out)]
+        logf.write(f"=== merge: {' '.join(merge)}\n")
+        logf.flush()
+        subprocess.run(merge, stdout=subprocess.DEVNULL, stderr=logf)
     print()
     if not out.exists() or out.stat().st_size < 1024:
-        die(f"録音ファイルが作成されませんでした。ffmpegのログを確認してください: {ffmpeg_log}")
+        die(f"録音の結合に失敗しました。ffmpegのログを確認してください: {ffmpeg_log}")
+    for _, part, _ in parts:
+        part.unlink(missing_ok=True)
     info(f"\033[32m録音完了\033[0m: {out}  ({out.stat().st_size//1024} KB)")
 
     # 無音チェック: OBSのAudio Monitoringが復旧しないまま録れてしまうケースなどを検知
