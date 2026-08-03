@@ -37,7 +37,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from mtgcommon import (  # noqa: E402
     LIVE_SILENCE_ALERT_SEC_DEFAULT, MEETING_OUTPUT_DEVICE, OUT_DIR, SIDES,
-    die, info, print_minutes_hint, resolve_device, sibling, stamp, warn,
+    MeetingOutput, die, info, print_minutes_hint, resolve_device, sibling,
+    stamp, warn,
 )
 
 SELF_DEVICE = SIDES["self"]["device"]
@@ -65,25 +66,6 @@ SILENCE_FRACTION_THRESHOLD = 0.6  # サンプル窓のこの割合以上が無�
 
 DEV_RE = re.compile(r"\[(\d+)\]\s+(.+)")
 MEAN_VOLUME_RE = re.compile(r"mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB")
-
-
-def get_audio_output():
-    """現在のシステム出力デバイス名を返す。SwitchAudioSource がなければ None。"""
-    try:
-        res = subprocess.run(["SwitchAudioSource", "-c"], capture_output=True, text=True)
-        return res.stdout.strip() or None
-    except FileNotFoundError:
-        return None
-
-
-def switch_audio_output(device_name):
-    """SwitchAudioSource でシステム出力デバイスを切り替える。失敗は warn のみ。"""
-    try:
-        subprocess.run(["SwitchAudioSource", "-s", device_name], check=True, capture_output=True)
-    except FileNotFoundError:
-        warn("SwitchAudioSource が見つかりません。出力デバイスの自動切り替えをスキップ")
-    except subprocess.CalledProcessError:
-        warn(f"出力デバイスの切り替えに失敗: {device_name!r}")
 
 
 def list_audio_devices():
@@ -320,15 +302,10 @@ def main():
         else:
             info("録音中… \033[1mCtrl-C で停止\033[0m")
 
-    # 録音前: システム出力デバイスを「会議用」に切り替え
-    prev_output = None
-    if not args.no_switch_output:
-        prev_output = get_audio_output()
-        if prev_output == args.output_device:
-            prev_output = None  # すでに正しいデバイスなら復元不要
-        else:
-            info(f"出力デバイス切り替え: {prev_output!r} → {args.output_device!r}")
-            switch_audio_output(args.output_device)
+    # 録音前: システム出力デバイスを「会議用」に切り替え。
+    # mtg から呼ばれるときは mtg 側が持つので --no-switch-output が渡ってくる。
+    meeting_output = MeetingOutput(args.output_device, not args.no_switch_output)
+    meeting_output.__enter__()
 
     # ライブ無音検知: 録音本体とは別プロセスで同じデバイスをもう一系統開く
     self_monitor = other_monitor = None
@@ -375,9 +352,7 @@ def main():
             if other_monitor:
                 other_monitor.stop()
             # 録音後: 出力デバイスを元に戻す
-            if prev_output:
-                switch_audio_output(prev_output)
-                info(f"出力デバイスを戻しました: {prev_output!r}")
+            meeting_output.__exit__()
     print()
     if not out.exists() or out.stat().st_size < 1024:
         die(f"録音ファイルが作成されませんでした。ffmpegのログを確認してください: {ffmpeg_log}")

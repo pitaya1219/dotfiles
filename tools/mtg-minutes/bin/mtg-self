@@ -16,11 +16,8 @@ OBS を使わず生マイクで拾うなら --device "UAB-80" のように上書
 使い方:
     mtg-self                         # 既定デバイス(BlackHole 2ch)で開始
     mtg-self --list                  # キャプチャデバイス一覧
-    mtg-self --model turbo           # 精度優先(既定はsmall=軽量)
+    mtg-self --model small           # 軽量(バッテリー優先)
     mtg-self --no-save               # ログファイルへの保存をやめ、標準出力のみにする
-
-既定モデルが turbo ではなく small なのは、`mtg` で相手側(turbo)と同時に回した
-ときにGPUを食い合わないようにするため。単体で使うなら --model turbo でよい。
 
 Ctrl-C で終了。
 """

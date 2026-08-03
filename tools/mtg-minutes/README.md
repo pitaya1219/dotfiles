@@ -55,8 +55,8 @@ OBS の2トラック録音(§2)を録音元にすることもできるが、`mtg
 
 | モデル | 用途 |
 |--------|------|
-| **turbo** (large-v3-turbo) | `mtg-minutes` のバッチ文字起こし / `mtg-live`(相手側)の既定 |
-| **small** | `mtg-self`(自分側)の既定。`mtg` で2本同時に回すときGPUを食い合わないため |
+| **turbo** (large-v3-turbo) | 既定。バッチ文字起こしもライブ字幕(両サイド)もこれ |
+| **small** | バッテリー優先で軽くしたいとき用(`--self-model small` など) |
 
 `base` を使いたい場合だけ **手動DL** が必要:
 
@@ -215,7 +215,7 @@ mtg --list                   # デバイス一覧(録音用 / 字幕用の両方
 字幕は **文字起こしが終わった順** に表示され、**発話開始時刻順** に保存される。
 whisper-stream の VAD 出力に含まれる `t0`(発話開始時刻)を拾い、
 `[Start speaking]` を観測した時刻を原点に絶対時刻へ直しているので、
-自分側(small=速い)と相手側(turbo=遅い)で処理遅延が違っても時刻は揃う。
+サイドごとにモデルや発話長が違って処理遅延がずれても時刻は揃う。
 
 whisper-stream の出力を読むうえで実機依存の癖が3つある(`stream.cpp` 準拠、
 回帰テストは `tests/test_parse.py`):
@@ -250,10 +250,23 @@ mtg-minutes --transcript ~/Documents/mtg-minutes/live/live_20260731_100000.txt -
 
 ### モデル
 
-既定は **相手=turbo / 自分=small**。`whisper-stream` を2本同時に回すとGPU負荷が
-倍になるため、自分の発言は内容を知っていて精度要求が低いぶん軽いモデルに寄せている。
-議事録本体は録音からのバッチ文字起こし(turbo)なので、ここの選択は最終的な
-議事録の精度には影響しない。変えるなら `--self-model` / `--other-model`。
+既定は **両サイドとも turbo**。
+
+当初は自分側を small にしてメモリと GPU を節約するつもりだったが、実測すると
+**2本目の turbo はメモリをほとんど食わない**:
+
+| | 使用メモリ | 増分 |
+|---|---|---|
+| 0本 | 6.25 GB | — |
+| turbo 1本 | 7.17 GB | +0.92 GB |
+| turbo 2本 | 7.13 GB | **±0.00 GB** |
+
+モデルファイルのページが OS 側で共有されるため、重み(1.5GB)は1度しか載らず、
+プロセスごとに増えるのは計算バッファ分だけだった。`whisper-server` を1本立てて
+両サイドから叩くような「1インスタンス共有」の作り替えは、メモリ目的なら意味がない。
+
+残るコストは Metal の取り合い(発熱・バッテリー)だけ。turbo は単体で実時間の
+8.5倍あるため2本でも実時間には間に合う。軽くしたいなら `--self-model small`。
 
 ### 停止まわり
 
@@ -319,7 +332,7 @@ mtg-rec --list                # 録音デバイス一覧
 | コマンド | 対象 | デバイス | 既定モデル |
 |----------|------|----------|-----------|
 | `mtg-live` | 相手の声 | BlackHole 16ch | turbo |
-| `mtg-self` | 自分の声 | BlackHole 2ch | small |
+| `mtg-self` | 自分の声 | BlackHole 2ch | turbo |
 
 ```
 通話アプリの出力 → 複数出力装置(ヘッドホン + BlackHole 16ch)
@@ -335,7 +348,7 @@ mtg-rec --list                # 録音デバイス一覧
 
 `mtg-self` は `mtg-rec` の自分側と同じ経路をそのまま使う。OBS を使わず生マイクで
 拾うなら `mtg-self --device "UAB-80"` のように上書きする。単体で使うなら
-`--model turbo` でよい(既定が small なのは `mtg` で2本同時に回すときのため)。
+`--model small` にするとバッテリー消費を抑えられる。
 
 字幕は `[時刻] ラベル: 本文` の形で表示・保存される。
 
@@ -369,9 +382,9 @@ brew install --cask blackhole-16ch
 # 既定(BlackHole 16ch・turboモデル・高精度・VADモード)で開始
 mtg-live
 
-# 自分側(BlackHole 2ch・smallモデル)
+# 自分側(BlackHole 2ch)
 mtg-self
-mtg-self --model turbo    # 単体で使うなら精度優先でよい
+mtg-self --model small    # バッテリー優先で軽くする
 
 # デバイス一覧(番号確認用)
 mtg-live --list
@@ -399,8 +412,9 @@ Ctrl-C で終了。
 - `--vad-thold`(既定0.6)= 小さいほど厳しく拾う。雑音が多ければ上げる。
 - `mtg-live` の既定はturbo(M3で8.5倍速・最高精度でライブに十分間に合う)。バッテリー優先なら `--model small`。
   - 参考実測(M3・日本語30秒): base 22倍速/粗い, small 14倍速/良好, turbo 8.5倍速/最良。medium は遅い上に精度も劣るため非採用。
-- `mtg` で2本同時に回すとGPUを食い合うので、既定は 相手=turbo / 自分=small。
-  発熱・バッテリーが気になるなら `mtg --other-model small`。
+- `mtg` は両サイドとも turbo。2本目のモデルはページが共有されメモリをほとんど食わない
+  (実測 ±0.00GB)ので、節約する意味が薄い。残るのは Metal の取り合いだけなので、
+  発熱・バッテリーが気になるときだけ `mtg --self-model small` で落とす。
 
 ---
 

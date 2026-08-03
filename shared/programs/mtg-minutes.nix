@@ -14,9 +14,9 @@ let
 
   # スクリプトが既定で使うモデルを nix で固定取得する。
   #   turbo … バッチ文字起こし(mtg-minutes)と相手側ライブ字幕の既定。約1.6GB
-  #   small … 自分側ライブ字幕(mtg-self)の既定。約0.5GB
-  # 2本の whisper-stream を同時に回すとGPUを食い合うため、自分側だけ軽い small を
-  # 既定にしている。その既定がモデル未配置で動かないのは筋が悪いので nix で置く。
+  #   small … バッテリー優先で軽くしたいとき用(--self-model small など)。約0.5GB
+  # small は既定ではないが、代替モデル(MODEL_FALLBACK)と軽量化の選択肢として
+  # 使うので置いておく。
   # base は引き続き手動DL(README §1 参照)。スクリプトは config ではなく
   # ~/.cache の各 ggml-*.bin を直接見る。
   whisperModels = {

@@ -28,8 +28,8 @@ BlackHole は複数プロセスからの同時読み出しに対応している�
 録音が失敗していた場合は、このファイルを mtg-minutes --transcript に渡せば
 ライブ字幕から議事録を作れる。
 
-議事録の本体は録音からのバッチ文字起こし(turbo)で作られるので、
-ライブ字幕のモデル選択は最終的な議事録の精度には影響しない。
+字幕は両サイドとも turbo。2本目の turbo はモデルのページが共有されるため
+メモリをほとんど食わない(実測 ±0.00GB)。バッテリー優先なら --self-model small。
 """
 import argparse
 import os
@@ -42,7 +42,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from mtgcommon import (  # noqa: E402
     LIVE_SILENCE_ALERT_SEC_DEFAULT, MEETING_OUTPUT_DEVICE, MODELS, OUT_DIR,
-    POLL_INTERVAL_SEC, READY_TIMEOUT_SEC, SIDES, LiveTranscriber,
+    POLL_INTERVAL_SEC, READY_TIMEOUT_SEC, SIDES, LiveTranscriber, MeetingOutput,
     add_tuning_args, die, enumerate_capture_devices, hr, info, open_live_log,
     print_capture_devices, print_minutes_hint, resolve_model, resolve_or_report,
     sibling, stamp, stop_all, warn,
@@ -87,11 +87,15 @@ def build_parser():
                    help="相手の発言を英語にライブ翻訳(自分側には適用しない)")
     add_tuning_args(g)
 
-    g = ap.add_argument_group("録音")
+    g = ap.add_argument_group("音声経路")
     g.add_argument("--output-device", default=MEETING_OUTPUT_DEVICE,
-                   help=f"録音中に切り替えるシステム出力デバイス名 (既定: {MEETING_OUTPUT_DEVICE})")
+                   help=f"実行中に切り替えるシステム出力デバイス名。相手の声はここ経由で"
+                        f"BlackHole に届くので録音の有無に関わらず切り替える "
+                        f"(既定: {MEETING_OUTPUT_DEVICE})")
     g.add_argument("--no-switch-output", action="store_true",
                    help="システム出力デバイスの自動切り替えをスキップ")
+
+    g = ap.add_argument_group("録音")
     g.add_argument("--live-silence-sec", type=int, default=LIVE_SILENCE_ALERT_SEC_DEFAULT,
                    help=f"録音中この秒数以上無音が続いたら警告 "
                         f"(既定: {LIVE_SILENCE_ALERT_SEC_DEFAULT}秒、0で無効化)")
@@ -113,14 +117,14 @@ def start_recorder(args, out):
         "--out", str(out),
         "--self-device", args.self_device,
         "--other-device", args.other_device,
-        "--output-device", args.output_device,
         "--live-silence-sec", str(args.live_silence_sec),
         "--quiet-ui",            # トップレベル向けの案内はこちらでまとめて出す
+        # 出力デバイスの切り替えは mtg 側が持つ。録音の有無に関わらず必要で、
+        # --no-rec のときは mtg-rec がそもそも起動しないため。
+        "--no-switch-output",
     ]
     if args.duration > 0:
         cmd += ["--duration", str(args.duration)]
-    if args.no_switch_output:
-        cmd.append("--no-switch-output")
     try:
         return subprocess.Popen(cmd, stdin=subprocess.DEVNULL, start_new_session=True)
     except FileNotFoundError:
@@ -223,13 +227,19 @@ def main():
             OUT_DIR.mkdir(parents=True, exist_ok=True)
             out = OUT_DIR / f"mtg_{stamp()}.mkv"
 
-    # 字幕のタイムスタンプの原点。録音開始とほぼ同時にしておくと、
-    # ライブ字幕の時刻と録音ファイル内の時刻がだいたい一致する。
-    session_zero = time.monotonic()
-    rec_proc = start_recorder(args, out) if not args.no_rec else None
+    # 出力デバイスの切り替えは録音と字幕の両方より先に済ませる。相手の声は
+    # 「システム出力 → 複数出力装置 → BlackHole 16ch」で届くので、ここが
+    # 向いていないと録音も字幕も無音になる。
+    meeting_output = MeetingOutput(args.output_device, not args.no_switch_output)
 
     transcribers, log, log_path = ([], None, None)
+    rec_proc = None
     try:
+        meeting_output.__enter__()
+        # 字幕のタイムスタンプの原点。録音開始とほぼ同時にしておくと、
+        # ライブ字幕の時刻と録音ファイル内の時刻がだいたい一致する。
+        session_zero = time.monotonic()
+        rec_proc = start_recorder(args, out) if not args.no_rec else None
         if sides:
             transcribers, log = start_transcribers(args, sides, session_zero)
         if not transcribers and rec_proc is None:
@@ -271,6 +281,7 @@ def main():
             stop_recorder(rec_proc)
         except KeyboardInterrupt:
             warn("録音の停止待ちを中断しました。ファイルが壊れている可能性があります。")
+        meeting_output.__exit__()
 
     print()
     if rec_proc is not None and rec_proc.returncode not in (0, None):

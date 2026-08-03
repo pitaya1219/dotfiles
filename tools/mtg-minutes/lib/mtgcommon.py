@@ -76,12 +76,17 @@ def _labels():
 # ただし両者はデバイス番号の体系が別なので、番号は各々で解決する。
 #   self  … 物理マイク → OBS(RNNoise) → BlackHole 2ch
 #   other … 通話アプリ → 複数出力装置 → BlackHole 16ch
-# 既定モデルを非対称にしているのは、whisper-stream を2本同時に回すと
-# GPU負荷が倍になるため。自分の発言は内容を知っているので精度要求が低く、
-# 計算資源は相手側に寄せる。議事録本体は録音からのバッチ処理(turbo)なので
-# ここのモデル選択は最終的な議事録の精度には影響しない。
+#
+# 両サイドとも turbo。当初は自分側を small にしてメモリと GPU を節約する
+# つもりだったが、実測すると 2本目の turbo はメモリをほとんど食わない:
+#   0本 6.25GB → 1本 7.17GB (+0.92) → 2本 7.13GB (±0.00)
+# モデルファイルのページが OS 側で共有されるため、重み(1.5GB)は1度しか
+# 載らず、プロセスごとに増えるのは計算バッファ分だけだった。
+# 残るコストは Metal の取り合い(発熱・バッテリー)だけで、turbo は単体で
+# 実時間の8.5倍あるため2本でも実時間には間に合う。
+# バッテリー優先で軽くしたいときは --self-model small のように個別に落とす。
 SIDES = {
-    "self":  dict(color="32", device="BlackHole 2ch",  model="small"),
+    "self":  dict(color="32", device="BlackHole 2ch",  model="turbo"),
     "other": dict(color="36", device="BlackHole 16ch", model="turbo"),
 }
 for _side, _label in _labels().items():
@@ -253,6 +258,56 @@ def enumerate_capture_devices(model):
         warn(f"デバイス列挙が {ENUMERATE_TIMEOUT_SEC} 秒で終わりませんでした"
              f"({WHISPER_STREAM} の出力形式変更?)。--capture-id で番号を直接指定できます。")
     return devices
+
+
+def get_audio_output():
+    """現在のシステム出力デバイス名を返す。SwitchAudioSource が無ければ None。"""
+    try:
+        res = subprocess.run(["SwitchAudioSource", "-c"], capture_output=True, text=True)
+        return res.stdout.strip() or None
+    except FileNotFoundError:
+        return None
+
+
+def switch_audio_output(device_name):
+    """SwitchAudioSource でシステム出力デバイスを切り替える。失敗は warn のみ。"""
+    try:
+        subprocess.run(["SwitchAudioSource", "-s", device_name], check=True, capture_output=True)
+    except FileNotFoundError:
+        warn("SwitchAudioSource が見つかりません。出力デバイスの自動切り替えをスキップ")
+    except subprocess.CalledProcessError:
+        warn(f"出力デバイスの切り替えに失敗: {device_name!r}")
+
+
+class MeetingOutput:
+    """会議中だけシステム出力デバイスを切り替え、終了時に元へ戻す。
+
+    相手の声は「システム出力 → 複数出力装置 → BlackHole 16ch」で流れてくるので、
+    出力が会議用に向いていないと録音もライブ字幕も無音になる。つまり録音の
+    有無に関わらず必要な設定であり、録音サブプロセス任せにはできない。
+    """
+
+    def __init__(self, device, enabled=True):
+        self.device = device
+        self.enabled = enabled
+        self.prev = None
+
+    def __enter__(self):
+        if not self.enabled:
+            return self
+        prev = get_audio_output()
+        if prev != self.device:
+            info(f"出力デバイス切り替え: {prev!r} → {self.device!r}")
+            switch_audio_output(self.device)
+            self.prev = prev        # 既に会議用なら戻す必要がない
+        return self
+
+    def __exit__(self, *exc):
+        if self.prev:
+            switch_audio_output(self.prev)
+            info(f"出力デバイスを戻しました: {self.prev!r}")
+        self.prev = None
+        return False
 
 
 def stop_process(proc, sig=signal.SIGINT, timeout=5):
