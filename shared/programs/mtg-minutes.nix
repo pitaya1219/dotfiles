@@ -28,6 +28,12 @@ let
       url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin";
       hash = "sha256-G+OpsgY4Z7k35k4ux0gzZKeZF+FX+pjF2UtcH//qmHs=";
     };
+    # whisper-cli --vad 用の silero VAD モデル(約0.9MB)。長い無音を含む録音を
+    # そのまま渡すと whisper が幻聴を返すため、発話区間だけを切り出すのに使う。
+    "ggml-silero-v5.1.2.bin" = pkgs.fetchurl {
+      url = "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin";
+      hash = "sha256-KZQNmNQrkfvQXOSJ8+z3xy8KQvAn5IdZGaKPtMBOos8=";
+    };
   };
 
   mtg-minutes = pkgs.stdenvNoCC.mkDerivation {

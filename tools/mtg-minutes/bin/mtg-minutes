@@ -31,13 +31,15 @@ import urllib.error
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from mtgcommon import CONFIG_FILE, MODELS, SIDES, die, info, warn  # noqa: E402
+from mtgcommon import CONFIG_FILE, MODELS, SIDES, VAD_MODEL, die, info, warn  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # 設定(環境変数 or ~/.config/mtg-minutes/config.json で上書き可)
 # ---------------------------------------------------------------------------
 DEFAULTS = {
     "model": str(MODELS["turbo"]),
+    "vad_model": str(VAD_MODEL),
+    "normalize": True,           # 抽出時にラウドネス正規化をかけるか
     "whisper_bin": "whisper-cli",
     "language": "ja",
     # ライブ字幕(mtgcommon.SIDES)と同じ値を使う。こことライブ側で食い違うと、
@@ -121,23 +123,37 @@ def count_audio_tracks(path):
     return len([l for l in out.splitlines() if l.strip()])
 
 
-def extract_track(src, track_index, dst):
-    """指定オーディオトラックを 16kHz mono WAV に変換"""
-    run([
-        "ffmpeg", "-y", "-i", str(src),
-        "-map", f"0:a:{track_index}",
-        "-ac", "1", "-ar", "16000",
-        "-c:a", "pcm_s16le", str(dst),
-    ], capture_output=True)
+def extract_track(src, track_index, dst, normalize=True):
+    """指定オーディオトラックを 16kHz mono WAV に変換。
+
+    既定でラウドネス正規化をかける。マイクのモニタ経路は録音レベルが
+    低くなりがちで(実機で -48dB)、そのまま whisper に渡すと発話を拾えず
+    幻聴(「ご視聴ありがとうございました」の連発)になる。
+    """
+    cmd = ["ffmpeg", "-y", "-i", str(src), "-map", f"0:a:{track_index}"]
+    if normalize:
+        cmd += ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]
+    cmd += ["-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(dst)]
+    run(cmd, capture_output=True)
 
 
 def transcribe(wav, cfg, tmpdir):
     """whisper-cli で文字起こし。segments のリスト [{from_ms, text}] を返す"""
     prefix = str(Path(tmpdir) / (Path(wav).stem + "_out"))
-    run([
+    cmd = [
         cfg["whisper_bin"], "-m", cfg["model"], "-f", str(wav),
         "-l", cfg["language"], "-oj", "-of", prefix, "-np",
-    ], capture_output=True, text=True)
+        "-sns",                      # 非発話トークンを抑制
+    ]
+    # VAD で発話区間だけを切り出してから認識する。長い無音を含む音声を
+    # そのまま渡すと whisper が幻聴を返すため、ライブ字幕(whisper-stream)が
+    # VADモードで安定しているのと同じ土俵に乗せる。
+    vad = Path(cfg["vad_model"]).expanduser()
+    if vad.exists():
+        cmd += ["--vad", "--vad-model", str(vad)]
+    else:
+        warn(f"VADモデルが無いため無効化します: {vad}")
+    run(cmd, capture_output=True, text=True)
     data = json.loads(Path(prefix + ".json").read_text())
     segs = []
     for t in data.get("transcription", []):
@@ -435,7 +451,7 @@ def main():
         for idx, label in plan:
             wav = Path(tmpdir) / f"track{idx}.wav"
             info(f"トラック{idx} ({label}) を抽出中…")
-            extract_track(src, idx, wav)
+            extract_track(src, idx, wav, normalize=cfg["normalize"])
             info(f"トラック{idx} ({label}) を文字起こし中… (whisper)")
             segs = transcribe(wav, cfg, tmpdir)
             info(f"  → {len(segs)} セグメント")

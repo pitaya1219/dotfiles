@@ -36,6 +36,9 @@ MODELS = {
 # nix が turbo と small の両方を配置するので通常は到達しない。
 MODEL_FALLBACK = ["turbo", "small", "base"]
 
+# バッチ文字起こし用の VAD モデル(silero)。whisper-cli --vad に渡す。
+VAD_MODEL = MODEL_DIR / "ggml-silero-v5.1.2.bin"
+
 WHISPER_STREAM = "whisper-stream"
 LIVE_LOG_DIR = Path.home() / "Documents/mtg-minutes/live"
 
