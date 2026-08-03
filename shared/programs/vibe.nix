@@ -49,6 +49,9 @@ in
     mkdir -p "$HOME/.vibe"
     cat "${./vibe/config.toml}" "${generatedMcpConfig}" | envsubst > "$HOME/.vibe/config.toml"
     chmod 644 "$HOME/.vibe/config.toml"
+    # Install hooks.toml for experimental hooks
+    cp "${./vibe/hooks.toml}" "$HOME/.vibe/hooks.toml"
+    chmod 644 "$HOME/.vibe/hooks.toml"
   '';
 
   # Auto-start vibe-notify-watch on shell login (cross-platform; script handles dedup via PID file)

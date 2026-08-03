@@ -1,5 +1,8 @@
 textual_theme = "catppuccin-mocha"
 
+# Enable experimental hooks for RocketChat notifications
+enable_experimental_hooks = true
+
 [[mcp_servers]]
 name = "gitea"
 transport = "stdio"
