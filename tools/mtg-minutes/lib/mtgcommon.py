@@ -91,10 +91,30 @@ for _side, _label in _labels().items():
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 TRANS_START_RE = re.compile(r"^###\s+Transcription\s+\d+\s+START\s*\|\s*t0\s*=\s*(\d+)\s*ms")
 TRANS_END_RE = re.compile(r"^###\s+Transcription\s+\d+\s+END")
+# VADモードのセグメント行「[00:00:04.000 --> 00:00:10.000]  本文」。
+# stream.cpp は no_timestamps = !use_vad としているので、--step 0(VAD)では
+# タイムスタンプ付きで出る。-nt 相当のオプションは無いので出さない指定はできない。
+SEGMENT_RE = re.compile(
+    r"^\[(\d+:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d+:\d{2}:\d{2}\.\d{3})\]\s*(.*)$")
+SPEAKER_TURN_RE = re.compile(r"\s*\[SPEAKER_TURN\]\s*$")
+# 収音開始の合図。stream.cpp は printf なので stdout に出る(stderr ではない)
+START_SPEAKING = "[Start speaking]"
 # [BLANK_AUDIO] / (音楽) / 【拍手】 のような非発話マーカーは字幕から落とす
 NON_SPEECH_RE = re.compile(r"^[\[\(（【][^\]\)）】]*[\]\)）】]$")
 # whisper-stream のキャプチャデバイス一覧行
 CAPTURE_DEV_RE = re.compile(r"Capture device #(\d+): '([^']*)'")
+
+
+def ts_to_ms(s):
+    """'00:00:04.000' → 4000"""
+    hh, mm, rest = s.split(":")
+    ss, ms = rest.split(".")
+    return ((int(hh) * 60 + int(mm)) * 60 + int(ss)) * 1000 + int(ms)
+
+
+def _norm(text):
+    """重複判定用の正規化。再認識のたびに空白の入り方が変わるので落とす。"""
+    return "".join(text.split())
 
 
 # ---------------------------------------------------------------------------
@@ -295,17 +315,22 @@ class LiveTranscriber:
 
     VADモード(--step 0)の stdout は
 
+        [Start speaking]
         ### Transcription 3 START | t0 = 1234 ms | t1 = 5678 ms
 
-        本文…
+        [00:00:00.000 --> 00:00:04.000]  本文…
+        [00:00:04.000 --> 00:00:06.500]  本文の続き…
         ### Transcription 3 END
 
-    という形なので、START 行の t0 を「発話の開始時刻」として拾い、END 行で
-    本文を確定する(本文が複数行に割れることがあるので連結する)。
+    という形。stream.cpp が no_timestamps = !use_vad としているため、VADでは
+    セグメントにタイムスタンプが付く(これを外すCLIオプションは無い)ので、
+    本文だけ取り出す。START 行の t0 はチャンク先頭の絶対ms、セグメントの
+    タイムスタンプはチャンク先頭からの相対なので、足すと発話の絶対時刻になる。
 
-    t0 は whisper-stream 内部のメインループ開始からの相対msなので、そのままでは
-    2サイドの時刻を突き合わせられない。stderr に '[Start speaking]' が出た時刻を
-    原点として記録し、セッション開始からの絶対秒に直す。
+    その t0 は whisper-stream 内部のメインループ開始からの相対msなので、
+    そのままでは2サイドの時刻を突き合わせられない。stdout に '[Start speaking]'
+    が出た時刻を原点として記録し、セッション開始からの絶対秒に直す
+    (printf で出るので stderr ではなく stdout にある)。
 
     こうして発話開始時刻で揃えるのが重要なのは、表示が「文字起こしが終わった順」
     になるため。自分側(small=速い)と相手側(turbo=遅い)ではチャンク処理の遅延が
@@ -323,6 +348,8 @@ class LiveTranscriber:
         self.ready = False
         self.proc = None
         self._threads = []
+        self._last_end_ms = -1  # 既に字幕に出したセグメントの終端(重複除去用)
+        self._recent = collections.deque(maxlen=20)   # 直近に出した本文(同上)
         # 起動に失敗したときに理由を出せるよう、stderr の末尾だけ手元に残す
         self.stderr_tail = collections.deque(maxlen=40)
         self.cmd = [
@@ -367,39 +394,84 @@ class LiveTranscriber:
             time.sleep(0.1)
         return self.ready
 
+    def _mark_ready(self):
+        """収音開始を観測。ここが t0 の原点になる。"""
+        if self.t_zero is None:
+            self.t_zero = time.monotonic()
+        self.ready = True
+
     def _read_stdout(self):
-        t0_ms, buf = None, []
+        chunk_t0, segs = None, []
         for raw in self.proc.stdout:
             line = ANSI_RE.sub("", raw).strip()
+            if not line:
+                continue
+            if START_SPEAKING in line:
+                self._mark_ready()
+                continue
             m = TRANS_START_RE.match(line)
             if m:
                 # 前チャンクが END を出さずに終わっていた場合の取りこぼしを防ぐ
-                self._flush(t0_ms, buf)
-                t0_ms, buf = int(m.group(1)), []
+                self._flush(chunk_t0, segs)
+                # 本文が出ている以上、収音は始まっている
+                self._mark_ready()
+                chunk_t0, segs = int(m.group(1)), []
                 continue
             if TRANS_END_RE.match(line):
-                self._flush(t0_ms, buf)
-                t0_ms, buf = None, []
+                self._flush(chunk_t0, segs)
+                chunk_t0, segs = None, []
                 continue
-            if not line or line.startswith("###") or NON_SPEECH_RE.match(line):
+            if line.startswith("###"):
                 continue
-            buf.append(line)
-        self._flush(t0_ms, buf)
+            m = SEGMENT_RE.match(line)
+            if m:
+                text = SPEAKER_TURN_RE.sub("", m.group(3)).strip()
+                if text and not NON_SPEECH_RE.match(text):
+                    segs.append((ts_to_ms(m.group(1)), ts_to_ms(m.group(2)), text))
+                continue
+            if NON_SPEECH_RE.match(line):
+                continue
+            # タイムスタンプ無しの本文(--step > 0 のスライディングモードなど)
+            segs.append((None, None, line))
+        self._flush(chunk_t0, segs)
 
     def _read_stderr(self):
         for raw in self.proc.stderr:
-            if self.t_zero is None and "[Start speaking]" in raw:
-                # whisper-stream 側のメインループ開始 = t0 の原点
-                self.t_zero = time.monotonic()
-                self.ready = True
             self.stderr_tail.append(raw.rstrip())
 
-    def _flush(self, t0_ms, buf):
-        text = " ".join(buf).strip()
-        if not text or self.on_utterance is None:
+    def _flush(self, chunk_t0, segs):
+        if not segs or self.on_utterance is None:
             return
-        if t0_ms is not None and self.t_zero is not None:
-            t = (self.t_zero - self.session_zero) + t0_ms / 1000.0
+        # VADモードは発話を検知するたび直近 length_ms(既定10秒)を丸ごと読み直し、
+        # バッファを消さない(stream.cpp は VAD 経路で audio.clear() を呼ばない)。
+        # そのためチャンク同士が大きく重なり、同じ発言が何度も出てくる。
+        #
+        # 除去は2段構え。チャンクとセグメントの境界は揃わず、重なった音声は
+        # 毎回違う切り方で再認識されるので、時刻だけでは取り切れない。
+        #   1. 既に出した範囲に収まるセグメントは落とす(絶対時刻で判定)
+        #   2. 範囲を少しはみ出すだけで本文が既出と同一なら、再認識とみなして落とす
+        # 2 は「重なっている区間」に限定する。そうしないと、同じ相槌を
+        # 本当に繰り返したときにも消えてしまう。
+        kept, start_ms = [], None
+        for seg_t0, seg_t1, text in segs:
+            if chunk_t0 is not None and seg_t0 is not None:
+                abs_t0, abs_t1 = chunk_t0 + seg_t0, chunk_t0 + seg_t1
+                if abs_t1 <= self._last_end_ms:
+                    continue
+                if abs_t0 < self._last_end_ms and _norm(text) in self._recent:
+                    continue
+                self._last_end_ms = max(self._last_end_ms, abs_t1)
+                if start_ms is None:
+                    start_ms = abs_t0
+            self._recent.append(_norm(text))
+            kept.append(text)
+        text = " ".join(kept).strip()
+        if not text:
+            return
+        if start_ms is None:
+            start_ms = chunk_t0
+        if start_ms is not None and self.t_zero is not None:
+            t = (self.t_zero - self.session_zero) + start_ms / 1000.0
         else:
             # 原点が取れなかった場合は到着時刻で代用(順序はずれるが落とさない)
             t = time.monotonic() - self.session_zero
