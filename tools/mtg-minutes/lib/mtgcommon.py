@@ -195,8 +195,8 @@ def resolve_model(name, quiet=False):
     """モデル名 → (実際に使う名前, パス)。
 
     既定モデルが未配置でも即死しないよう turbo → small → base の順に代替する。
-    nix が配置するのは turbo だけで、small / base は手動DL運用のため
-    (mtg-self の既定 small がまさにこれに当たる)。
+    nix が配置するのは既定に使う turbo と small で、base だけ手動DL運用
+    (nix 管理下なら通常ここには来ない)。
     """
     if MODELS[name].exists():
         return name, MODELS[name]
@@ -285,12 +285,15 @@ def resolve_device(devices, name):
     return None, None
 
 
-def resolve_or_report(devices, name, label):
-    """デバイスを解決し、見つからなければ理由を warn して (None, None) を返す。"""
+def resolve_or_report(devices, name, label, hint="--list で確認してください。"):
+    """デバイスを解決し、見つからなければ理由を warn して (None, None) を返す。
+
+    hint を呼び出し側から渡すのは、--capture-id を持つのが mtg-live / mtg-self
+    だけで、mtg には無いため。存在しないオプションを案内しないようにする。
+    """
     idx, dname = resolve_device(devices, name)
     if idx is None:
-        warn(f"{label}側のデバイス '{name}' が見つかりません。"
-             f"--list で確認するか --capture-id で指定してください。")
+        warn(f"{label}側のデバイス '{name}' が見つかりません。{hint}")
         if devices:
             warn("検出されたデバイス: " + ", ".join(f"#{i}:{n}" for i, n in devices))
     return idx, dname
@@ -403,7 +406,12 @@ class LiveTranscriber:
     def _read_stdout(self):
         chunk_t0, segs = None, []
         for raw in self.proc.stdout:
-            line = ANSI_RE.sub("", raw).strip()
+            # スライディングモード(--step > 0)は確定した行ではなく、同じ行を
+            # 上書きし続ける描画を吐く。改行は n_new_line 回に1度しか来ないので、
+            # 1回の readline に「\r + 空白詰め + 途中経過」が何度も連結されて入る。
+            # 上書きの最後が確定版なので、\r の後ろだけを採る。
+            # VADモード(既定)は \r を出さないのでこの処理は素通りする。
+            line = ANSI_RE.sub("", raw).rsplit("\r", 1)[-1].strip()
             if not line:
                 continue
             if START_SPEAKING in line:
@@ -516,17 +524,30 @@ class LiveLog:
         self.path = Path(path)
         self.rows = []
         self._lock = threading.Lock()
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._fh = open(self.path, "w")
+        self._fh = None         # 最初の発話まで開かない(空ファイルを作らない)
+        self._closed = False
 
     def add(self, t, label, text):
         with self._lock:
+            if self._closed:
+                # 停止時、読み取りスレッドの join がタイムアウトした後に
+                # 遅れて届いた発話。閉じた handle に書くと例外になるので捨てる。
+                return
+            if self._fh is None:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                self._fh = open(self.path, "w")
             self.rows.append((t, label, text))
             self._fh.write(f"[{format_ts(t)}] {label}: {text}\n")
             self._fh.flush()
 
     def close(self):
+        """発話順に並べ替えて確定する。1度も発話が無ければ何も作らない。"""
         with self._lock:
+            if self._closed:
+                return self.path if self.rows else None
+            self._closed = True
+            if self._fh is None:
+                return None
             self._fh.close()
             self.rows.sort(key=lambda r: r[0])
             self.path.write_text(
@@ -610,7 +631,8 @@ def live_main(prog, side, description=None):
     else:
         info("キャプチャデバイスを列挙中…")
         cap_id, cap_name = resolve_or_report(
-            enumerate_capture_devices(model_path), args.device, meta["label"])
+            enumerate_capture_devices(model_path), args.device, meta["label"],
+            hint="--list で確認するか --capture-id で指定してください。")
         if cap_id is None:
             die("中止しました。")
 
@@ -642,7 +664,7 @@ def live_main(prog, side, description=None):
         pass
     finally:
         tr.stop()
-        if log:
-            path = log.close()
+        path = log.close() if log else None
+        if path:
             print()
             info(f"字幕ログ: {path}")

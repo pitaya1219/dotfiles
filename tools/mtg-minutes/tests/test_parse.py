@@ -111,6 +111,31 @@ def main():
     ok &= check([t for _, _, t in plain] == ["こんにちは"],
                 "タイムスタンプ無しの出力も拾える")
 
+    # スライディングモード(--step > 0)は同じ行を上書きし続ける描画を出し、
+    # 改行は n_new_line 回に1度しか来ない。1回の readline に途中経過が
+    # 何度も連結されて入るので、最後の上書き(=確定版)だけを採る。
+    sliding = ("[Start speaking]\n"
+               "\x1b[2K\r" + " " * 100 + "\x1b[2K\r" + "こん"
+               "\x1b[2K\r" + " " * 100 + "\x1b[2K\r" + "こんにちは"
+               "\x1b[2K\r" + " " * 100 + "\x1b[2K\r" + "こんにちは、今日は\n")
+    _, slide = parse(sliding)
+    ok &= check([t for _, _, t in slide] == ["こんにちは、今日は"],
+                "スライディングモードの上書き描画から確定版だけを取り出す")
+
+    # 1度も発話が無ければログファイルを作らない
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        log = mtgcommon.LiveLog(Path(d) / "live.txt")
+        ok &= check(log.close() is None and not (Path(d) / "live.txt").exists(),
+                    "発話が無ければ空ログを残さない")
+        # close 後に遅れて届いた発話は捨てる(閉じた handle に書かない)
+        log2 = mtgcommon.LiveLog(Path(d) / "live2.txt")
+        log2.add(1.0, "自分", "あ")
+        log2.close()
+        log2.add(2.0, "自分", "遅れて届いた")
+        ok &= check((Path(d) / "live2.txt").read_text() == "[00:01] 自分: あ\n",
+                    "close 後の遅延発話で例外を出さない")
+
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 

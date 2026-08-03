@@ -228,7 +228,7 @@ def main():
     session_zero = time.monotonic()
     rec_proc = start_recorder(args, out) if not args.no_rec else None
 
-    transcribers, log = ([], None)
+    transcribers, log, log_path = ([], None, None)
     try:
         if sides:
             transcribers, log = start_transcribers(args, sides, session_zero)
@@ -245,7 +245,11 @@ def main():
 
         # 録音しているなら録音の終了に追従する。していないなら
         # 期限切れか、字幕が全部落ちたときに抜ける。
-        deadline = session_zero + args.duration if args.duration > 0 else None
+        # 起点をここにするのは、モデルロード(turboは1.6GB)に数秒かかるため。
+        # session_zero 起点にすると、その分だけ収録が短くなる。
+        # 録音時は mtg-rec に --duration を渡してあり、ffmpeg の -t が
+        # 録音開始から数えるので、そちらに合わせる意味でも起点は開始後でよい。
+        deadline = time.monotonic() + args.duration if args.duration > 0 else None
         while True:
             if rec_proc is not None:
                 if rec_proc.poll() is not None:
@@ -257,16 +261,22 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        # 字幕を止めてログを確定させてから録音の finalize を待つ。
+        # 逆順にすると、録音の待ち(最大5分)の最中に2度目の Ctrl-C が来たとき
+        # log.close() に到達せず、ログが到着順のまま残る
+        # (mtg-minutes --transcript は発話順に並んでいる前提)。
         stop_all(transcribers)
-        stop_recorder(rec_proc)
-        if log:
-            log.close()
+        log_path = log.close() if log else None
+        try:
+            stop_recorder(rec_proc)
+        except KeyboardInterrupt:
+            warn("録音の停止待ちを中断しました。ファイルが壊れている可能性があります。")
 
     print()
     if rec_proc is not None and rec_proc.returncode not in (0, None):
         warn(f"mtg-rec が異常終了しました (rc={rec_proc.returncode})")
-    if log:
-        info(f"字幕ログ: {log.path}")
+    if log_path:
+        info(f"字幕ログ: {log_path}")
 
     # 議事録の材料を1回だけ決める。録音があればそちら(バッチ文字起こしなので
     # 精度が高い)、録音に失敗していればライブ字幕ログから作る。
@@ -277,8 +287,8 @@ def main():
     from_recording = usable(out, 1024)
     if from_recording:
         source, args_tail = out, [str(out)]
-    elif log and usable(log.path, 1):
-        source, args_tail = log.path, ["--transcript", str(log.path)]
+    elif usable(log_path, 1):
+        source, args_tail = log_path, ["--transcript", str(log_path)]
     else:
         source, args_tail = None, []
 

@@ -34,7 +34,15 @@ let
     pname = "mtg-minutes";
     version = "0.1.0";
 
-    src = ../../tools/mtg-minutes;
+    # ソースツリーから直接スクリプトを動かすと bin/ lib/ に __pycache__ ができる。
+    # それが src に入ると derivation の入力ハッシュが変わって無駄に再ビルドされるので、
+    # 生成物は除いてから store に入れる。
+    src = lib.cleanSourceWith {
+      src = ../../tools/mtg-minutes;
+      filter = path: type:
+        !(type == "directory" && baseNameOf path == "__pycache__")
+        && !(lib.hasSuffix ".pyc" path);
+    };
 
     nativeBuildInputs = [ pkgs.makeWrapper pkgs.python3 ];
 
