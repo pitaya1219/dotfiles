@@ -4,7 +4,7 @@
 # Notification on agent turn completion (session progress)
 [[hooks]]
 name = "rocket-chat-agent-turn"
-type = "post_agent_turn"
+type = "post_agent"
 command = "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh"
 timeout = 30.0
 strict = false
@@ -13,7 +13,7 @@ description = "Send RocketChat notification on agent turn completion"
 # Notification before critical bash execution
 [[hooks]]
 name = "rocket-chat-before-bash"
-type = "before_tool"
+type = "pre_tool"
 match = "bash"
 command = "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh"
 timeout = 30.0
@@ -23,7 +23,7 @@ description = "Send RocketChat notification before bash tool execution"
 # Notification after bash execution
 [[hooks]]
 name = "rocket-chat-after-bash"
-type = "after_tool"
+type = "post_tool"
 match = "bash"
 command = "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh"
 timeout = 30.0
@@ -33,7 +33,7 @@ description = "Send RocketChat notification after bash tool execution"
 # Notification before file modification
 [[hooks]]
 name = "rocket-chat-before-write"
-type = "before_tool"
+type = "pre_tool"
 match = "write_file"
 command = "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh"
 timeout = 30.0
@@ -43,7 +43,7 @@ description = "Send RocketChat notification before write_file"
 # Notification before file edit
 [[hooks]]
 name = "rocket-chat-before-edit"
-type = "before_tool"
+type = "pre_tool"
 match = "edit"
 command = "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh"
 timeout = 30.0
