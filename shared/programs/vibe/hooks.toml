@@ -49,3 +49,25 @@ command = "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh"
 timeout = 30.0
 strict = false
 description = "Send RocketChat notification before edit"
+
+# Record session_id for nvim tab tracking (see scripts/agent-session-tab-pointer.py).
+# Registered on both pre_tool (no match = all tools, fires as early as the
+# first tool call within the first turn) and post_agent (fallback for
+# turns that never call a tool). The script no-ops once the pointer file
+# for this tab already exists, so pre_tool firing on every later tool call
+# is cheap.
+[[hooks]]
+name = "session-tab-pointer-pre-tool"
+type = "pre_tool"
+command = "$HOME/dotfiles/scripts/agent-session-tab-pointer.py"
+timeout = 10.0
+strict = false
+description = "Write session_id to a pointer file for nvim tab tracking (early: first tool call)"
+
+[[hooks]]
+name = "session-tab-pointer-post-agent"
+type = "post_agent"
+command = "$HOME/dotfiles/scripts/agent-session-tab-pointer.py"
+timeout = 10.0
+strict = false
+description = "Write session_id to a pointer file for nvim tab tracking (fallback: turn end)"

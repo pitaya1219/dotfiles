@@ -4,28 +4,22 @@ local ClaudeCode = {}
 ClaudeCode.win = nil
 ClaudeCode.buf = nil
 
--- Scan terminal buffer lines (bottom-up) for a Claude session UUID
-local function find_session_in_buf(buf)
-  if not vim.api.nvim_buf_is_valid(buf) then return nil end
-  local line_count = vim.api.nvim_buf_line_count(buf)
-  local start = math.max(0, line_count - 50)
-  local lines = vim.api.nvim_buf_get_lines(buf, start, line_count, false)
-  for i = #lines, 1, -1 do
-    local uuid = lines[i]:match(
-      "%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x"
-    )
-    if uuid then return uuid end
-  end
-  return nil
-end
+-- Session ID tracking: each termopen() below tags its shell with a unique
+-- AGENT_TAB_MARKER env var. Claude Code's SessionStart hook (see
+-- scripts/agent-session-tab-pointer.py) inherits that var and writes the
+-- authoritative session_id to a pointer file keyed by the marker — no need
+-- to guess it from terminal output. Marker/pointer protocol lives in
+-- 89_agent_tab_pointer.lua (shared with 92_vibe.lua).
+local agent_tab_pointer = _G.agent_tab_pointer
 
--- Set up session UUID detection for a Claude terminal buffer.
+-- Poll for the hook-written pointer file, then adopt its session_id.
 -- Fires 30 initial 1s polls, then installs a TermEnter autocmd for indefinite retry.
-local function setup_claude_session_watcher(buf)
+local function setup_claude_session_watcher(buf, marker)
   local function try_update()
     if not vim.api.nvim_buf_is_valid(buf) then return end
-    local session_id = find_session_in_buf(buf)
-    if session_id and vim.b[buf].terminal_session_id ~= session_id then
+    if vim.b[buf].terminal_session_id then return end
+    local session_id = agent_tab_pointer.read_pointer(marker)
+    if session_id then
       vim.b[buf].terminal_session_id = session_id
       if _G.tab_titles then _G.tab_titles.update_all_tab_titles() end
     end
@@ -298,6 +292,7 @@ function ClaudeCode.open_in_terminal(work_dir, session_id)
   local cwd = work_dir or vim.fn.getcwd()
   vim.b[buf].terminal_type = 'claude'
   vim.b[buf].terminal_cwd = cwd
+  local marker = agent_tab_pointer.new_marker()
 
   -- Apply settings after buffer creation but before terminal starts
   vim.schedule(function()
@@ -305,6 +300,7 @@ function ClaudeCode.open_in_terminal(work_dir, session_id)
   end)
 
   vim.fn.termopen(cmd, {
+    env = { AGENT_TAB_MARKER = marker },
     on_exit = function()
       -- Restore ambiwidth setting when terminal exits
       vim.opt.ambiwidth = saved_ambiwidth
@@ -313,7 +309,7 @@ function ClaudeCode.open_in_terminal(work_dir, session_id)
 
   -- Set buffer-local autocmd to maintain settings while in this terminal
   setup_cell_autocmds(buf, saved_ambiwidth)
-  setup_claude_session_watcher(buf)
+  setup_claude_session_watcher(buf, marker)
 
   vim.cmd('startinsert')
 
@@ -341,6 +337,7 @@ function ClaudeCode.open_in_new_tab(work_dir, session_id)
   local cwd = work_dir or vim.fn.getcwd()
   vim.b[buf].terminal_type = 'claude'
   vim.b[buf].terminal_cwd = cwd
+  local marker = agent_tab_pointer.new_marker()
 
   -- Apply settings after buffer creation but before terminal starts
   vim.schedule(function()
@@ -348,6 +345,7 @@ function ClaudeCode.open_in_new_tab(work_dir, session_id)
   end)
 
   vim.fn.termopen(cmd, {
+    env = { AGENT_TAB_MARKER = marker },
     on_exit = function()
       -- Restore ambiwidth setting when terminal exits
       vim.opt.ambiwidth = saved_ambiwidth
@@ -356,7 +354,7 @@ function ClaudeCode.open_in_new_tab(work_dir, session_id)
 
   -- Set buffer-local autocmd to maintain settings while in this terminal
   setup_cell_autocmds(buf, saved_ambiwidth)
-  setup_claude_session_watcher(buf)
+  setup_claude_session_watcher(buf, marker)
 
   vim.cmd('startinsert')
 

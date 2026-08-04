@@ -67,6 +67,16 @@
       };
       model = config.dotfiles.claude-code.model;
       hooks = {
+        SessionStart = [
+          {
+            hooks = [
+              {
+                type = "command";
+                command = "${config.home.homeDirectory}/dotfiles/scripts/agent-session-tab-pointer.py || true";
+              }
+            ];
+          }
+        ];
         Stop = [
           {
             matcher = "";

@@ -9,7 +9,6 @@ NVIM_NOTIFY="$HOME/dotfiles/scripts/nvim-notify.sh"
 LOG_DIR="${1:-${VIBE_HOME:-$HOME/.vibe}/logs/session}"
 IDLE_THRESHOLD="${VIBE_NOTIFY_IDLE:-3}"
 RATE_LIMIT="${VIBE_NOTIFY_RATE:-10}"
-SESSION_EVENTS_FILE="${VIBE_SESSION_EVENTS:-/tmp/vibe-session-events}"
 
 # Prevent duplicate instances via PID file
 PIDFILE="/tmp/vibe-notify-watch.pid"
@@ -57,13 +56,6 @@ while true; do
     last_active=$(date +%s)
     was_active=false
     echo "[vibe-notify-watch] New session detected: $current_session"
-    # Publish event for Neovim to consume: "<epoch> <session_dir>"
-    echo "$(date +%s) $latest_dir" >> "$SESSION_EVENTS_FILE"
-    # Trim to last 500 entries to prevent unbounded growth
-    if [ -f "$SESSION_EVENTS_FILE" ] && [ "$(wc -l < "$SESSION_EVENTS_FILE")" -gt 1000 ]; then
-      tail -n 500 "$SESSION_EVENTS_FILE" > "${SESSION_EVENTS_FILE}.tmp" \
-        && mv "${SESSION_EVENTS_FILE}.tmp" "$SESSION_EVENTS_FILE"
-    fi
     continue
   fi
 
