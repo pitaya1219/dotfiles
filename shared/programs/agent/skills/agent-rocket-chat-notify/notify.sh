@@ -52,9 +52,13 @@ if ! [ -t 0 ] && [ -p /dev/stdin ]; then
         # Set agent type
         AGENT_TYPE="mistral-vibe"
         
-        # Determine message type and confirmation text based on hook event
+        # Determine message type and confirmation text based on hook event.
+        # NOTE: these must match vibe's actual HookType values (pre_tool /
+        # post_tool / post_agent) — the previous before_tool/after_tool/
+        # post_agent_turn names never matched anything Vibe sends, so every
+        # hook invocation silently fell through to the generic "*)" case.
         case "$HOOK_EVENT" in
-            "before_tool")
+            "pre_tool")
                 if [ -n "$TOOL_NAME" ]; then
                     CONFIRMATION_ITEM="Tool execution requested: $TOOL_NAME"
                     if [ -n "$TOOL_INPUT" ]; then
@@ -68,7 +72,7 @@ if ! [ -t 0 ] && [ -p /dev/stdin ]; then
                 MESSAGE_TYPE="confirmation"
                 PRIORITY="medium"
                 ;;
-            "after_tool")
+            "post_tool")
                 if [ -n "$TOOL_NAME" ]; then
                     if [ "$TOOL_STATUS" = "success" ]; then
                         CONFIRMATION_ITEM="Tool $TOOL_NAME completed successfully"
@@ -90,7 +94,10 @@ if ! [ -t 0 ] && [ -p /dev/stdin ]; then
                     MESSAGE_TYPE="info"
                 fi
                 ;;
-            "post_agent_turn")
+            "post_agent")
+                # Fires once per completed user turn (control back to the
+                # user) — the correct "waiting for response" signal, no
+                # idle-guessing needed.
                 CONFIRMATION_ITEM="Agent turn completed - awaiting next input"
                 MESSAGE_TYPE="info"
                 PRIORITY="low"
@@ -100,7 +107,43 @@ if ! [ -t 0 ] && [ -p /dev/stdin ]; then
                 MESSAGE_TYPE="info"
                 ;;
         esac
-        
+
+        # post_agent-only: throttle (fires on every turn) and mirror the
+        # notification into nvim, replacing the old vibe-notify-watch.sh
+        # daemon's idle-polling equivalent.
+        if [ "$HOOK_EVENT" = "post_agent" ]; then
+            RATE_LIMIT="${VIBE_NOTIFY_RATE:-10}"
+            STATE_FILE="/tmp/vibe-notify-${SESSION_ID:-unknown}"
+            NOW=$(date +%s)
+            LAST_NOTIFY=$(cat "$STATE_FILE" 2>/dev/null || echo 0)
+            if (( NOW - LAST_NOTIFY < RATE_LIMIT )); then
+                exit 0
+            fi
+            echo "$NOW" > "$STATE_FILE"
+
+            if [ -n "$TRANSCRIPT_PATH" ]; then
+                METAFILE="$(dirname "$TRANSCRIPT_PATH")/meta.json"
+                if [ -f "$METAFILE" ]; then
+                    SESSION_SUMMARY=$(METAFILE="$METAFILE" python3 -c "
+import json, os
+try:
+    with open(os.environ['METAFILE']) as f:
+        print(json.load(f).get('title', ''))
+except Exception:
+    print('')
+" 2>/dev/null || true)
+                fi
+            fi
+
+            if [ -n "${NVIM:-}" ]; then
+                "$HOME/dotfiles/scripts/nvim-notify.sh" \
+                    --title "Vibe" \
+                    --message "${SESSION_SUMMARY:+${SESSION_SUMMARY} | }Waiting for response (session: ${SESSION_ID:0:8})" \
+                    --level WARN \
+                    &>/dev/null || true
+            fi
+        fi
+
         # If repo is still empty, try to detect from current directory
         if [ -z "$REPO" ]; then
             REPO=$(git remote -v 2>/dev/null | head -1 | sed 's/.*\///' | sed 's/\.git$//' || echo "unknown")

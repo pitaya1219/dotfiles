@@ -53,12 +53,4 @@ in
     cp "${./vibe/hooks.toml}" "$HOME/.vibe/hooks.toml"
     chmod 644 "$HOME/.vibe/hooks.toml"
   '';
-
-  # Auto-start vibe-notify-watch on shell login (cross-platform; script handles dedup via PID file)
-  programs.bash.initExtra = ''
-    nohup "${config.home.homeDirectory}/dotfiles/scripts/vibe-notify-watch.sh" \
-      "${config.home.homeDirectory}/agent-sessions/.vibe/logs/session" \
-      > /dev/null 2>&1 &
-    disown
-  '';
 }
