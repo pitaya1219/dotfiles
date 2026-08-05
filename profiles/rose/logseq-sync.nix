@@ -2,8 +2,6 @@
 
 let
   home = config.home.homeDirectory;
-  logFile = "${home}/.local/share/logseq-sync.log";
-  logFileError = "${home}/.local/share/logseq-sync-error.log";
 
   # Logseq itself now lives inside the spaces-ryu Incus container and owns its own
   # bak/ files under its own uid — see homelab/spaces/template/configuration.nix's
@@ -14,6 +12,14 @@ let
   containerName = "spaces-ryu";
   containerUser = "ryu";
   syncDir = "/home/${containerUser}/.local/share/dotfiles-sync";
+
+  # Written under homelab's monitoring tree (rather than ~/.local/share) so
+  # fluent-bit's /logs/spaces/*/*.log tail input picks it up and Grafana can
+  # alert on sync failures — see homelab/core/monitoring/fluent-bit.conf and
+  # grafana-provisioning/alerting/logseq-sync.yaml.
+  logDir = "${home}/homelab/core/monitoring/logs/spaces/${containerUser}";
+  logFile = "${logDir}/logseq-sync.log";
+  logFileError = "${logDir}/logseq-sync-error.log";
 
   triggerScript = pkgs.writeShellScript "logseq-sync-trigger" ''
     set -euo pipefail
@@ -47,6 +53,7 @@ in
     };
     Service = {
       Type = "oneshot";
+      ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p ${logDir}";
       ExecStart = "${triggerScript}";
       StandardOutput = "append:${logFile}";
       StandardError = "append:${logFileError}";
