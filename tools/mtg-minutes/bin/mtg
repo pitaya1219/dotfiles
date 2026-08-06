@@ -131,8 +131,13 @@ def start_recorder(args, out):
         die("mtg-rec が見つかりません。--no-rec で字幕のみ実行できます。")
 
 
-def stop_recorder(proc):
-    """録音プロセスグループに SIGINT を送り、finalize を待つ"""
+def signal_recorder(proc):
+    """録音プロセスグループに SIGINT を送るだけ。待たない。
+
+    停止処理の中でこれを最初に撃つのが肝。撃った後なら mtg 自身が
+    Ctrl-C 連打で死んでも、mtg-rec は自分で finalize(結合 + 無音チェック)を
+    完走する。撃つ前に死ぬと、別プロセスグループなので誰も止められなくなる。
+    """
     if proc is None or proc.poll() is not None:
         return
     try:
@@ -140,6 +145,12 @@ def stop_recorder(proc):
     except ProcessLookupError:
         return
     info("録音を停止しています(finalize と無音チェック)…")
+
+
+def wait_recorder(proc):
+    """finalize と無音チェックの完了を待つ。"""
+    if proc is None or proc.poll() is not None:
+        return
     try:
         proc.wait(timeout=REC_SHUTDOWN_TIMEOUT_SEC)
     except subprocess.TimeoutExpired:
@@ -271,16 +282,21 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        # 字幕を止めてログを確定させてから録音の finalize を待つ。
-        # 逆順にすると、録音の待ち(最大5分)の最中に2度目の Ctrl-C が来たとき
+        # 停止指示は真っ先に撃つ(理由は signal_recorder の docstring)。
+        signal_recorder(rec_proc)
+        # 字幕を止めてログを確定させる。録音の finalize と並行して進む。
+        # 待ち(wait_recorder)は log.close() の後ろに置く。逆順にすると、
+        # 録音の待ち(最大5分)の最中に2度目の Ctrl-C が来たとき
         # log.close() に到達せず、ログが到着順のまま残る
         # (mtg-minutes --transcript は発話順に並んでいる前提)。
         stop_all(transcribers)
         log_path = log.close() if log else None
         try:
-            stop_recorder(rec_proc)
+            wait_recorder(rec_proc)
         except KeyboardInterrupt:
-            warn("録音の停止待ちを中断しました。ファイルが壊れている可能性があります。")
+            warn("録音の停止待ちを中断しました。"
+                 "mtg-rec は単独で finalize を続けるので、"
+                 "しばらく後に ~/Movies の .mkv を確認してください。")
         meeting_output.__exit__()
 
     print()
