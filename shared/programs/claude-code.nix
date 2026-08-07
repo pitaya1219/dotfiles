@@ -60,6 +60,14 @@
       recursive = true;
     };
 
+    # secret_guard.py imports the shared scanner from ~/.agent/secret_guard
+    # (see agent.nix) via a relative sys.path insert, mirroring the
+    # session_boundary hook pattern.
+    home.file.".claude/hooks" = {
+      source = ./claude-code/hooks;
+      recursive = true;
+    };
+
     home.file.".claude/settings.json".text = builtins.toJSON {
       statusLine = {
         type = "command";
@@ -67,6 +75,28 @@
       };
       model = config.dotfiles.claude-code.model;
       hooks = {
+        PreToolUse = [
+          {
+            matcher = "Bash";
+            hooks = [
+              {
+                type = "command";
+                command = "python3 ${config.home.homeDirectory}/.claude/hooks/secret_guard.py";
+              }
+            ];
+          }
+        ];
+        PostToolUse = [
+          {
+            matcher = "Bash|Read|Grep";
+            hooks = [
+              {
+                type = "command";
+                command = "python3 ${config.home.homeDirectory}/.claude/hooks/secret_guard.py";
+              }
+            ];
+          }
+        ];
         SessionStart = [
           {
             hooks = [

@@ -34,6 +34,32 @@ in
     recursive = true;
   };
 
+  # secret_guard.py imports the shared scanner from ~/.agent/secret_guard
+  # (see agent.nix) via a relative sys.path insert.
+  home.file.".vibe/hooks" = {
+    source = ./vibe/hooks;
+    recursive = true;
+  };
+
+  # Global hooks.toml (~/.vibe/hooks.toml) — loaded for every project unless
+  # a project-local .vibe/hooks.toml also exists, in which case both apply
+  # and project entries win on name collisions.
+  home.file.".vibe/hooks.toml".text = ''
+    [[hooks]]
+    name = "secret-guard-pre-tool"
+    type = "pre_tool"
+    match = "bash"
+    command = "python3 ${config.home.homeDirectory}/.vibe/hooks/secret_guard.py"
+    description = "Deny bash commands that are likely to dump secrets to stdout."
+
+    [[hooks]]
+    name = "secret-guard-post-tool"
+    type = "post_tool"
+    match = "re:(bash|read_file|grep)"
+    command = "python3 ${config.home.homeDirectory}/.vibe/hooks/secret_guard.py"
+    description = "Redact secret-shaped strings from tool output before the model sees them."
+  '';
+
   # Gitea MCP wrapper script
   home.file.".vibe/gitea-mcp-wrapper.sh" = {
     text = builtins.readFile ../../scripts/gitea-mcp-wrapper.sh;

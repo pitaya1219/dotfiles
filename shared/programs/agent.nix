@@ -31,6 +31,11 @@
       recursive = true;
     };
 
+    home.file.".agent/secret_guard" = {
+      source = ./agent/secret_guard;
+      recursive = true;
+    };
+
     # Generate ~/.agent/daily-report.json when config is provided
     home.file.".agent/daily-report.json" = lib.mkIf (config.dotfiles.agent.dailyReport != {}) {
       text = builtins.toJSON config.dotfiles.agent.dailyReport;
