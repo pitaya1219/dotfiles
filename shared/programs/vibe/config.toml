@@ -11,6 +11,46 @@ enable_experimental_hooks = true
 # through it keeps working if the certificate is rotated or its path changes.
 enable_system_trust_store = true
 
+[[providers]]
+name = "mistral"
+api_base = "https://api.mistral.ai/v1"
+api_key_env_var = "MISTRAL_API_KEY"
+api_style = "openai"
+backend = "mistral"
+reasoning_field_name = "reasoning_content"
+
+[[models]]
+name = "mistral-large-latest"
+provider = "mistral"
+alias = "mistral-large"
+temperature = 0.2
+input_price = 4.0
+output_price = 20.0
+
+[[models]]
+name = "mistral-medium-latest"
+provider = "mistral"
+alias = "mistral-medium"
+temperature = 0.2
+input_price = 0.7
+output_price = 3.5
+
+[[models]]
+name = "mistral-small-4"
+provider = "mistral"
+alias = "mistral-small-4"
+temperature = 0.2
+input_price = 0.25
+output_price = 1.25
+
+[[models]]
+name = "devstral-small-latest"
+provider = "mistral"
+alias = "devstral-small"
+temperature = 0.2
+input_price = 0.1
+output_price = 0.3
+
 [[mcp_servers]]
 name = "gitea"
 transport = "stdio"
