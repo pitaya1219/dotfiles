@@ -58,6 +58,20 @@ in
     match = "re:(bash|read_file|grep)"
     command = "python3 ${config.home.homeDirectory}/.vibe/hooks/secret_guard.py"
     description = "Redact secret-shaped strings from tool output before the model sees them."
+
+    [[hooks]]
+    name = "session-init-pre-tool"
+    type = "pre_tool"
+    match = "bash"
+    command = "python3 ${config.home.homeDirectory}/.vibe/hooks/pre_tool.py"
+    description = "Session initialization hook for AI Sessions Workspace."
+
+    [[hooks]]
+    name = "session-init-post-tool"
+    type = "post_tool"
+    match = "bash"
+    command = "python3 ${config.home.homeDirectory}/.vibe/hooks/post_tool.py"
+    description = "Session post-processing hook for AI Sessions Workspace."
   '';
 
   # Gitea MCP wrapper script
