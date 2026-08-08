@@ -1,0 +1,3 @@
+[hooks]
+pre_tool = "hooks/pre_tool.py"
+post_tool = "hooks/post_tool.py"
