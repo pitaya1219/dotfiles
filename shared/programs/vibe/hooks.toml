@@ -1,8 +1,8 @@
 # Mistral Vibe Hooks Configuration
 # https://github.com/mistralai/mistral-vibe#hooks-experimental
 
-# secret_guard.py imports the shared scanner from ~/.agent/secret_guard
-# (see agent.nix) via a relative sys.path insert.
+# secret_guard.py's placement and imports are explained in vibe.nix,
+# next to the home.file entry that puts it at ~/.vibe/hooks/secret_guard.py.
 [[hooks]]
 name = "secret-guard-pre-tool"
 type = "pre_tool"
