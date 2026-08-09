@@ -41,14 +41,6 @@ in
     recursive = true;
   };
 
-  # Global hooks.toml (~/.vibe/hooks.toml) — loaded for every project unless
-  # a project-local .vibe/hooks.toml also exists, in which case both apply
-  # and project entries win on name collisions. Symlinked straight from the
-  # repo (single source of truth) — do not also write/cp this path from
-  # home.activation below, that raced against this symlink and left the
-  # session-tab-pointer hooks never actually installed.
-  home.file.".vibe/hooks.toml".source = ./vibe/hooks.toml;
-
   # Gitea MCP wrapper script
   home.file.".vibe/gitea-mcp-wrapper.sh" = {
     text = builtins.readFile ../../scripts/gitea-mcp-wrapper.sh;
@@ -60,9 +52,17 @@ in
   # mcp_servers entries (e.g. windmill) are concatenated, then envsubst
   # resolves the `${WINDMILL_MCP_URL}`-style placeholder in `url` fields,
   # since Vibe has no runtime env expansion there (unlike Claude Code).
+  #
+  # hooks.toml is installed the same way (plain writable copy, not a
+  # home.file symlink) because Vibe itself writes back into ~/.vibe/*.toml
+  # (e.g. on `/model` switches) — a Nix-store symlink there makes those
+  # writes fail. Re-running `home-manager switch` still overwrites it with
+  # the repo's current contents, same as config.toml.
   home.activation.installVibeConfig = lib.hm.dag.entryAfter ["writeBoundary"] ''
     mkdir -p "$HOME/.vibe"
     cat "${./vibe/config.toml}" "${generatedMcpConfig}" | envsubst > "$HOME/.vibe/config.toml"
     chmod 644 "$HOME/.vibe/config.toml"
+    cp "${./vibe/hooks.toml}" "$HOME/.vibe/hooks.toml"
+    chmod 644 "$HOME/.vibe/hooks.toml"
   '';
 }
