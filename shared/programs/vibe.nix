@@ -43,22 +43,11 @@ in
 
   # Global hooks.toml (~/.vibe/hooks.toml) — loaded for every project unless
   # a project-local .vibe/hooks.toml also exists, in which case both apply
-  # and project entries win on name collisions.
-  home.file.".vibe/hooks.toml".text = ''
-    [[hooks]]
-    name = "secret-guard-pre-tool"
-    type = "pre_tool"
-    match = "bash"
-    command = "python3 ${config.home.homeDirectory}/.vibe/hooks/secret_guard.py"
-    description = "Deny bash commands that are likely to dump secrets to stdout."
-
-    [[hooks]]
-    name = "secret-guard-post-tool"
-    type = "post_tool"
-    match = "re:(bash|read_file|grep)"
-    command = "python3 ${config.home.homeDirectory}/.vibe/hooks/secret_guard.py"
-    description = "Redact secret-shaped strings from tool output before the model sees them."
-  '';
+  # and project entries win on name collisions. Symlinked straight from the
+  # repo (single source of truth) — do not also write/cp this path from
+  # home.activation below, that raced against this symlink and left the
+  # session-tab-pointer hooks never actually installed.
+  home.file.".vibe/hooks.toml".source = ./vibe/hooks.toml;
 
   # Gitea MCP wrapper script
   home.file.".vibe/gitea-mcp-wrapper.sh" = {
@@ -75,8 +64,5 @@ in
     mkdir -p "$HOME/.vibe"
     cat "${./vibe/config.toml}" "${generatedMcpConfig}" | envsubst > "$HOME/.vibe/config.toml"
     chmod 644 "$HOME/.vibe/config.toml"
-    # Install hooks.toml for experimental hooks
-    cp "${./vibe/hooks.toml}" "$HOME/.vibe/hooks.toml"
-    chmod 644 "$HOME/.vibe/hooks.toml"
   '';
 }

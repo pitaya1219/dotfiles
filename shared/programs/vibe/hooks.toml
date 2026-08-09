@@ -1,5 +1,21 @@
-# Mistral Vibe Hooks Configuration for RocketChat Notifications
+# Mistral Vibe Hooks Configuration
 # https://github.com/mistralai/mistral-vibe#hooks-experimental
+
+# secret_guard.py imports the shared scanner from ~/.agent/secret_guard
+# (see agent.nix) via a relative sys.path insert.
+[[hooks]]
+name = "secret-guard-pre-tool"
+type = "pre_tool"
+match = "bash"
+command = "python3 $HOME/.vibe/hooks/secret_guard.py"
+description = "Deny bash commands that are likely to dump secrets to stdout."
+
+[[hooks]]
+name = "secret-guard-post-tool"
+type = "post_tool"
+match = "re:(bash|read_file|grep)"
+command = "python3 $HOME/.vibe/hooks/secret_guard.py"
+description = "Redact secret-shaped strings from tool output before the model sees them."
 
 # Notification on agent turn completion (session progress)
 [[hooks]]
