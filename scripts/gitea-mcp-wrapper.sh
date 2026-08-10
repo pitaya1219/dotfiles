@@ -6,5 +6,6 @@
 exec direnv exec . bash -c '
     export GITEA_ACCESS_TOKEN="${GITEA_VIBE_BOT_TOKEN:-$GITEA_ACCESS_TOKEN}"
     export GITEA_HOST="${GITEA_HOST:-https://git.pitaya.f5.si}"
+    export GITEA_TOOLS="${GITEA_TOOLS}"
     exec gitea-mcp "$@"
 ' -- "$@"

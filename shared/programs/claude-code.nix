@@ -38,6 +38,8 @@
           "\${GITEA_HOST}"
           "-token"
           "\${GITEA_CLAUDE_BOT_TOKEN}"
+          "-tools"
+          "\${GITEA_TOOLS}"
         ];
         env = {
           GITEA_USER = "claude-bot";
