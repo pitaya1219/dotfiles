@@ -26,7 +26,11 @@ import sys
 import tempfile
 import time
 
-POINTER_DIR = "/tmp/agent-tab-sessions"
+# Keyed by uid: /tmp is shared across unix accounts on multi-tenant hosts,
+# and whichever account creates the directory first owns it, locking every
+# other account out of writing pointer files (silently, since main() below
+# swallows OSError).
+POINTER_DIR = f"/tmp/agent-tab-sessions-{os.getuid()}"
 
 
 def main() -> None:

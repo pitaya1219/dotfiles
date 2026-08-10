@@ -9,7 +9,11 @@
 
 local M = {}
 
-M.POINTER_DIR = "/tmp/agent-tab-sessions"
+-- Keyed by uid: /tmp is shared across unix accounts on multi-tenant hosts,
+-- and whichever account creates the directory first owns it, locking every
+-- other account out of writing pointer files (a silent failure, since both
+-- the Python hook and the read here swallow errors).
+M.POINTER_DIR = string.format("/tmp/agent-tab-sessions-%d", vim.loop.getuid())
 
 local tab_marker_counter = 0
 
