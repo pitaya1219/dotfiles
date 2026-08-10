@@ -2,7 +2,7 @@
 name: logseq-write
 description: Append content to a Logseq page (or create a new page) via HTTP API, with optional Markdown-to-blocks conversion
 user-invocable: true
-version: 3.0.0
+version: 3.1.0
 ---
 
 Append content to a Logseq page, or create a new page with properties. Reads connection config from `~/.agent/logseq.json`.
@@ -45,7 +45,26 @@ resolve_value() {
 
 LOGSEQ_URL=$(resolve_value '.url')
 LOGSEQ_TOKEN=$(resolve_value '.token')
+
+# Sanity check — `url`/`token` may be wrapped in `{ "file": ... }` or
+# `{ "command": ... }` indirection. Reading them with `jq -r '.url'` /
+# `jq -r '.token'` directly (skipping resolve_value) does NOT run that
+# file/command — it silently returns the wrapper object as text, which is
+# not a valid URL or token. Every subsequent curl call would then fail
+# against garbage, usually with no useful error message. Always go through
+# resolve_value(); never read `.url`/`.token` off the config directly.
+case "$LOGSEQ_URL" in
+  http://*|https://*) : ;;
+  *) echo "LOGSEQ_URL did not resolve to a URL (got: $LOGSEQ_URL). Did something read .url directly instead of calling resolve_value()? Fix that before continuing." >&2; exit 1 ;;
+esac
+[ -n "$LOGSEQ_TOKEN" ] || { echo "LOGSEQ_TOKEN is empty after resolve_value(). Fix before continuing." >&2; exit 1; }
 ```
+
+If your tool calls don't share shell state across invocations (a fresh
+subprocess per call, or a separate agent turn), re-run this entire Step 1
+block — including `resolve_value()` and the sanity check — in every script
+that needs `$LOGSEQ_URL`/`$LOGSEQ_TOKEN`. Do not shortcut it with a fresh
+`jq -r '.url'`/`jq -r '.token'` in a later step.
 
 ## Step 2: Parse Arguments
 
@@ -70,15 +89,22 @@ PROPS_JSON=$(jq -n \
   # ... repeat for each collected prop
   '{tags: $tags, date: $date, ...}')
 
-RESULT=$(curl -sf \
+RESPONSE=$(curl -s -w '\n%{http_code}' \
   -H "Authorization: Bearer $LOGSEQ_TOKEN" \
   -H "Content-Type: application/json" \
   -d "$(jq -n --arg name "$PAGE" --argjson props "$PROPS_JSON" \
         '{method: "logseq.Editor.createPage", args: [$name, $props, {"redirect": false}]}')" \
   "$LOGSEQ_URL/api")
+HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+RESULT=$(echo "$RESPONSE" | sed '$d')
 
-# Verify page was created
-echo "$RESULT" | jq -e '.uuid' > /dev/null || { echo "createPage failed: $RESULT"; exit 1; }
+# Verify page was created. Don't use `curl -sf` here — it swallows the
+# response body on failure, leaving nothing to debug. Print the actual
+# HTTP status and body instead.
+if [ "$HTTP_CODE" != "200" ] || ! echo "$RESULT" | jq -e '.uuid' > /dev/null 2>&1; then
+  echo "createPage failed (HTTP $HTTP_CODE): $RESULT" >&2
+  exit 1
+fi
 ```
 
 After page creation, proceed to insert content blocks into the new page using `PAGE` as the page name.
@@ -194,22 +220,41 @@ Use `appendBlockInPage` to create the root block and obtain its UUID, then `inse
 ```bash
 # 1. Create root block (title block, or first top-level block if no title)
 ROOT_CONTENT="<title block content or first block content>"
-PARENT_RESULT=$(curl -sf \
+RESPONSE=$(curl -s -w '\n%{http_code}' \
   -H "Authorization: Bearer $LOGSEQ_TOKEN" \
   -H "Content-Type: application/json" \
   -d "$(jq -n --arg page "$PAGE" --arg content "$ROOT_CONTENT" \
         '{method: "logseq.Editor.appendBlockInPage", args: [$page, $content]}')" \
   "$LOGSEQ_URL/api")
-PARENT_UUID=$(echo "$PARENT_RESULT" | jq -r '.uuid // .result.uuid')
+HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+PARENT_RESULT=$(echo "$RESPONSE" | sed '$d')
+PARENT_UUID=$(echo "$PARENT_RESULT" | jq -r '.uuid // .result.uuid // empty')
+if [ "$HTTP_CODE" != "200" ] || [ -z "$PARENT_UUID" ] || [ "$PARENT_UUID" = "null" ]; then
+  echo "appendBlockInPage failed (HTTP $HTTP_CODE): $PARENT_RESULT" >&2
+  exit 1
+fi
 
 # 2. Insert children under the root block
-curl -sf \
+RESPONSE=$(curl -s -w '\n%{http_code}' \
   -H "Authorization: Bearer $LOGSEQ_TOKEN" \
   -H "Content-Type: application/json" \
   -d "$(jq -n --argjson blocks '<CHILDREN_JSON>' --arg uuid "$PARENT_UUID" \
         '{method: "logseq.Editor.insertBatchBlock", args: [$uuid, $blocks, {"sibling": false}]}')" \
-  "$LOGSEQ_URL/api"
+  "$LOGSEQ_URL/api")
+HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+RESULT=$(echo "$RESPONSE" | sed '$d')
+if [ "$HTTP_CODE" != "200" ]; then
+  echo "insertBatchBlock failed (HTTP $HTTP_CODE): $RESULT" >&2
+  exit 1
+fi
 ```
+
+Don't use `curl -sf` for any of these calls — `-f` discards the response
+body on a non-2xx status, so a failure prints as an empty, undiagnosable
+error (e.g. `createPage failed: ` with nothing after the colon). Always
+capture the HTTP status and body separately (as above) and print both on
+failure, so the real cause (bad credentials, bad page name, malformed
+request) is visible instead of guessed at.
 
 If any API call fails, print the error response and exit with code 1.
 Print the page name and number of inserted top-level blocks when done.
