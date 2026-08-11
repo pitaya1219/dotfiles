@@ -2,259 +2,89 @@
 name: logseq-write
 description: Append content to a Logseq page (or create a new page) via HTTP API, with optional Markdown-to-blocks conversion
 user-invocable: true
-version: 3.1.0
+version: 4.0.0
 ---
 
-Append content to a Logseq page, or create a new page with properties. Reads connection config from `~/.agent/logseq.json`.
+Append content to a Logseq page, or create a new page with properties.
+
+All config resolution, Markdown-to-block conversion, Nextcloud asset uploads,
+and Logseq API calls are handled by the bundled `logseq_write.py` script —
+do not hand-write curl/jq for this skill. The script is the single source of
+truth for this logic; if something about the API call sequence seems
+ambiguous, read the script rather than improvising shell around it.
 
 `$ARGUMENTS` format: `<page> [--format markdown|logseq] [--title "..."] [--tag tag-name] [--create-page] [--prop key=value]... [--asset path[:name]]...`
 
-- `page` — Logseq page name (e.g. `2026-06-08` for today's journal, or `Session: fix-bug` for a new page)
-- `--format` — `markdown` (default) converts Markdown; `logseq` uses native outline as-is
+- `page` — Logseq page name (e.g. `2026-06-08` for today's journal, or `Session/2026-06-08 fix-bug` for a new page)
+- `--format` — `markdown` (default) converts Markdown; `logseq` uses native outline as-is (2-space indent = 1 level)
 - `--title` — parent block heading; all content becomes its children (append mode only)
 - `--tag` — adds `tags:: #<tag>` property on the title block (requires `--title`, append mode only)
 - `--create-page` — create a new page instead of appending to an existing one; `<page>` becomes the page title
 - `--prop key=value` — set a page property (repeatable, requires `--create-page`)
-- `--asset path[:name]` — upload a local file to Nextcloud and append a link block to the content (repeatable). Optional `:name` overrides the on-disk filename (defaults to the source basename). Image extensions render inline (`![]`), everything else as a download link (`[]`). Linked via Nextcloud's internal (login-required) URL — see Step 3.5.
+- `--asset path[:name]` — upload a local file to Nextcloud and append a link block to the content (repeatable). Optional `:name` overrides the on-disk filename (defaults to the source basename). Image extensions render inline (`![]`), everything else as a download link (`[]`). Linked via Nextcloud's internal (login-required) URL.
 
-## Step 1: Load Config
+## Usage
 
-```bash
-cat ~/.agent/logseq.json
-```
-
-If missing, print error and stop:
-> No config at ~/.agent/logseq.json. Set dotfiles.agent.logseq in your Nix profile.
-
-Each of `url` and `token` accepts a plain string, `{ "file": "..." }`, or `{ "command": "..." }`.
+Write the content to append (Markdown or native Logseq outline, per
+`--format`) to the script's stdin via a heredoc, and pass the flags above
+straight through:
 
 ```bash
-resolve_value() {
-  local KEY="$1" FILE="$HOME/.agent/logseq.json"
-  local TYPE=$(jq -r "$KEY | type" "$FILE")
-  if [ "$TYPE" = "string" ]; then
-    jq -r "$KEY" "$FILE"
-  else
-    local SUBKEY=$(jq -r "$KEY | keys[0]" "$FILE")
-    case "$SUBKEY" in
-      file)    cat "$(jq -r "$KEY.file" "$FILE" | sed "s|~|$HOME|")" 2>/dev/null ;;
-      command) eval "$(jq -r "$KEY.command" "$FILE")" 2>/dev/null ;;
-    esac
-  fi
-}
-
-LOGSEQ_URL=$(resolve_value '.url')
-LOGSEQ_TOKEN=$(resolve_value '.token')
-
-# Sanity check — `url`/`token` may be wrapped in `{ "file": ... }` or
-# `{ "command": ... }` indirection. Reading them with `jq -r '.url'` /
-# `jq -r '.token'` directly (skipping resolve_value) does NOT run that
-# file/command — it silently returns the wrapper object as text, which is
-# not a valid URL or token. Every subsequent curl call would then fail
-# against garbage, usually with no useful error message. Always go through
-# resolve_value(); never read `.url`/`.token` off the config directly.
-case "$LOGSEQ_URL" in
-  http://*|https://*) : ;;
-  *) echo "LOGSEQ_URL did not resolve to a URL (got: $LOGSEQ_URL). Did something read .url directly instead of calling resolve_value()? Fix that before continuing." >&2; exit 1 ;;
-esac
-[ -n "$LOGSEQ_TOKEN" ] || { echo "LOGSEQ_TOKEN is empty after resolve_value(). Fix before continuing." >&2; exit 1; }
+python3 "$HOME/.agent/skills/logseq-write/logseq_write.py" "<page>" \
+  --format markdown \
+  [--title "..."] [--tag tag-name] [--create-page] \
+  [--prop key=value] [--prop key2=value2] \
+  [--asset path[:name]] \
+  <<'EOF'
+<content here — the Markdown or native-outline block content>
+EOF
 ```
 
-If your tool calls don't share shell state across invocations (a fresh
-subprocess per call, or a separate agent turn), re-run this entire Step 1
-block — including `resolve_value()` and the sanity check — in every script
-that needs `$LOGSEQ_URL`/`$LOGSEQ_TOKEN`. Do not shortcut it with a fresh
-`jq -r '.url'`/`jq -r '.token'` in a later step.
+`--prop` and `--asset` are each repeatable — pass one flag per value, not a
+combined string.
 
-## Step 2: Parse Arguments
-
-From `$ARGUMENTS`, extract:
-- `PAGE` — first positional argument (required)
-- `FORMAT` — `--format` value (default: `markdown`)
-- `TITLE` — `--title` value (optional, append mode only)
-- `TAG` — `--tag` value (optional, append mode only)
-- `CREATE_PAGE` — true if `--create-page` is present
-- `PROPS` — map of key→value from all `--prop key=value` occurrences
-- `ASSETS` — list of `path[:name]` from all `--asset` occurrences
-
-## Step 3: Create Page (if `--create-page`)
-
-Call `logseq.Editor.createPage` with the page title and collected properties:
-
-```bash
-# Build properties JSON object from --prop key=value pairs
-PROPS_JSON=$(jq -n \
-  --arg tags   "$PROP_tags" \
-  --arg date   "$PROP_date" \
-  # ... repeat for each collected prop
-  '{tags: $tags, date: $date, ...}')
-
-RESPONSE=$(curl -s -w '\n%{http_code}' \
-  -H "Authorization: Bearer $LOGSEQ_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "$(jq -n --arg name "$PAGE" --argjson props "$PROPS_JSON" \
-        '{method: "logseq.Editor.createPage", args: [$name, $props, {"redirect": false}]}')" \
-  "$LOGSEQ_URL/api")
-HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-RESULT=$(echo "$RESPONSE" | sed '$d')
-
-# Verify page was created. Don't use `curl -sf` here — it swallows the
-# response body on failure, leaving nothing to debug. Print the actual
-# HTTP status and body instead.
-if [ "$HTTP_CODE" != "200" ] || ! echo "$RESULT" | jq -e '.uuid' > /dev/null 2>&1; then
-  echo "createPage failed (HTTP $HTTP_CODE): $RESULT" >&2
-  exit 1
-fi
-```
-
-After page creation, proceed to insert content blocks into the new page using `PAGE` as the page name.
-
-## Step 3.5: Upload Assets to Nextcloud (if `--asset`)
-
-For each `--asset path[:name]`, upload the file to Nextcloud and build a link block.
-Collect the resulting blocks into `ASSET_BLOCKS` (a JSON array of `{ "content": ... }`
-objects) for appending in Step 4. Credentials come from passage, not
-`~/.agent/logseq.json`.
-
-```bash
-NC_HOST=$(passage show logseq-assets/nextcloud/host)
-NC_ID=$(passage show logseq-assets/nextcloud/ryu/id)
-NC_PASSWORD=$(passage show logseq-assets/nextcloud/ryu/password)
-NC_DIR="logseq-assets"
-
-ASSET_BLOCKS='[]'
-
-if [ "${#ASSETS[@]}" -gt 0 ]; then
-  curl -s -o /dev/null -u "$NC_ID:$NC_PASSWORD" -X MKCOL \
-    "$NC_HOST/remote.php/dav/files/$NC_ID/$NC_DIR/"   # ignore result — no-op if it already exists
-
-  for SPEC in "${ASSETS[@]}"; do
-    SRC="${SPEC%%:*}"                          # part before optional :name
-    NAME="${SPEC#*:}"; [ "$NAME" = "$SPEC" ] && NAME="$(basename "$SRC")"
-    [ -f "$SRC" ] || { echo "asset not found, skipping: $SRC" >&2; continue; }
-
-    curl -sf -u "$NC_ID:$NC_PASSWORD" -T "$SRC" \
-      "$NC_HOST/remote.php/dav/files/$NC_ID/$NC_DIR/$NAME" \
-      || { echo "nextcloud upload failed, skipping: $SRC" >&2; continue; }
-
-    # PROPFIND for the Nextcloud fileid to build the internal link (/f/<id>).
-    FILEID=$(curl -sf -u "$NC_ID:$NC_PASSWORD" -X PROPFIND -H "Depth: 0" \
-      --data '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><oc:fileid/></d:prop></d:propfind>' \
-      "$NC_HOST/remote.php/dav/files/$NC_ID/$NC_DIR/$NAME" \
-      | grep -oP '(?<=<oc:fileid>)[0-9]+')
-    [ -n "$FILEID" ] || { echo "nextcloud fileid lookup failed, skipping: $NAME" >&2; continue; }
-
-    # Image extensions render inline; everything else is a download link.
-    case "${NAME,,}" in
-      *.png|*.jpg|*.jpeg|*.gif|*.webp|*.svg|*.bmp) PREFIX='!';;
-      *) PREFIX='';;
-    esac
-    LINK="${PREFIX}[${NAME}](${NC_HOST}/f/${FILEID})"
-    ASSET_BLOCKS=$(jq -c --arg c "$LINK" '. + [{content:$c}]' <<<"$ASSET_BLOCKS")
-  done
-fi
-```
-
-## Step 4: Build Block Tree
-
-The content to write is provided in the conversation context (by the calling skill or user).
-
-### Format: `logseq` (native)
-
-Each line is a block. 2-space indentation creates child blocks. Use as-is.
-
-### Format: `markdown` (convert)
-
-Convert Markdown to a Logseq block tree using these rules:
+### Markdown conversion rules (`--format markdown`, the default)
 
 | Markdown input | Logseq block content |
 |---|---|
-| `# H1` | skip — used only as page/parent title |
-| `## Section` | `**Section**` — top-level child block |
-| `### Subsection` | `**Subsection**` — child of current section |
-| `- item` / `* item` | `item` — child of current context |
+| `# H1` | skipped — used only as page/parent title, never emitted as a block |
+| `## Section` | `**Section**` — nested by heading depth |
+| `### Subsection` | `**Subsection**` — child of the nearest preceding `##` |
+| `- item` / `* item` | `item` — nested by list indentation, always inside the current heading context |
 | `- [ ] task` | `TODO task` |
 | `- [x] task` | `DONE task` |
-| plain paragraph | block at current level |
+| plain paragraph | leaf block under the current context |
 | blank line | ignored |
-| inline `**bold**`, `[[link]]`, `` `code` `` | pass through unchanged |
+| inline `**bold**`, `[[link]]`, `` `code` `` | passed through unchanged |
 
-Build a JSON array of block objects:
-```json
-[
-  {
-    "content": "**Section**",
-    "children": [
-      { "content": "**Subsection**", "children": [
-        { "content": "item" }
-      ]}
-    ]
-  }
-]
-```
+### Result
 
-If `ASSET_BLOCKS` (from Step 3.5) is non-empty, append its blocks to the end of this
-top-level array so asset links appear after the content. When content is empty (assets
-only), the tree is just `ASSET_BLOCKS`.
+On success the script prints `Page: <name>, N block(s) inserted` and exits
+0. On failure it prints the HTTP status and response body (or the specific
+validation error) to stderr and exits non-zero — surface that message to the
+user; do not retry blindly or fall back to hand-rolled curl.
 
-## Step 5: Wrap with Title Block (append mode only)
+## Config
 
-If `--title` is given (and not `--create-page`), construct the title block content:
-```
-<TITLE>
-tags:: #<TAG>
-```
-(omit `tags::` line if `--tag` not given)
+Reads connection config from `~/.agent/logseq.json`. `url` and `token` each
+accept a plain string, `{ "file": "..." }`, or `{ "command": "..." }` — the
+script resolves all three forms itself. If the file is missing, it prints:
 
-Wrap the entire converted tree as children of this title block:
-```json
-[{ "content": "<title-content>", "children": [ ...converted tree... ] }]
-```
+> No config at ~/.agent/logseq.json. Set dotfiles.agent.logseq in your Nix profile.
 
-If `--title` is not given, the converted tree's top-level blocks are inserted directly.
+Nextcloud asset credentials (used only by `--asset`) come from `passage`
+(`logseq-assets/nextcloud/...`), not from `logseq.json`.
 
-## Step 6: Insert into Logseq
+## Availability check
 
-Use `appendBlockInPage` to create the root block and obtain its UUID, then `insertBatchBlock` to insert its children.
+To check reachability without writing anything (e.g. before deciding whether
+to fall back to a local file), run:
 
 ```bash
-# 1. Create root block (title block, or first top-level block if no title)
-ROOT_CONTENT="<title block content or first block content>"
-RESPONSE=$(curl -s -w '\n%{http_code}' \
-  -H "Authorization: Bearer $LOGSEQ_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "$(jq -n --arg page "$PAGE" --arg content "$ROOT_CONTENT" \
-        '{method: "logseq.Editor.appendBlockInPage", args: [$page, $content]}')" \
-  "$LOGSEQ_URL/api")
-HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-PARENT_RESULT=$(echo "$RESPONSE" | sed '$d')
-PARENT_UUID=$(echo "$PARENT_RESULT" | jq -r '.uuid // .result.uuid // empty')
-if [ "$HTTP_CODE" != "200" ] || [ -z "$PARENT_UUID" ] || [ "$PARENT_UUID" = "null" ]; then
-  echo "appendBlockInPage failed (HTTP $HTTP_CODE): $PARENT_RESULT" >&2
-  exit 1
-fi
-
-# 2. Insert children under the root block
-RESPONSE=$(curl -s -w '\n%{http_code}' \
-  -H "Authorization: Bearer $LOGSEQ_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "$(jq -n --argjson blocks '<CHILDREN_JSON>' --arg uuid "$PARENT_UUID" \
-        '{method: "logseq.Editor.insertBatchBlock", args: [$uuid, $blocks, {"sibling": false}]}')" \
-  "$LOGSEQ_URL/api")
-HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-RESULT=$(echo "$RESPONSE" | sed '$d')
-if [ "$HTTP_CODE" != "200" ]; then
-  echo "insertBatchBlock failed (HTTP $HTTP_CODE): $RESULT" >&2
-  exit 1
-fi
+python3 "$HOME/.agent/skills/logseq-write/logseq_write.py" --check
 ```
 
-Don't use `curl -sf` for any of these calls — `-f` discards the response
-body on a non-2xx status, so a failure prints as an empty, undiagnosable
-error (e.g. `createPage failed: ` with nothing after the colon). Always
-capture the HTTP status and body separately (as above) and print both on
-failure, so the real cause (bad credentials, bad page name, malformed
-request) is visible instead of guessed at.
-
-If any API call fails, print the error response and exit with code 1.
-Print the page name and number of inserted top-level blocks when done.
+Exit 0 means Logseq is reachable; exit 1 means it isn't (including "no
+config file" — that's a normal "not set up here" case, not an error to
+surface). `session-save` uses this same check via the bundled
+`logseq_status.py`.

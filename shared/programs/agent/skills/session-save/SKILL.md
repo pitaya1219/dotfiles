@@ -2,7 +2,7 @@
 name: session-save
 description: Save current session summary to Logseq (if available) or as a local markdown file
 user-invocable: true
-version: 2.9.0
+version: 3.0.0
 ---
 
 Create a comprehensive summary of the current session and save it.
@@ -10,32 +10,16 @@ Create a comprehensive summary of the current session and save it.
 ## Step 0: Check Logseq Availability
 
 ```bash
-USE_LOGSEQ=false
-_CFG="$HOME/.agent/logseq.json"
-if [ -f "$_CFG" ]; then
-  resolve_val() {
-    local KEY="$1"
-    local TYPE=$(jq -r "$KEY | type" "$_CFG")
-    case "$TYPE" in
-      string) jq -r "$KEY" "$_CFG" ;;
-      object)
-        case "$(jq -r "$KEY | keys[0]" "$_CFG")" in
-          file)    cat "$(jq -r "$KEY.file" "$_CFG" | sed "s|~|$HOME|")" 2>/dev/null ;;
-          command) eval "$(jq -r "$KEY.command" "$_CFG")" 2>/dev/null ;;
-        esac ;;
-    esac
-  }
-  _URL=$(resolve_val '.url')
-  _TOK=$(resolve_val '.token')
-  if curl -sf --max-time 3 \
-       -H "Authorization: Bearer $_TOK" \
-       -H "Content-Type: application/json" \
-       -d '{"method":"logseq.App.getUserConfigs","args":[]}' \
-       "$_URL/api" > /dev/null 2>&1; then
-    USE_LOGSEQ=true
-  fi
+if python3 "$HOME/.agent/skills/logseq-write/logseq_status.py"; then
+  USE_LOGSEQ=true
+else
+  USE_LOGSEQ=false
 fi
 ```
+
+This delegates config resolution and the reachability probe to the same
+script `logseq-write` uses — see `Skill(logseq-write)` for what it checks.
+Exit 0/1 only; no output to parse.
 
 ## Session ID Detection
 
@@ -104,39 +88,20 @@ their explained depth, not trimmed to match this terse default.
 When `USE_LOGSEQ=true` and `TRANSCRIPT_PATH` was resolved (by the adapter above),
 upload the full session transcript to Nextcloud so the page can link to the
 complete raw log. Best-effort: skip silently when there is no transcript.
-(Agent-type branching already happened in `detect-session.sh`.) Same mechanism as
-`logseq-write`'s `--asset`; credentials come from passage, not `~/.agent/logseq.json`.
+(Agent-type branching already happened in `detect-session.sh`.)
 
-The transcript is compressed with **zstandard** (`zstd`, provided globally via
-`shared/programs/bare.nix`) before upload — jsonl logs are highly compressible, so
-the asset is stored as `session-<uuid>.jsonl.zst`. Decompress with `zstd -d` (or
-`zstdcat`) to read it.
+The bundled `attach_transcript.py` handles this end-to-end: it compresses the
+transcript with zstandard (`zstd`, provided globally via `shared/programs/bare.nix`
+— jsonl logs are highly compressible) to `session-<uuid>.jsonl.zst`, uploads it to
+Nextcloud via the same mechanism as `logseq-write`'s `--asset` (credentials from
+passage, not `~/.agent/logseq.json`), and prints the markdown link. Decompress the
+asset with `zstd -d` (or `zstdcat`) to read it.
 
 ```bash
 RAW_TRANSCRIPT_REF=""
 if [ "$USE_LOGSEQ" = true ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-  _ASSET_NAME="session-${SESSION_ID}.jsonl.zst"
-  # Compress the raw transcript with zstandard before upload.
-  _UPLOAD_PATH="${TMPDIR:-/tmp}/${_ASSET_NAME}"
-  zstd -q -f -19 -o "$_UPLOAD_PATH" "$TRANSCRIPT_PATH" 2>/dev/null || _UPLOAD_PATH=""
-  if [ -n "$_UPLOAD_PATH" ] && [ -f "$_UPLOAD_PATH" ]; then
-    _NC_HOST=$(passage show logseq-assets/nextcloud/host)
-    _NC_ID=$(passage show logseq-assets/nextcloud/ryu/id)
-    _NC_PASSWORD=$(passage show logseq-assets/nextcloud/ryu/password)
-    _NC_DIR="logseq-assets"
-    curl -s -o /dev/null -u "$_NC_ID:$_NC_PASSWORD" -X MKCOL \
-      "$_NC_HOST/remote.php/dav/files/$_NC_ID/$_NC_DIR/"   # ignore result — no-op if it already exists
-    if curl -sf -u "$_NC_ID:$_NC_PASSWORD" -T "$_UPLOAD_PATH" \
-         "$_NC_HOST/remote.php/dav/files/$_NC_ID/$_NC_DIR/$_ASSET_NAME"; then
-      # PROPFIND for the Nextcloud fileid to build the internal link (/f/<id>).
-      _FILEID=$(curl -sf -u "$_NC_ID:$_NC_PASSWORD" -X PROPFIND -H "Depth: 0" \
-        --data '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><oc:fileid/></d:prop></d:propfind>' \
-        "$_NC_HOST/remote.php/dav/files/$_NC_ID/$_NC_DIR/$_ASSET_NAME" \
-        | grep -oP '(?<=<oc:fileid>)[0-9]+')
-      [ -n "$_FILEID" ] && RAW_TRANSCRIPT_REF="[session.jsonl.zst](${_NC_HOST}/f/${_FILEID})"
-    fi
-    rm -f "$_UPLOAD_PATH"
-  fi
+  RAW_TRANSCRIPT_REF=$(python3 "$HOME/.agent/skills/session-save/attach_transcript.py" \
+    "$SESSION_ID" "$TRANSCRIPT_PATH")
 fi
 ```
 
@@ -148,9 +113,10 @@ keeping it in sync with the latest transcript.
 
 ### If Logseq is available (`USE_LOGSEQ=true`)
 
-Create **one page per topic in `TOPICS`** (usually just one). For each topic invoke
-`Skill(logseq-write)` with `--create-page`, using that topic's `slug` and `objective`
-and its own generated summary. Across a multi-topic session:
+Create **one page per topic in `TOPICS`** (usually just one). For each topic, call
+`logseq-write`'s bundled script directly (see `Skill(logseq-write)` for the full
+option reference) with `--create-page`, using that topic's `slug` and `objective`,
+piping its generated summary in via stdin. Across a multi-topic session:
 
 - Keep `session-id`, `date`, `model`, and `raw-transcript` **identical** on every
   page (one session, one transcript asset shared by all pages).
@@ -160,8 +126,9 @@ and its own generated summary. Across a multi-topic session:
 
 Per-topic create-page invocation:
 
-```
-$ARGUMENTS: "Session/<YYYY-MM-DD> <topic-slug>" --create-page --format markdown \
+```bash
+python3 "$HOME/.agent/skills/logseq-write/logseq_write.py" \
+  "Session/<YYYY-MM-DD> <topic-slug>" --create-page --format markdown \
   --prop "tags=#<agent-type>-session" \
   --prop "date=[[<YYYY-MM-DD>]]" \
   --prop "repository=<repo-name-or-empty>" \
@@ -172,8 +139,16 @@ $ARGUMENTS: "Session/<YYYY-MM-DD> <topic-slug>" --create-page --format markdown 
   --prop "model=<model-name>" \
   --prop "pr=<pr-url-or-empty>" \
   --prop "called-by=<caller-or-empty>" \
-  --prop "raw-transcript=<RAW_TRANSCRIPT_REF-or-empty>"
+  --prop "raw-transcript=<RAW_TRANSCRIPT_REF-or-empty>" \
+  <<'EOF'
+<the topic's generated summary>
+EOF
 ```
+
+Omit any `--prop` whose value is empty entirely (don't pass `--prop key=`) — this
+matches `logseq_write.py`'s own validation and keeps empty properties out of the
+page. If the script exits non-zero, its stderr has the reason (bad config, HTTP
+failure, etc.); surface it rather than retrying blindly.
 
 Field values:
 - `<topic-slug>`: the topic's concise kebab-case title (e.g. `session-save-logseq-integration`). For a single-topic session this is just the session's one-line summary.
