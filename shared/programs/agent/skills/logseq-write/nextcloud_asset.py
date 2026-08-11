@@ -56,7 +56,7 @@ def _dav(method, url, user, password, data=None, headers=None):
     req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
     req.add_header("Authorization", _basic_auth_header(user, password))
     req.add_header("User-Agent", USER_AGENT)
-    return urllib.request.urlopen(req, timeout=30)
+    return urllib.request.urlopen(req, timeout=60)
 
 
 def upload(src_path, name=None, display_name=None):
@@ -83,6 +83,8 @@ def upload(src_path, name=None, display_name=None):
             _dav("MKCOL", base, user, password)
         except urllib.error.HTTPError:
             pass  # no-op if the directory already exists
+        except (urllib.error.URLError, TimeoutError):
+            pass  # best-effort; a real problem will surface on the PUT below
         _dir_ensured = True
 
     target = base + urllib.parse.quote(name)
@@ -90,7 +92,7 @@ def upload(src_path, name=None, display_name=None):
         data = f.read()
     try:
         _dav("PUT", target, user, password, data=data)
-    except (urllib.error.HTTPError, urllib.error.URLError) as e:
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
         print(f"nextcloud upload failed ({e}), skipping: {src_path}", file=sys.stderr)
         return None
 
@@ -109,7 +111,7 @@ def upload(src_path, name=None, display_name=None):
             headers={"Depth": "0", "Content-Type": "application/xml"},
         )
         body = resp.read().decode()
-    except (urllib.error.HTTPError, urllib.error.URLError) as e:
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
         print(f"nextcloud fileid lookup failed ({e}), skipping: {name}", file=sys.stderr)
         return None
 

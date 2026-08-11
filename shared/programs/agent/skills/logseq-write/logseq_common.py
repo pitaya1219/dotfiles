@@ -73,12 +73,19 @@ def load_config():
     return url.rstrip("/"), token
 
 
-def call_api(url, token, method, args, timeout=15):
+def call_api(url, token, method, args, timeout=60):
     """POST a Logseq API call. Returns (status_code, body_text).
-    status_code is 0 on connection-level failure (body_text holds the reason)
-    — callers should treat non-200 as failure and print status+body, the same
-    "never swallow the response body" discipline the old prose called out
-    around `curl -sf`.
+    status_code is 0 on connection-level failure or timeout (body_text holds
+    the reason) — callers should treat non-200 as failure and print
+    status+body, the same "never swallow the response body" discipline the
+    old prose called out around `curl -sf`.
+
+    Default timeout is 60s, not a "fast fail" value: insertBatchBlock calls
+    carrying a full session-summary block tree (tens of blocks, low tens of
+    KB) have been observed taking longer than 15s to process server-side,
+    and this isn't a hot path — a slow-but-successful write is preferable to
+    a spurious failure. Callers that want a fast liveness probe instead
+    (is_available()) pass their own short timeout.
     """
     body = json.dumps({"method": method, "args": args}).encode()
     req = urllib.request.Request(
@@ -98,6 +105,13 @@ def call_api(url, token, method, args, timeout=15):
         return e.code, e.read().decode()
     except urllib.error.URLError as e:
         return 0, str(e.reason)
+    except TimeoutError:
+        # A read timeout mid-response (as opposed to a connection-time
+        # failure) raises a bare TimeoutError that urllib does NOT wrap in
+        # URLError, so it must be caught separately or it crashes the whole
+        # script with a raw traceback instead of a clean caller-visible
+        # failure.
+        return 0, f"timed out after {timeout}s"
 
 
 def is_available(url, token, timeout=3):
