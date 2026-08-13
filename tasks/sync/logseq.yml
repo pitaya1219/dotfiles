@@ -58,20 +58,26 @@ tasks:
             exit ${SYNC_RESULT:-0}
         fi
         
-        # Shrink check - skip during dry-run
-        if [[ "{{.CLI_ARGS}}" != *--dry-run* ]]; then
-            task sync:logseq:_shrink_check
-        else
-            echo "$(date '+%Y-%m-%d %H:%M:%S') - Skipping shrink check (dry-run mode)" >> "${LOG_FILE}"
-            echo "Skipping shrink check (dry-run mode)"
-        fi
-
         # Conflict resolution - skip during dry-run
         if [[ "{{.CLI_ARGS}}" != *--dry-run* ]]; then
             task sync:logseq:_conflict
         else
             echo "$(date '+%Y-%m-%d %H:%M:%S') - Skipping conflict resolution (dry-run mode)" >> "${LOG_FILE}"
             echo "Skipping conflict resolution (dry-run mode)"
+        fi
+
+        # Shrink check - skip during dry-run.
+        # Deliberately runs AFTER _conflict, not before. Both write to the same
+        # pages/conflict-<name>.md path, but _conflict truncates it (">") while
+        # _shrink_check appends, so shrink-first would have its report silently
+        # clobbered whenever both fire for the same page in one run. Running
+        # second also lets _shrink_check compare against any base file _conflict
+        # restored from a conflict copy, instead of reporting it as missing.
+        if [[ "{{.CLI_ARGS}}" != *--dry-run* ]]; then
+            task sync:logseq:_shrink_check
+        else
+            echo "$(date '+%Y-%m-%d %H:%M:%S') - Skipping shrink check (dry-run mode)" >> "${LOG_FILE}"
+            echo "Skipping shrink check (dry-run mode)"
         fi
         INNEREOF
 
