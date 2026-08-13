@@ -46,11 +46,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786031233,
-        "narHash": "sha256-TIDlLTLI1/pB7IqgjzcKQjpODQsZE2oII4XGG9B6KjI=",
+        "lastModified": 1786630952,
+        "narHash": "sha256-a952+jEQ1I6sMd6yzi2GIsO/EFNtEFvzwbJ+oOG9Cg0=",
         "owner": "nix-community",
         "repo": "home-manager",
-        "rev": "7834e82588860aaf780cec1366524456a70898d7",
+        "rev": "2d1bac51b2513914ace47797765c3265164de78e",
         "type": "github"
       },
       "original": {
@@ -64,11 +64,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1786046740,
-        "narHash": "sha256-DXbSoT/KFwnFS9LFtICNzYbReS/nKit8dvNerGTLNHk=",
+        "lastModified": 1786653740,
+        "narHash": "sha256-0SCge422yDG8kV1rU9OyoFjB7QE/5ViUX1vG1N6RELs=",
         "ref": "main",
-        "rev": "26dec32442834b62c45f662dfe1e59d5587b80e8",
-        "revCount": 477,
+        "rev": "e9526720116c58fe976fde982b0474894ca6c907",
+        "revCount": 520,
         "type": "git",
         "url": "https://git.pitaya.f5.si/pitaya1219/homelab.git"
       },
@@ -111,11 +111,11 @@
         "uv2nix": "uv2nix_2"
       },
       "locked": {
-        "lastModified": 1786244503,
-        "narHash": "sha256-tT1szF7Oj5oNNlUTrIt4id608eDZV0KwvnxtEsRWzYA=",
+        "lastModified": 1786590093,
+        "narHash": "sha256-ayRs/jPlaFxfrhfkkYimE/kAteeRpsDpMmd9dfWv+N0=",
         "owner": "pitaya1219",
         "repo": "mistral-vibe-nix",
-        "rev": "a22d018ce94c2fff3f92089e60d975a877b5629a",
+        "rev": "10748a7d3c15426d2711fc6dbf1c99e1ceb8a050",
         "type": "github"
       },
       "original": {
@@ -127,11 +127,11 @@
     "mistral-vibe-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1785947706,
-        "narHash": "sha256-Ux5W+9mtvAdlINQfr58Fft4OtpqjoYQrQe3XZwhvovc=",
+        "lastModified": 1786454656,
+        "narHash": "sha256-sTRhFsMZFcGPh0OYJfhqy6sP0Xr7Mxxlzw8kPGskP8M=",
         "owner": "mistralai",
         "repo": "mistral-vibe",
-        "rev": "b78b451c39eab9213393ad2f45908e8562a5c5e7",
+        "rev": "4530b9ce6f74046afbeadf63a2c89be9e35ee2bb",
         "type": "github"
       },
       "original": {
@@ -149,11 +149,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786147427,
-        "narHash": "sha256-vas4Af+7MaPDnCnrZ9fdE6km4KViVonZ/kBsm+wMFgI=",
+        "lastModified": 1786579404,
+        "narHash": "sha256-u8cCRrk4j8Xm0Cd5vful9OA+Z5+vqWkkR5KHDYWtTqw=",
         "owner": "nix-community",
         "repo": "neovim-nightly-overlay",
-        "rev": "87a9eece84189d0319b9139a2f82a5d4c484c67f",
+        "rev": "3c7255e535760cd414f64af0ebf7715dfd683673",
         "type": "github"
       },
       "original": {
@@ -165,11 +165,11 @@
     "neovim-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1786146869,
-        "narHash": "sha256-UKDiRK0bBcLKSw1JgIlMqMPNYMBoUY1hFH6XJmfzf64=",
+        "lastModified": 1786540377,
+        "narHash": "sha256-sBQqVfoZiKaAjVTaEt/O27BX4PgnkZT2fWezQeABnxE=",
         "owner": "neovim",
         "repo": "neovim",
-        "rev": "f0a01822850bf7324326a3424f6b9a6892e5a768",
+        "rev": "a63393396cd0901050849b72caaa8583949b6ebf",
         "type": "github"
       },
       "original": {
@@ -185,11 +185,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786156568,
-        "narHash": "sha256-7S1cjG9H24HLUegeBozEG2Wr+JjMfdyboAczoVLvbFw=",
+        "lastModified": 1786613000,
+        "narHash": "sha256-ndTd8cr7atbuRg1NDKWzjJ0Kn3wO/neKfj4ZwM7ja9c=",
         "owner": "ryoppippi",
         "repo": "nix-claude-code",
-        "rev": "8687230115961d8404176a5c0a1a06ee4e321cce",
+        "rev": "0e6c792034ace50488bf079dfee40ad86785b064",
         "type": "github"
       },
       "original": {
@@ -236,11 +236,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1786106723,
-        "narHash": "sha256-zDSUbpoeo/9ZmD2+wXnzxoo1+uhL8vxc0b8yuYMKYq0=",
+        "lastModified": 1786599213,
+        "narHash": "sha256-yNJd40f11EzXBjSByCB7IPpeFFAdeoSKKM67dGkfFoU=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+        "rev": "0e251e24a4f24e036a084b6b4b2d2491af4167f4",
         "type": "github"
       },
       "original": {
