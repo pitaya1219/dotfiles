@@ -33,7 +33,12 @@
       # 15-min stagger keeps execution windows from overlapping and causing lost updates.
       # IMPORTANT: If this timing changes, update profiles/rose/logseq-sync.nix in parallel.
       StartCalendarInterval = [ { Minute = 5; } { Minute = 35; } ];
-      RunAtLoad = true;
+      # RunAtLoad is deliberately off: it would fire a sync at login and on every
+      # home-manager switch, i.e. outside the staggered slots and possibly on top
+      # of rose's run — the one hole the fixed schedule above is meant to close.
+      # Cost is waiting until the next :05/:35 after login, the same trade rose
+      # makes by dropping OnBootSec.
+      RunAtLoad = false;
       StandardOutPath = "${config.home.homeDirectory}/.local/share/logseq-sync.log";
       StandardErrorPath = "${config.home.homeDirectory}/.local/share/logseq-sync-error.log";
     };
