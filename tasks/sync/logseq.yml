@@ -6,6 +6,8 @@ env:
   LOG_FILE: '{{if .LOG_FILE}}{{.LOG_FILE}}{{else}}{{env "HOME"}}/.local/share/logseq-sync.log{{end}}'
   BACKUP_DIR: '{{if .BACKUP_DIR}}{{.BACKUP_DIR}}{{else}}{{env "HOME"}}/.local/share/logseq-backups{{end}}'
   EXCLUDE: '{{.EXCLUDE | default ".git/**,node_modules/**,\\.DS_Store,logseq/.recycle/**"}}'
+  SHRINK_RATIO: '{{.SHRINK_RATIO | default "50"}}'
+  SHRINK_MIN_BYTES: '{{.SHRINK_MIN_BYTES | default "64"}}'
 
 vars:
   BACKUP_LOG_DIR: '{{if .BACKUP_LOG_DIR}}{{.BACKUP_LOG_DIR}}{{else}}~/.local/share/task/sync/logs{{end}}'
@@ -56,6 +58,14 @@ tasks:
             exit ${SYNC_RESULT:-0}
         fi
         
+        # Shrink check - skip during dry-run
+        if [[ "{{.CLI_ARGS}}" != *--dry-run* ]]; then
+            task sync:logseq:_shrink_check
+        else
+            echo "$(date '+%Y-%m-%d %H:%M:%S') - Skipping shrink check (dry-run mode)" >> "${LOG_FILE}"
+            echo "Skipping shrink check (dry-run mode)"
+        fi
+
         # Conflict resolution - skip during dry-run
         if [[ "{{.CLI_ARGS}}" != *--dry-run* ]]; then
             task sync:logseq:_conflict
@@ -132,6 +142,12 @@ tasks:
                 cp -r "{{.LOGSEQ_LOCAL}}/$dir" "$BACKUP_PATH/" 2>/dev/null || true
             fi
         done
+        # Record the snapshot just taken so _shrink_check can diff against the
+        # pre-sync state without re-deriving "latest". Must be dotfile-named:
+        # the generation-pruning line below lists with plain `ls`, which does
+        # not show dotfiles, so a non-dot pointer file would eventually get
+        # swept up and rm -rf'd as if it were a backup generation.
+        echo "$BACKUP_PATH" > "{{.BACKUP_DIR}}/.last"
         (cd "{{.BACKUP_DIR}}" && ls -t | tail -n +6 | xargs rm -rf 2>/dev/null) || true
         INNEREOF
 
@@ -346,6 +362,190 @@ tasks:
         $HAS_CONFLICTS && task sync:logseq:notify TITLE="Conflicts Detected" MESSAGE="Found conflict files" PRIORITY="high"
         INNEREOF
 
+  _shrink_check:
+    desc: "[INTERNAL] Detect files that shrank drastically during sync - do not call directly"
+    preconditions:
+      - sh: 'test -d "{{.LOGSEQ_LOCAL}}"'
+        msg: "LOGSEQ_LOCAL directory not found: {{.LOGSEQ_LOCAL}}"
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -uo pipefail
+        LOGSEQ_LOCAL="{{.LOGSEQ_LOCAL}}"
+        BACKUP_DIR="{{.BACKUP_DIR}}"
+        LOG_FILE="{{.LOG_FILE}}"
+        SHRINK_RATIO="{{.SHRINK_RATIO}}"
+        SHRINK_MIN_BYTES="{{.SHRINK_MIN_BYTES}}"
+
+        # Function to URL-decode strings (for handling rclone URL-encoded filenames)
+        url_decode() {
+            python3 -c "import sys, urllib.parse; print(urllib.parse.unquote(sys.stdin.read().strip()))" <<< "$1"
+        }
+
+        # Convert a page's on-disk basename back to its real Logseq page name,
+        # so [[links]] built from it resolve instead of pointing at a dead page.
+        # Reverses both URL-encoding and the "___" namespace separator Logseq
+        # substitutes for "/" in hierarchical (namespace) page filenames.
+        page_name_from_basename() {
+            local decoded
+            decoded=$(url_decode "$1")
+            echo "${decoded//___//}"
+        }
+
+        # Run a unified diff and print it, distinguishing "files differ" (diff
+        # exit 1, the expected case whenever we get here) from a real failure
+        # (exit >=2). See sync:logseq:_conflict for the full rationale.
+        safe_diff() {
+            local output status
+            output=$(diff -u "$1" "$2" 2>/dev/null)
+            status=$?
+            if [[ $status -ge 2 ]]; then
+                echo "(Could not compute diff)"
+            else
+                echo "$output" | tail -n +4
+            fi
+        }
+
+        file_size() {
+            stat -f%z "$1" 2>/dev/null || stat -c%s "$1" 2>/dev/null || echo 0
+        }
+
+        # Resolve the pre-sync snapshot: prefer the pointer _backup writes,
+        # fall back to the newest generation directory directly under
+        # BACKUP_DIR if the pointer is missing or stale (e.g. an old backup
+        # predating this feature, or a manual BACKUP_DIR override).
+        SNAPSHOT=""
+        if [[ -f "$BACKUP_DIR/.last" ]]; then
+            SNAPSHOT=$(cat "$BACKUP_DIR/.last" 2>/dev/null || true)
+        fi
+        if [[ -z "$SNAPSHOT" ]] || [[ ! -d "$SNAPSHOT" ]]; then
+            LATEST_GEN=$(cd "$BACKUP_DIR" 2>/dev/null && ls -t 2>/dev/null | head -n 1)
+            if [[ -n "$LATEST_GEN" ]]; then
+                SNAPSHOT="$BACKUP_DIR/$LATEST_GEN"
+            fi
+        fi
+        if [[ -z "$SNAPSHOT" ]] || [[ ! -d "$SNAPSHOT" ]]; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S') - Shrink check: no pre-sync snapshot found, skipping" >> "$LOG_FILE"
+            exit 0
+        fi
+
+        DETECTED=()
+
+        for sub in journals pages; do
+            src_dir="$SNAPSHOT/$sub"
+            [[ -d "$src_dir" ]] || continue
+            while IFS= read -r -d '' before_file; do
+                rel="${before_file#$src_dir/}"
+                full_rel="$sub/$rel"
+                before_size=$(file_size "$before_file")
+                [[ "$before_size" -lt "$SHRINK_MIN_BYTES" ]] && continue
+
+                # Locate the corresponding post-sync file. Try the name as-is
+                # first, then decoded/encoded variants, since rclone may leave
+                # URL-encoded basenames locally for characters the remote
+                # can't store directly (mirrors sync:logseq:_conflict).
+                after_file="$LOGSEQ_LOCAL/$full_rel"
+                if [[ ! -f "$after_file" ]]; then
+                    decoded_rel=$(url_decode "$full_rel")
+                    if [[ -f "$LOGSEQ_LOCAL/$decoded_rel" ]]; then
+                        after_file="$LOGSEQ_LOCAL/$decoded_rel"
+                    else
+                        encoded_rel=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe='/'))" "$full_rel")
+                        if [[ -f "$LOGSEQ_LOCAL/$encoded_rel" ]]; then
+                            after_file="$LOGSEQ_LOCAL/$encoded_rel"
+                        fi
+                    fi
+                fi
+
+                if [[ -f "$after_file" ]]; then
+                    after_size=$(file_size "$after_file")
+                else
+                    after_size=0
+                fi
+
+                if (( after_size * 100 < before_size * SHRINK_RATIO )); then
+                    DETECTED+=("$full_rel: ${before_size} -> ${after_size} bytes")
+
+                    basename=$(basename "$before_file" .md)
+                    page_name=$(page_name_from_basename "$basename")
+                    date_str=$(echo "$basename" | tr '_' '-')
+                    mkdir -p "$LOGSEQ_LOCAL/pages"
+                    conflict_page="$LOGSEQ_LOCAL/pages/conflict-${date_str}.md"
+                    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
+                    if [[ -f "$conflict_page" ]]; then
+                        # A conflict page for this basename already exists
+                        # (from a previous _conflict or _shrink_check run) -
+                        # append rather than overwrite so earlier findings and
+                        # any manual edits survive.
+                        {
+                            echo ""
+                            echo "---"
+                            echo "## Shrink detected: $timestamp"
+                            echo ""
+                            echo "[[${page_name}]] shrank from ${before_size} to ${after_size} bytes during sync."
+                            echo ""
+                            echo "Legend: removed | added | unchanged"
+                            echo ""
+                            echo '```'
+                            if [[ -f "$after_file" ]]; then
+                                safe_diff "$before_file" "$after_file"
+                            else
+                                echo "(file missing after sync)"
+                            fi
+                            echo '```'
+                        } >> "$conflict_page"
+                    else
+                        {
+                            echo "tags:: #conflict"
+                            echo "created:: $timestamp"
+                            echo ""
+                            echo "# Conflict detected: [[${page_name}]]"
+                            echo ""
+                            echo "[[${page_name}]] shrank from ${before_size} to ${after_size} bytes during sync (possible lost update)."
+                            echo "## Diff Summary"
+                            echo ""
+                            echo "Legend: removed | added | unchanged"
+                            echo ""
+                            echo '```'
+                            if [[ -f "$after_file" ]]; then
+                                safe_diff "$before_file" "$after_file"
+                            else
+                                echo "(file missing after sync)"
+                            fi
+                            echo '```'
+                            echo ""
+                            echo "## Version 1 (Pre-sync)"
+                            echo "- collapsed:: true"
+                            sed 's/^/\t/' "$before_file" 2>/dev/null || echo "(Could not read file: $before_file)"
+                            echo ""
+                            echo "## Version 2 (Post-sync)"
+                            echo "- collapsed:: true"
+                            if [[ -f "$after_file" ]]; then
+                                sed 's/^/\t/' "$after_file" 2>/dev/null || echo "(Could not read file: $after_file)"
+                            else
+                                printf '\t(file not found after sync)\n'
+                            fi
+                            echo ""
+                            echo "---"
+                            echo "After merging, update and delete this page."
+                        } > "$conflict_page"
+                    fi
+                fi
+            done < <(find "$src_dir" -name "*.md" -print0)
+        done
+
+        if [[ ${#DETECTED[@]} -gt 0 ]]; then
+            {
+                echo "$(date '+%Y-%m-%d %H:%M:%S') - Shrink check detected ${#DETECTED[@]} file(s):"
+                printf '  %s\n' "${DETECTED[@]}"
+            } >> "$LOG_FILE"
+            task sync:logseq:notify TITLE="Content Shrink Detected" MESSAGE="Found ${#DETECTED[@]} shrunk file(s) during sync" PRIORITY="high"
+        else
+            echo "$(date '+%Y-%m-%d %H:%M:%S') - Shrink check: no shrunk files detected" >> "$LOG_FILE"
+        fi
+        INNEREOF
+
   notify:
     desc: Send OS notification for logseq sync
     vars:
@@ -359,6 +559,13 @@ tasks:
         TITLE="{{.TITLE}}"
         MESSAGE="{{.MESSAGE}}"
         PRIORITY="{{.PRIORITY}}"
+        # Test hook: LOGSEQ_SYNC_NO_NOTIFY lets shrink_check_test.sh (and any
+        # other automated caller) exercise the notify-on-detection code path
+        # without actually popping an OS notification (osascript on macOS,
+        # etc). Left unset in normal/production use.
+        if [[ -n "${LOGSEQ_SYNC_NO_NOTIFY:-}" ]]; then
+            exit 0
+        fi
         if [[ "$(uname)" == "Darwin" ]]; then
             osascript -e "display notification \"$MESSAGE\" with title \"$TITLE\"" 2>/dev/null || true
         elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
