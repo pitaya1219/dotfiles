@@ -54,6 +54,16 @@ let
       programs.mtg-minutes = {
         enable = true;
         logseqTokenCommand = "passage show logseq/http-api/claude-code/token";
+
+        # 右Command 単独押しで voice-in をトグルする Karabiner ルールを配置する
+        # (置くだけでは効かない。Karabiner の GUI で一度だけ有効化する)。
+        # 送出するのは常駐プロセスだけで、ホットキーが叩く --toggle は socket に
+        # 書くクライアントなので、ホットキー側にアクセシビリティ許可は要らない。
+        voiceIn.karabiner.enable = true;
+
+        # daemon.enable は入れていない。launchd が上げた常駐は責任プロセスが
+        # 自分自身になり、ターミナルに与えたアクセシビリティ許可が効かないため。
+        # 常駐は端末から `voice-in --daemon` で上げる(iTerm の許可がそのまま効く)。
       };
 
       programs.obs-noise-cancel = {
