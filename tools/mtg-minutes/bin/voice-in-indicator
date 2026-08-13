@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""
+voice-in-indicator - a small companion that shows voice-in's state in the menu bar.
+
+voice-in --daemon starts it and writes one line to its stdin whenever the
+state changes ("idle" / "armed" / "settling"). It exits when stdin closes.
+
+Why a separate process instead of doing this inside the daemon:
+    A status item needs a Cocoa run loop on the main thread, and Python does
+    not get control back from NSApp.run(). The SIGINT handler would never run,
+    so the daemon could no longer be stopped with Ctrl-C from the terminal.
+    Working around that means a periodic timer to let Python breathe, which
+    reintroduces the polling the daemon's watchdog was written to avoid.
+    Splitting off the display leaves the daemon's threads and signal handling
+    untouched. This process only wakes when a state line arrives.
+
+No Dock icon (NSApplicationActivationPolicyAccessory).
+"""
+import sys
+import threading
+
+# Menu bar titles. Idle and recording differ in colour so the state reads at a
+# glance. Kept short - a wide title pushes other menu bar items off screen.
+TITLES = {
+    "idle": "🎙",
+    "armed": "🔴 入力中",
+    "settling": "🎙 …",     # stopped, still waiting for the last utterance
+}
+FALLBACK_TITLE = "🎙"
+
+
+def main():
+    try:
+        import AppKit
+    except ImportError as e:
+        print(f"pyobjc(AppKit)を読み込めません: {e}", file=sys.stderr)
+        return 1
+
+    app = AppKit.NSApplication.sharedApplication()
+    # Menu bar only, no Dock icon
+    app.setActivationPolicy_(AppKit.NSApplicationActivationPolicyAccessory)
+    item = AppKit.NSStatusBar.systemStatusBar().statusItemWithLength_(
+        AppKit.NSVariableStatusItemLength)
+    item.button().setTitle_(TITLES["idle"])
+
+    def on_main(fn):
+        """Update the UI from the main thread, as Cocoa requires."""
+        AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(fn)
+
+    def pump():
+        # Only runs when a state arrives; otherwise it sleeps blocked on read.
+        for line in sys.stdin:
+            state = line.strip()
+            if not state:
+                continue
+            title = TITLES.get(state, FALLBACK_TITLE)
+            on_main(lambda t=title: item.button().setTitle_(t))
+        # The daemon exited and closed stdin. Follow it down.
+        on_main(lambda: AppKit.NSApp().terminate_(None))
+
+    threading.Thread(target=pump, daemon=True).start()
+    app.run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

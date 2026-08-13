@@ -1,0 +1,864 @@
+#!/usr/bin/env python3
+"""
+voice-in - dictate at any moment straight into whatever app has focus.
+
+The audio goes through neither macOS dictation (which uploads to Apple) nor
+Claude's; it is processed locally by whisper.cpp. Only finalized text reaches
+the app.
+
+    microphone -> OBS (RNNoise) -> BlackHole 2ch
+                                      |
+                                      v
+                     whisper-stream (VAD, local) -> finalized text
+                                      |
+                                      v
+                     CGEvent Unicode keystrokes -> the focused app
+
+On granularity:
+    whisper-stream runs in VAD mode (--step 0) and each utterance is sent once
+    speech breaks. Nothing streams in word by word: VAD mode emits committed
+    lines, whereas sliding mode (--step > 0) only repaints one line with \\r,
+    so feeding it to another app would mean erasing what was already inserted
+    and rewriting it - which breaks the moment the user types.
+    Splitting into utterances and deduping is mtgcommon.LiveTranscriber's job
+    (VAD mode does not clear the buffer, it re-reads the trailing --length, so
+    consecutive chunks overlap heavily).
+
+Two ways to run it:
+    one-shot (default) - whisper-stream starts on the press. Enumeration plus
+                         model load means seconds before capture begins.
+    daemon (--daemon)  - whisper-stream is kept warm, so sending starts on the
+                         press. --toggle uses the daemon when one is up and
+                         falls back to a one-shot otherwise.
+
+Two ways to bind the hotkey:
+    toggle (default) - --toggle on each press. Leaves the hands free and works
+                       without a daemon.
+    hold             - --arm on press, --stop on release. Always stops when
+                       released, but needs the daemon: from cold the key is
+                       released before capture ever begins.
+
+Usage:
+    voice-in                    # foreground; Ctrl-C to quit
+    voice-in --daemon           # daemon (from launchd to have it at login)
+    voice-in --toggle           # start/stop
+    voice-in --arm              # start only (needs the daemon)
+    voice-in --stop             # stop
+    voice-in --status           # show state
+    voice-in --quit-daemon      # shut the daemon down
+    voice-in --no-insert        # print finalized text instead of typing it
+    voice-in --list             # list capture devices
+    voice-in --device UAB-80    # take the mic directly, bypassing OBS
+
+The state is visible two ways: a cue sounds when capture starts and stops
+(--no-sound to disable), and the daemon also shows it in the menu bar
+(--no-indicator to disable). Connected to a daemon, it starts on the press.
+"""
+import argparse
+import errno
+import json
+import os
+import signal
+import socket
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import mtgcommon  # noqa: E402
+from mtgcommon import (  # noqa: E402
+    POLL_INTERVAL_SEC, READY_TIMEOUT_SEC, LiveTranscriber, add_device_args,
+    add_tuning_args, die, enumerate_capture_devices, hr, info,
+    print_capture_devices, resolve_model, resolve_or_report, sibling,
+    stop_process, warn,
+)
+from textinject import TextInjector  # noqa: E402
+
+# Same capture side as mtg-self ("self" = mic -> OBS RNNoise -> BlackHole 2ch).
+# The device and model defaults come from there.
+SIDE = "self"
+
+STATE_DIR = Path.home() / ".cache/voice-in"
+PID_FILE = STATE_DIR / "session.pid"
+LOG_FILE = STATE_DIR / "session.log"
+DAEMON_SOCK = STATE_DIR / "daemon.sock"
+DEVICE_CACHE = STATE_DIR / "device.json"
+
+# Seconds of silence after which sending stops on its own.
+# Left running by mistake, text would land in whatever app is touched next.
+DEFAULT_IDLE_TIMEOUT_SEC = 300
+
+# Seconds to keep accepting utterances that began before the stop.
+# VAD only finalizes once speech breaks, so stopping right after the last word
+# means that phrase arrives about a second late. Without this it is always lost.
+TAIL_GRACE_SEC = 3.0
+
+# How long the daemon keeps whisper-stream warm while unused (seconds).
+# Holding it forever means transcribing everything said near the mic all day,
+# which costs GPU and battery. Past this it is released and reloaded on demand.
+DEFAULT_WARM_IDLE_SEC = 900
+
+# Start, stop and error cues.
+SOUNDS = {
+    "ready": "/System/Library/Sounds/Tink.aiff",
+    "stop":  "/System/Library/Sounds/Bottle.aiff",
+    "error": "/System/Library/Sounds/Basso.aiff",
+}
+
+
+def cue(name, enabled=True):
+    """Play a cue. Failure to play is not worth stopping for."""
+    if not enabled:
+        return
+    path = SOUNDS.get(name)
+    if not path or not Path(path).exists():
+        return
+    try:
+        subprocess.Popen(["afplay", path],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Capture device resolution
+# ---------------------------------------------------------------------------
+# Enumeration costs 1.0-1.6s, so the id is remembered and reused. Ids do shift
+# though (see LiveTranscriber.opened_device), so the name of the device that
+# was actually opened is checked, and a mismatch forces re-enumeration.
+def load_device_cache(name):
+    try:
+        return json.loads(DEVICE_CACHE.read_text()).get(name)
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def save_device_cache(name, cap_id):
+    try:
+        cache = json.loads(DEVICE_CACHE.read_text())
+        if not isinstance(cache, dict):
+            cache = {}
+    except (OSError, ValueError):
+        cache = {}
+    cache[name] = cap_id
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    DEVICE_CACHE.write_text(json.dumps(cache, ensure_ascii=False))
+
+
+def enumerate_and_resolve(model_path, name):
+    """Enumerate, resolve the device id and cache the result.
+
+    Raises when it cannot be resolved. Returning None instead would make every
+    caller re-check it, and those branches multiply across the retry path.
+    """
+    info("キャプチャデバイスを列挙中…")
+    cap_id, cap_name = resolve_or_report(
+        enumerate_capture_devices(model_path), name, "音声入力",
+        hint="--list で確認するか --capture-id で指定してください。")
+    if cap_id is None:
+        raise TranscriberError(f"キャプチャデバイス '{name}' が見つかりません")
+    save_device_cache(name, cap_id)
+    return cap_id, cap_name
+
+
+# ---------------------------------------------------------------------------
+# Sending
+# ---------------------------------------------------------------------------
+class Dictation:
+    """Feed finalized utterances into the focused app.
+
+    LiveTranscriber calls on_utterance from whisper-stream's reader thread.
+    Posting events is quick, so it is done inline rather than through a queue.
+    """
+
+    def __init__(self, injector, separator, log_text, sound, session_zero):
+        self.injector = injector
+        self.separator = separator
+        self.log_text = log_text
+        self.sound = sound
+        self.session_zero = session_zero
+        # Utterances are selected by when they began. whisper-stream keeps
+        # running while the daemon is stopped, so only those starting inside
+        # the window [armed_at, disarmed_at] are sent. VAD mode reads back the
+        # trailing --length window on every detection, so a plain on/off would
+        # splice whatever was said just before the press into the first insert.
+        self.armed_at = None
+        self.disarmed_at = None
+        self._reset()
+
+    def _reset(self):
+        self.count = 0
+        self.chars = 0
+        self.last_at = time.monotonic()
+        self._first = True
+        self._failed = False
+
+    def arm(self):
+        self._reset()
+        self.armed_at = self.last_at
+        self.disarmed_at = None
+
+    def disarm(self):
+        """Close the window, but keep waiting for utterances that began inside it.
+
+        VAD only finalizes once speech breaks, so stopping right after the last
+        word means that phrase arrives about a second late. Cutting here would
+        lose it on every hold-to-talk press. The window is closed and arrivals
+        are accepted for TAIL_GRACE_SEC.
+        """
+        if self.armed_at is not None and self.disarmed_at is None:
+            self.disarmed_at = time.monotonic()
+
+    @property
+    def armed(self):
+        return self.armed_at is not None and self.disarmed_at is None
+
+    @property
+    def settling(self):
+        """Stopped, but still waiting on utterances that have not arrived."""
+        return self.disarmed_at is not None
+
+    def settle_deadline(self):
+        """When the wait ends, or None if not waiting."""
+        return None if self.disarmed_at is None else self.disarmed_at + TAIL_GRACE_SEC
+
+    def close(self):
+        """Close the window for good. Nothing gets through afterwards."""
+        self.armed_at = self.disarmed_at = None
+
+    def idle_expired(self, limit):
+        """True after limit seconds without speech while sending. 0/None disables."""
+        return self.armed and bool(limit) and time.monotonic() - self.last_at > limit
+
+    def on_utterance(self, side, t, text):
+        if self.armed_at is None:
+            return
+        # t is seconds from session_zero; armed_at is monotonic. Line them up.
+        started = self.session_zero + t
+        if started < self.armed_at:
+            return
+        if self.disarmed_at is not None and started > self.disarmed_at:
+            return
+        text = text.strip()
+        if not text:
+            return
+        self.last_at = time.monotonic()
+        self.count += 1
+        self.chars += len(text)
+
+        payload = text if self._first else self.separator + text
+        self._first = False
+
+        if self.injector is None:
+            print(text, flush=True)
+            return
+        if self.log_text:
+            info(f"確定: {text}")
+        else:
+            # Keep the text out of the log when run from a hotkey. Everything
+            # dictated accumulating on disk in the clear is not a good default.
+            info(f"確定: {len(text)}文字")
+        if not self.injector.send(payload) and not self._failed:
+            self._failed = True
+            warn("テキストの送出に失敗しました(アクセシビリティの許可を確認してください)")
+            cue("error", self.sound)
+
+
+def make_injector(args, sound, fatal=True):
+    """Prepare the destination for text.
+
+    Called before loading the model, so a missing grant is not discovered only
+    after several seconds of waiting.
+
+    fatal=False is for the daemon. Exiting there would fight launchd's
+    KeepAlive and respawn until the grant appears. The grant can arrive without
+    a restart, so it stays up and re-checks on every arm.
+    """
+    if args.no_insert:
+        return None
+    injector = TextInjector()
+    reason = injector.unavailable_reason()
+    if reason:
+        warn(reason)
+        injector.request_permission()   # raises the system dialog if not granted
+        if fatal:
+            cue("error", sound)
+            die("許可した後にもう一度実行してください(--no-insert なら許可なしで確認できます)")
+    return injector
+
+
+def make_separator(args):
+    if args.separator is not None:
+        return args.separator
+    # Japanese runs words together; other languages need the space to be readable.
+    return "" if args.language == "ja" else " "
+
+
+# ---------------------------------------------------------------------------
+# Starting whisper-stream (shared by the one-shot and the daemon)
+# ---------------------------------------------------------------------------
+class TranscriberError(Exception):
+    """Capture could not be started.
+
+    The one-shot may exit, but the daemon has to stay up for the next
+    instruction (replugging the device may make the next start succeed). An
+    exception rather than die() lets the caller decide which.
+    """
+
+
+def start_transcriber(args, model_path, on_utterance, session_zero):
+    """Resolve the capture device, start whisper-stream and wait for capture.
+
+    Opens with the cached id and, if a different device came up, re-enumerates
+    and starts again. When the id is right this skips 1.0-1.6s of enumeration.
+
+    The check happens *after* capture begins so that waiting for the report
+    line overlaps the model load. Waiting first would stall every start by that
+    timeout should whisper.cpp ever reword the line.
+    """
+    def launch(cap_id):
+        tr = LiveTranscriber(
+            SIDE, cap_id, model_path,
+            language=args.language, step=0, length=args.length,
+            vad_thold=args.vad_thold, on_utterance=on_utterance,
+            session_zero=session_zero,
+        )
+        tr.start()
+        if not tr.wait_ready(time.monotonic() + READY_TIMEOUT_SEC):
+            for line in list(tr.stderr_tail)[-5:]:
+                warn(f"  {line}")
+            tr.stop()
+            raise TranscriberError("whisper-stream を開始できませんでした")
+        return tr
+
+    if args.capture_id is not None:
+        # An explicit id is not second-guessed; the user meant it.
+        return launch(args.capture_id), args.capture_id, "(手動指定)"
+
+    if (cap_id := load_device_cache(args.device)) is None:
+        cap_id, cap_name = enumerate_and_resolve(model_path, args.device)
+        return launch(cap_id), cap_id, cap_name
+
+    tr = launch(cap_id)
+    if (opened := tr.opened_mismatch(args.device)) is None:
+        return tr, cap_id, f"{args.device} (キャッシュ)"
+
+    warn(f"デバイス番号がずれています(#{cap_id} は '{opened}')。列挙し直します。")
+    tr.stop()
+    cap_id, cap_name = enumerate_and_resolve(model_path, args.device)
+    return launch(cap_id), cap_id, cap_name
+
+
+def report_stop(dictation, cap_name):
+    """Cue and summary at the end of a session. Same for one-shot and daemon."""
+    cue("stop", dictation.sound)
+    info(f"{dictation.count}発話 / {dictation.chars}文字")
+    if dictation.count:
+        return
+    # OBS is what feeds BlackHole 2ch. With OBS not running, or its monitoring
+    # not restored after the mic reconnected, the device opens fine but carries
+    # silence - the same failure mtg-rec hit.
+    warn(f"1度も発話を検出できませんでした。'{cap_name}' が無音の可能性があります。")
+    warn("OBS が起動しているか、モニタリングが有効かを確認してください。")
+    warn("生マイクから拾うなら: voice-in --device UAB-80")
+
+
+class Indicator:
+    """Owns the menu bar indicator process (voice-in-indicator).
+
+    Driven from a hotkey nothing appears on screen, so without this the cues
+    are the only way to tell which state you are in. The display lives in its
+    own process and is told, one line per change. Failing to show it never
+    affects the daemon.
+    """
+
+    def __init__(self, enabled=True):
+        self.proc = None
+        if not enabled:
+            return
+        try:
+            self.proc = subprocess.Popen(
+                [sibling("voice-in-indicator")], stdin=subprocess.PIPE,
+                text=True, bufsize=1)
+        except OSError as e:
+            warn(f"メニューバー表示を起動できません({e})。音だけで進めます。")
+
+    def set_state(self, state):
+        if self.proc is None or self.proc.poll() is not None:
+            return
+        try:
+            self.proc.stdin.write(state + "\n")
+            self.proc.stdin.flush()
+        except OSError:
+            # Only the indicator died. The daemon carries on.
+            self.proc = None
+
+    def stop(self):
+        if self.proc is None:
+            return
+        try:
+            # Closing stdin is how it is asked to exit
+            self.proc.stdin.close()
+        except OSError:
+            pass
+        stop_process(self.proc, sig=signal.SIGTERM, timeout=3)
+        self.proc = None
+
+
+# ---------------------------------------------------------------------------
+# The daemon (--daemon) and the clients that talk to it
+# ---------------------------------------------------------------------------
+def daemon_request(command, timeout=10.0):
+    """Send one command to the daemon and return its reply, or None if absent.
+
+    An unclean exit can leave the socket file behind. Nothing answers on it, so
+    it is removed and reported as absent.
+    """
+    if not DAEMON_SOCK.exists():
+        return None
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    try:
+        sock.connect(str(DAEMON_SOCK))
+    except OSError:
+        DAEMON_SOCK.unlink(missing_ok=True)
+        return None
+    try:
+        sock.sendall((command + "\n").encode())
+        return sock.recv(4096).decode().strip()
+    except OSError:
+        return None
+    finally:
+        sock.close()
+
+
+class Daemon:
+    """Keep whisper-stream warm and start sending when told to.
+
+    From the hotkey this is what makes capture begin on the press: the roughly
+    three seconds of enumeration and model load a one-shot pays are paid ahead.
+
+    Staying warm has a cost, so whisper-stream is released once warm_idle
+    passes unused; the next press pays the reload (about 1.7s).
+    """
+
+    def __init__(self, args, model_path, injector, sound):
+        self.args = args
+        self.model_path = model_path
+        self.sound = sound
+        self.session_zero = time.monotonic()
+        self.dictation = Dictation(injector, make_separator(args),
+                                   log_text=args.log_text, sound=sound,
+                                   session_zero=self.session_zero)
+        self.tr = None
+        self.cap_name = None
+        self.warm_since = None      # when whisper-stream started being kept warm
+        self.lock = threading.RLock()
+        self.stopping = threading.Event()
+        # The watchdog sleeps until the next deadline, so an instruction that
+        # moves that deadline (arm / disarm) - which arrives on the socket
+        # thread - has to wake it. Without this a stop leaves the watchdog
+        # asleep until the deadline computed at arm, and the window never closes.
+        self.wake = threading.Event()
+        self.server = None
+        self.indicator = Indicator(enabled=not args.no_indicator)
+        self.handlers = {
+            "arm": self.arm, "disarm": self.disarm, "toggle": self.toggle,
+            "status": self.status, "quit": self.quit,
+        }
+
+    # -- bringing whisper-stream up and down --------------------------------
+    def _ensure_warm(self):
+        """Ensure whisper-stream is warm. Returns the reason when it cannot be."""
+        if self.tr is not None and self.tr.proc.poll() is None:
+            return None
+        try:
+            self.tr, _, self.cap_name = start_transcriber(
+                self.args, self.model_path, self.dictation.on_utterance,
+                self.session_zero)
+        except TranscriberError as e:
+            # The daemon does not die here: replugging the device may fix the next start.
+            self.tr = None
+            return str(e)
+        self.warm_since = time.monotonic()
+        return None
+
+    def _cool(self, reason="使われていないので"):
+        if self.tr is None:
+            return
+        info(f"{reason} whisper-stream を落とします")
+        self.tr.stop()
+        self.tr = None
+
+    # -- instructions -------------------------------------------------------
+    def arm(self):
+        with self.lock:
+            if self.dictation.armed:
+                return "already-armed"
+            # The grant can arrive without restarting the daemon, which waits
+            # for it. Re-checking here means the next press works right after
+            # the user ticks the box.
+            injector = self.dictation.injector
+            if injector is not None and (reason := injector.unavailable_reason()):
+                cue("error", self.sound)
+                return f"error: {reason}"
+            if (err := self._ensure_warm()) is not None:
+                cue("error", self.sound)
+                return f"error: {err}"
+            self.dictation.arm()
+            self.wake.set()
+            self.indicator.set_state("armed")
+            info("送出を開始します")
+            cue("ready", self.sound)
+            return "armed"
+
+    def disarm(self):
+        with self.lock:
+            if not self.dictation.armed:
+                return "already-idle"
+            self.dictation.disarm()
+            self.wake.set()
+            self.indicator.set_state("settling")
+            cue("stop", self.sound)
+            self.warm_since = time.monotonic()
+            # The summary and the silence warning wait for the late-arriving
+            # last utterance; reported here they would miss it and warn about
+            # silence that was not there.
+            return "idle"
+
+    def _settle(self):
+        """The wait is over: close the window and report the session."""
+        with self.lock:
+            if not self.dictation.settling:
+                return
+            report_stop(self.dictation, self.cap_name)
+            self.dictation.close()
+            self.indicator.set_state("idle")
+
+    def toggle(self):
+        with self.lock:
+            return self.disarm() if self.dictation.armed else self.arm()
+
+    def status(self):
+        with self.lock:
+            if self.dictation.armed:
+                state = "armed"
+            elif self.dictation.settling:
+                state = "settling"      # stopped, awaiting the last utterance
+            else:
+                state = "idle"
+            warm = "warm" if self.tr is not None else "cold"
+            return f"daemon {state} {warm}"
+
+    def quit(self):
+        self.stopping.set()
+        self.wake.set()
+        return "bye"
+
+    def _next_deadline(self):
+        """Seconds until the watchdog has work, or None to sleep until woken.
+
+        Instructions are handled synchronously on the socket thread, so the
+        watchdog only needs to wake for a deadline: the idle timeout while
+        sending, or the warm-keeping expiry. With neither, it can sleep until
+        told to stop.
+        """
+        with self.lock:
+            if (deadline := self.dictation.settle_deadline()) is not None:
+                return max(0.0, deadline - time.monotonic())
+            if self.dictation.armed:
+                if not self.args.idle_timeout:
+                    return None
+                return max(0.0, self.dictation.last_at + self.args.idle_timeout
+                           - time.monotonic())
+            if self.tr is not None and self.args.warm_idle:
+                return max(0.0, self.warm_since + self.args.warm_idle - time.monotonic())
+            return None
+
+    # -- socket -------------------------------------------------------------
+    def _serve(self):
+        while not self.stopping.is_set():
+            try:
+                conn, _ = self.server.accept()
+            except OSError:
+                return
+            try:
+                command = conn.recv(4096).decode().strip()
+                handler = self.handlers.get(command, lambda: "unknown")
+                conn.sendall((handler() + "\n").encode())
+            except OSError:
+                pass
+            finally:
+                conn.close()
+
+    def run(self):
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        # A socket file left by an unclean exit makes bind fail. daemon_request
+        # has already established that nothing answers on it, so by this point
+        # it can be treated as debris.
+        if daemon_request("status") is not None:
+            die("常駐は既に動いています。止めるなら voice-in --quit-daemon")
+        DAEMON_SOCK.unlink(missing_ok=True)
+        self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.server.bind(str(DAEMON_SOCK))
+        # Keep other users from instructing this to type
+        os.chmod(DAEMON_SOCK, 0o600)
+        self.server.listen(4)
+
+        thread = threading.Thread(target=self._serve, daemon=True)
+        thread.start()
+        info(f"常駐開始。ホットキー(voice-in --toggle)からの指示を待ちます: {DAEMON_SOCK}")
+        hr()
+        try:
+            while not self.stopping.is_set():
+                # Sleep until the next deadline. Polling at a fixed interval
+                # would keep waking even in the steady state - nothing armed,
+                # whisper-stream released - which is most of the time a daemon
+                # is up, undoing the point of handing the GPU back at warm_idle.
+                self.wake.wait(self._next_deadline())
+                self.wake.clear()
+                with self.lock:
+                    if self.dictation.idle_expired(self.args.idle_timeout):
+                        info(f"{self.args.idle_timeout}秒発話がないので送出を停止します")
+                        self.disarm()
+                    elif (deadline := self.dictation.settle_deadline()) is not None:
+                        if time.monotonic() >= deadline:
+                            self._settle()
+                    elif (self.tr is not None and self.args.warm_idle
+                            and time.monotonic() - self.warm_since > self.args.warm_idle):
+                        self._cool()
+                    # If whisper-stream died, leave the reload to the next arm
+                    if self.tr is not None and self.tr.proc.poll() is not None:
+                        warn("whisper-stream が終了しました。次回の開始時に起動し直します。")
+                        self.tr = None
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self.stopping.set()
+            self.server.close()
+            DAEMON_SOCK.unlink(missing_ok=True)
+            self.indicator.stop()
+            self._cool(reason="終了するので")
+            info("常駐を終了しました")
+
+
+# ---------------------------------------------------------------------------
+# One-shot mode (--toggle with no daemon, and running in the foreground)
+# ---------------------------------------------------------------------------
+def running_pid():
+    """Pid of the running one-shot, or None. Stale pid files are cleaned up."""
+    try:
+        pid = int(PID_FILE.read_text().strip())
+    except (OSError, ValueError):
+        return None
+    try:
+        os.kill(pid, 0)
+    except OSError as e:
+        if e.errno in (errno.ESRCH, errno.EPERM):
+            # No such process (unclean exit) / another user's pid. Neither is ours
+            PID_FILE.unlink(missing_ok=True)
+            return None
+        raise
+    return pid
+
+
+def stop_running():
+    """Stop the running one-shot. True if one was stopped."""
+    pid = running_pid()
+    if pid is None:
+        return False
+    try:
+        os.kill(pid, signal.SIGINT)
+    except OSError:
+        PID_FILE.unlink(missing_ok=True)
+        return False
+    # Wait briefly for it to actually go. Without this, --toggle pressed twice
+    # in quick succession starts a second one that fights for the same device.
+    for _ in range(50):
+        if running_pid() is None:
+            break
+        time.sleep(0.1)
+    # The stop cue is played by the side being stopped, in its finally. Playing
+    # it here too would sound it twice.
+    return True
+
+
+def spawn_background(argv_extra):
+    """Start ourselves in the background and return at once.
+
+    Called from the hotkey (Karabiner's shell_command), so waiting for the
+    model load here would look like a freeze on the press. start_new_session
+    puts it in its own process group to keep the calling shell's SIGHUP/SIGINT
+    out of it; stopping goes through --stop alone.
+    """
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    log = open(LOG_FILE, "w")
+    subprocess.Popen([sibling("voice-in"), *argv_extra],
+                     stdout=log, stderr=subprocess.STDOUT,
+                     stdin=subprocess.DEVNULL, start_new_session=True,
+                     cwd=str(Path.home()))
+
+
+def run_once(args, model_name, model_path, sound):
+    """Start on the press and keep sending until stopped."""
+    injector = make_injector(args, sound)
+    session_zero = time.monotonic()
+    dictation = Dictation(injector, make_separator(args), log_text=args.log_text,
+                          sound=sound, session_zero=session_zero)
+    dictation.arm()
+
+    try:
+        tr, cap_id, cap_name = start_transcriber(
+            args, model_path, dictation.on_utterance, session_zero)
+    except TranscriberError as e:
+        cue("error", sound)
+        die(f"{e}。")
+
+    info(f"デバイス #{cap_id} ({cap_name}) / モデル {model_name}")
+    info("送出先: フォーカス中のアプリ" if injector else "送出しません(--no-insert)")
+    # "Ctrl-C to quit" is a lie in the background - there is no terminal attached
+    info("Ctrl-C で終了" if sys.stdout.isatty() else "止めるなら voice-in --stop")
+    hr()
+    info("準備完了。喋ってください")
+    cue("ready", sound)
+    dictation.last_at = time.monotonic()
+
+    try:
+        while tr.proc.poll() is None:
+            time.sleep(POLL_INTERVAL_SEC)
+            if dictation.idle_expired(args.idle_timeout):
+                info(f"{args.idle_timeout}秒発話がないので自動停止します")
+                break
+    except KeyboardInterrupt:
+        pass
+    finally:
+        tr.stop()
+        report_stop(dictation, cap_name)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+def build_parser():
+    ap = argparse.ArgumentParser(
+        # Via nix's wrapProgram argv[0] is '.voice-in-wrapped', so state it
+        prog="voice-in",
+        description="喋った内容をローカル文字起こしして、フォーカス中のアプリへ流し込む")
+
+    mode = ap.add_argument_group("モード")
+    mode.add_argument("--toggle", action="store_true",
+                      help="開始/停止(押すたびに切り替えるホットキー用)")
+    mode.add_argument("--arm", action="store_true",
+                      help="開始だけする(押しっぱなしのホットキー用。離すとき --stop)")
+    mode.add_argument("--daemon", action="store_true",
+                      help="常駐する。whisper-stream を温めたまま指示を待つ")
+    mode.add_argument("--stop", action="store_true", help="送出を停止")
+    mode.add_argument("--status", action="store_true", help="状態を表示して終了")
+    mode.add_argument("--quit-daemon", action="store_true", help="常駐を終了させる")
+
+    # Device/model and tuning defaults and help live once, in mtgcommon
+    # (copied here, voice-in would be left behind when a default is retuned).
+    # --list comes with add_device_args. --step (sliding) and --no-save
+    # (subtitle log) are unusable for dictation, so they are dropped.
+    src = ap.add_argument_group("入力")
+    add_device_args(src, SIDE)
+    add_tuning_args(src, sliding=False, save=False)
+
+    out = ap.add_argument_group("出力")
+    out.add_argument("--no-insert", action="store_true",
+                     help="アプリへ入れず画面に出すだけ(動作確認用)")
+    out.add_argument("--separator", default=None,
+                     help="発話と発話のあいだに入れる文字列(既定: 日本語は空、他は半角スペース)")
+    out.add_argument("--log-text", action="store_true",
+                     help="裏で動かしたとき、ログに本文も残す(既定は文字数だけ)")
+    out.add_argument("--no-sound", action="store_true", help="合図の音を鳴らさない")
+    out.add_argument("--no-indicator", action="store_true",
+                     help="常駐時、メニューバーに状態を出さない")
+    out.add_argument("--idle-timeout", type=int, default=DEFAULT_IDLE_TIMEOUT_SEC,
+                     help=f"無発話がこの秒数続いたら送出を停止 (既定: {DEFAULT_IDLE_TIMEOUT_SEC}、0で無効)")
+    out.add_argument("--warm-idle", type=int, default=DEFAULT_WARM_IDLE_SEC,
+                     help="常駐時、使われないままこの秒数が過ぎたら whisper-stream を落とす "
+                          f"(既定: {DEFAULT_WARM_IDLE_SEC}、0で落とさない)")
+    return ap
+
+
+def main():
+    args = build_parser().parse_args()
+    sound = not args.no_sound
+
+    if args.status:
+        reply = daemon_request("status")
+        if reply:
+            print(reply)
+        else:
+            pid = running_pid()
+            print(f"一発モードで動作中 (pid {pid})" if pid else "停止中(常駐も居ません)")
+        print(f"ログ: {LOG_FILE}")
+        return
+
+    if args.quit_daemon:
+        print(daemon_request("quit") or "常駐は動いていません")
+        return
+
+    if args.stop:
+        if (reply := daemon_request("disarm")) is not None:
+            print(reply)
+        elif not stop_running():
+            info("動いているセッションはありません")
+        return
+
+    if args.toggle or args.arm:
+        if (reply := daemon_request("toggle" if args.toggle else "arm")) is not None:
+            print(reply)
+            return
+
+        if args.arm:
+            # Hold-to-talk assumes a daemon. From cold it takes seconds before
+            # capture begins, and the release kills it via --stop first (the log
+            # reads "ready" then "0 utterances"). Starting a one-shot that cannot
+            # keep up would fail silently, so say so with a cue instead.
+            cue("error", sound)
+            die("常駐が動いていません。押しっぱなしで使うには先に `voice-in --daemon` を上げてください"
+                "(押すたびに切り替えるだけなら --toggle は常駐なしでも動きます)。")
+
+        # Toggle works without a daemon: press, wait for the cue, speak, press again.
+        if stop_running():
+            return
+        spawn_background([a for a in sys.argv[1:] if a != "--toggle"])
+        return
+
+    model_name, model_path = resolve_model(args.model)
+
+    if args.list:
+        info("キャプチャデバイスを列挙中…")
+        devices = enumerate_capture_devices(model_path)
+        print_capture_devices(devices, args.device)
+        # Refresh the cache while the listing is at hand; the next start is faster
+        cap_id, _ = mtgcommon.resolve_device(devices, args.device)
+        if cap_id is not None:
+            save_device_cache(args.device, cap_id)
+        return
+
+    if args.daemon:
+        injector = make_injector(args, sound, fatal=False)
+        Daemon(args, model_path, injector, sound).run()
+        return
+
+    if (pid := running_pid()) is not None:
+        die(f"既に動いています (pid {pid})。止めるなら voice-in --stop")
+
+    # The pid file goes down before capture starts. Preparation (enumeration
+    # plus model load) takes seconds, and --toggle pressed again during it would
+    # read as "not running" and start a second one fighting for the device.
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    PID_FILE.write_text(str(os.getpid()))
+    try:
+        run_once(args, model_name, model_path, sound)
+    finally:
+        PID_FILE.unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    main()
