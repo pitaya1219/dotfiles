@@ -29,7 +29,6 @@ let
     overlays.logseq-view
     overlays.nix-claude-code
     overlays.parquet-tools-relax-pandas
-    overlays.whisper-cpp-no-coreml
     overlays.starship-lld
   ];
 

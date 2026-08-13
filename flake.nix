@@ -93,23 +93,6 @@
           });
         };
 
-        # WORKAROUND: linking libwhisper.coreml.dylib against CoreML.framework
-        # crashes cctools-binutils-darwin's ld with a Trace/BPT trap (SIGTRAP,
-        # exit 133) on this nixpkgs pin. metalSupport already gives Apple
-        # Silicon acceleration, so drop CoreML rather than chase the linker bug.
-        # nixpkgs' postPatch appends `install(TARGETS whisper.coreml LIBRARY)`
-        # unconditionally on Darwin (a nixpkgs bug: it should gate on
-        # coreMLSupport), so strip that line or CMake configure fails looking
-        # for a target that no longer exists.
-        # Should be removed once the linker issue is fixed upstream.
-        whisper-cpp-no-coreml = final: prev: {
-          whisper-cpp = (prev.whisper-cpp.override { coreMLSupport = false; }).overrideAttrs (old: {
-            postPatch = old.postPatch + ''
-              sed -i '/install(TARGETS whisper.coreml LIBRARY)/d' src/CMakeLists.txt
-            '';
-          });
-        };
-
         # WORKAROUND: nixpkgs' bundled ld64 (957.1, via cctools-binutils-darwin
         # 1010.6) crashes with a Trace/BPT trap (SIGTRAP, exit 133) in
         # ld::passes::stubs::Pass::process while linking starship against
