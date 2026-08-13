@@ -27,7 +27,12 @@
         DOTFILES_DIR = "${config.home.homeDirectory}/dotfiles";
         HOME = config.home.homeDirectory;
       };
-      StartInterval = 1800;
+      # Fixed-time schedule at :05 and :35 each hour (every 30 min on staggered offset).
+      # Coordinates with rose (profiles/rose/logseq-sync.nix, :20/:50) to prevent concurrent
+      # rclone bisync runs across Mac, rose, and Android. Each sync takes up to 6 min; the
+      # 15-min stagger keeps execution windows from overlapping and causing lost updates.
+      # IMPORTANT: If this timing changes, update profiles/rose/logseq-sync.nix in parallel.
+      StartCalendarInterval = [ { Minute = 5; } { Minute = 35; } ];
       RunAtLoad = true;
       StandardOutPath = "${config.home.homeDirectory}/.local/share/logseq-sync.log";
       StandardErrorPath = "${config.home.homeDirectory}/.local/share/logseq-sync-error.log";

@@ -65,8 +65,13 @@ in
       Description = "Logseq Sync Timer";
     };
     Timer = {
-      OnBootSec = "5min";
-      OnUnitActiveSec = "30min";
+      # Fixed-time schedule at :20 and :50 each hour, maintaining a 15-min stagger
+      # from the Mac timer (profiles/r-shibuya/logseq-sync.nix, :05/:35). This prevents
+      # concurrent rclone bisync runs across Mac, rose, and Android — each run takes up
+      # to 6 min, and overlapping syncs can silently lose data. Persistent=false and no
+      # RandomizedDelaySec to keep the stagger deterministic and avoid cascading from
+      # system shutdown/boot. If this timing changes, coordinate with Mac timer in parallel.
+      OnCalendar = "*:20,50";
       AccuracySec = "1min";
     };
     Install = {
