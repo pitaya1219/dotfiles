@@ -7,6 +7,7 @@ rec {
   CURL_CA_BUNDLE = "${REQUESTS_CA_BUNDLE}";
   HEX_CACERTS_PATH = "${REQUESTS_CA_BUNDLE}";
   NIX_SSL_CERT_FILE = "${REQUESTS_CA_BUNDLE}";
+  SSL_CERT_FILE = "${REQUESTS_CA_BUNDLE}";
   BASH_SILENCE_DEPRECATION_WARNING = 1;
   LDFLAGS = "-L/opt/homebrew/opt/mysql-client/lib";
   CPPFLAGS = "-I/opt/homebrew/opt/mysql-client/include";
