@@ -109,8 +109,32 @@ SPEAKER_TURN_RE = re.compile(r"\s*\[SPEAKER_TURN\]\s*$")
 START_SPEAKING = "[Start speaking]"
 # [BLANK_AUDIO] / (音楽) / 【拍手】 のような非発話マーカーは字幕から落とす
 NON_SPEECH_RE = re.compile(r"^[\[\(（【][^\]\)）】]*[\]\)）】]$")
+
+# Set phrases whisper returns for silence or a very quiet signal, learned from
+# YouTube subtitles. whisper-cli has -sns (--suppress-nst) and silero VAD;
+# whisper-stream has neither, and its built-in VAD only compares energy, so a
+# quiet monitor path slips silent chunks through. Dropped on read instead.
+#
+# Matched against the whole utterance only. A substring match would also eat
+# ordinary speech like "〜です。ありがとうございました".
+# Punctuation and spacing are normalised away by _norm.
+# Never add something that could plainly be said, e.g. "ありがとうございました".
+HALLUCINATIONS = (
+    "ご視聴ありがとうございました",
+    "ご視聴ありがとうございます",
+    "最後までご視聴いただきありがとうございました",
+    "ご視聴いただきありがとうございました",
+    "チャンネル登録よろしくお願いします",
+    "チャンネル登録お願いします",
+    "高評価とチャンネル登録よろしくお願いします",
+    "字幕視聴ありがとうございました",
+)
 # whisper-stream のキャプチャデバイス一覧行
 CAPTURE_DEV_RE = re.compile(r"Capture device #(\d+): '([^']*)'")
+# The line reporting which device was actually opened.
+# See LiveTranscriber.opened_device for why it matters.
+#   init: attempt to open capture device 3 : 'MacBook Proのマイク' ...
+OPENED_DEV_RE = re.compile(r"attempt to open capture device (\d+)\s*:\s*'([^']*)'")
 
 
 def ts_to_ms(s):
@@ -121,8 +145,16 @@ def ts_to_ms(s):
 
 
 def _norm(text):
-    """重複判定用の正規化。再認識のたびに空白の入り方が変わるので落とす。"""
+    """Normalise for dedup: re-recognition varies the spacing, so drop it."""
     return "".join(text.split())
+
+
+_HALLUCINATION_SET = frozenset(_norm(p).rstrip("。.") for p in HALLUCINATIONS)
+
+
+def is_hallucination(text):
+    """True for a set phrase whisper emits on silence. Whole utterance only."""
+    return _norm(text).rstrip("。.") in _HALLUCINATION_SET
 
 
 # ---------------------------------------------------------------------------
@@ -404,6 +436,14 @@ class LiveTranscriber:
         self.side = side
         self.meta = SIDES[side]
         self.on_utterance = on_utterance
+        # Name of the device actually opened. Ids are positional in SDL's
+        # enumeration, so they shift when hardware comes and goes (BlackHole 2ch
+        # moving from #3 to #2, say) and can even shift between enumerating and
+        # start(). Recording the name lets a caller check what it really got.
+        # Read as it arrives: stderr_tail is a bounded deque and the model-load
+        # output evicts this line.
+        self.opened_device = None
+        self._opened = threading.Event()
         self.session_zero = time.monotonic() if session_zero is None else session_zero
         self.t_zero = None      # '[Start speaking]' を観測した時刻(t0 の原点)
         self.ready = False
@@ -492,18 +532,38 @@ class LiveTranscriber:
             m = SEGMENT_RE.match(line)
             if m:
                 text = SPEAKER_TURN_RE.sub("", m.group(3)).strip()
-                if text and not NON_SPEECH_RE.match(text):
+                if text and not self._drop(text):
                     segs.append((ts_to_ms(m.group(1)), ts_to_ms(m.group(2)), text))
                 continue
-            if NON_SPEECH_RE.match(line):
+            if self._drop(line):
                 continue
             # タイムスタンプ無しの本文(--step > 0 のスライディングモードなど)
             segs.append((None, None, line))
         self._flush(chunk_t0, segs)
 
+    @staticmethod
+    def _drop(text):
+        """Lines kept out of the subtitle: non-speech markers and silence phrases."""
+        return bool(NON_SPEECH_RE.match(text)) or is_hallucination(text)
+
     def _read_stderr(self):
         for raw in self.proc.stderr:
-            self.stderr_tail.append(raw.rstrip())
+            line = raw.rstrip()
+            self.stderr_tail.append(line)
+            if self.opened_device is None and (m := OPENED_DEV_RE.search(line)):
+                self.opened_device = m.group(2)
+                self._opened.set()
+
+    def opened_mismatch(self, wanted, timeout=1.0):
+        """Name of the opened device if it is not the one wanted, else None.
+
+        Also None when the report line does not arrive within timeout, i.e.
+        carry on. Being unable to check - because whisper.cpp reworded the
+        line - is a worse reason to stop than the mismatch it guards against.
+        """
+        if not self._opened.wait(timeout):
+            return None
+        return None if wanted.lower() in self.opened_device.lower() else self.opened_device
 
     def _flush(self, chunk_t0, segs):
         if not segs or self.on_utterance is None:
@@ -635,19 +695,28 @@ def open_live_log(no_save):
 # ---------------------------------------------------------------------------
 # mtg-live / mtg-self が共有する単一サイド実行
 # ---------------------------------------------------------------------------
-def add_tuning_args(ap):
-    """ライブ字幕のチューニング系オプション。mtg と片側コマンドで共通。"""
+def add_tuning_args(ap, sliding=True, save=True):
+    """Live-transcription tuning options, shared by mtg, the per-side commands and voice-in.
+
+    sliding and save exist for voice-in: dictation cannot use sliding mode (it
+    emits no committed lines, so feeding another app would mean rewriting what
+    was already inserted) and keeps no subtitle log. The point is to hold the
+    defaults and help text in one place, so unwanted options are dropped by
+    argument rather than by copying the rest.
+    """
     ap.add_argument("--language", default="ja")
-    ap.add_argument("--step", type=int, default=0,
-                    help="0=VAD(発話区切りで確定) / >0=スライディング(ms)")
+    if sliding:
+        ap.add_argument("--step", type=int, default=0,
+                        help="0=VAD(発話区切りで確定) / >0=スライディング(ms)")
     ap.add_argument("--length", type=int, default=10000, help="1チャンクの最大長(ms)")
     ap.add_argument("--vad-thold", type=float, default=0.6, help="VAD感度(0=厳しい〜1=緩い)")
-    ap.add_argument("--no-save", action="store_true",
-                    help="字幕ログのファイル保存をしない(既定は保存する)")
+    if save:
+        ap.add_argument("--no-save", action="store_true",
+                        help="字幕ログのファイル保存をしない(既定は保存する)")
 
 
-def _add_live_args(ap, side):
-    """片側ライブ字幕コマンド (mtg-live / mtg-self) のオプション"""
+def add_device_args(ap, side):
+    """Capture device and model selection, shared by the live commands and voice-in."""
     meta = SIDES[side]
     ap.add_argument("--list", action="store_true", help="キャプチャデバイス一覧を表示して終了")
     ap.add_argument("--device", default=meta["device"],
@@ -656,6 +725,11 @@ def _add_live_args(ap, side):
                     help="デバイス番号を直接指定(--device より優先)")
     ap.add_argument("--model", choices=list(MODELS), default=meta["model"],
                     help=f"turbo=高精度 / small=軽量 / base=最軽量 (既定: {meta['model']})")
+
+
+def _add_live_args(ap, side):
+    """片側ライブ字幕コマンド (mtg-live / mtg-self) のオプション"""
+    add_device_args(ap, side)
     ap.add_argument("--translate", action="store_true", help="英語にライブ翻訳")
     add_tuning_args(ap)
 
