@@ -429,8 +429,9 @@ tasks:
 
         # Resolve the pre-sync snapshot: prefer the pointer _backup writes,
         # fall back to the newest generation directory directly under
-        # BACKUP_DIR if the pointer is missing or stale (e.g. an old backup
-        # predating this feature, or a manual BACKUP_DIR override).
+        # BACKUP_DIR if the pointer is missing or stale (e.g. a generation left
+        # by a _backup run older than the pointer, or a manual BACKUP_DIR
+        # override that _backup never wrote to).
         SNAPSHOT=""
         if [[ -f "$BACKUP_DIR/.last" ]]; then
             SNAPSHOT=$(cat "$BACKUP_DIR/.last" 2>/dev/null || true)
