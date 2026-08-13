@@ -376,6 +376,17 @@ tasks:
     cmds:
       - |
         bash <<'INNEREOF'
+        # Catches the failure rclone bisync cannot: with three peers (Mac, rose,
+        # Android) a device that edits before pulling another's change looks like
+        # a one-sided update, so bisync propagates it without ever flagging a
+        # conflict and the other side's content is silently overwritten.
+        #
+        # The comparison is pre-sync snapshot (taken by _backup) vs the tree after
+        # the sync, so it cannot distinguish "the sync destroyed this" from "you
+        # deleted a large block yourself while the sync was running" — the latter
+        # is reported too. That is the intended trade: a false positive costs one
+        # extra conflict page, a false negative costs the content. Raise
+        # SHRINK_RATIO to report more, lower it to report less.
         set -uo pipefail
         LOGSEQ_LOCAL="{{.LOGSEQ_LOCAL}}"
         BACKUP_DIR="{{.BACKUP_DIR}}"
