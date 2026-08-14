@@ -12,11 +12,20 @@ option name paired with its value usually speaks for itself, so leave it bare:
 restating a mechanism the reader already knows ("DynamoDB is schemaless, so
 non-key attributes need no definition") carries no information.
 
-Comment what the code cannot show: the fields a schemaless record is expected to
-hold, the upstream cause of a workaround and the condition for removing it, a
-constraint that forced an otherwise puzzling shape.
+A comment has to earn its place by helping whoever operates or maintains the
+code later. Explanations aimed at the reader of the change itself — what was
+added, what it replaced, why this approach was chosen over another — are not
+that, however accurate they are. They belong in the commit message and the pull
+request body; left in the source they become narration that outlives its context
+and eventually misleads.
 
-Reasoning about why a change was made belongs in the pull request body.
+Comment what the code cannot show and a maintainer would need: the fields a
+schemaless record is expected to hold, the upstream cause of a workaround and
+the condition for removing it, a constraint that forced an otherwise puzzling
+shape.
+
+Before keeping a comment, ask what a maintainer loses if it is gone. If nothing,
+delete it.
 
 ## Git commits
 
