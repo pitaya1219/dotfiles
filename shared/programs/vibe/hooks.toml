@@ -29,6 +29,16 @@ timeout = 30.0
 strict = false
 description = "Notify on agent turn completion"
 
+# Re-inject the language steering signal after every tool call. The policy
+# in AGENTS.md sits at the top of the context and its influence dilutes
+# over long sessions; this keeps it close to the generation point.
+[[hooks]]
+name = "language-steering"
+type = "post_tool"
+command = "python3 $HOME/.vibe/hooks/language_steering.py"
+strict = false
+description = "Append language reminder (English reasoning, Japanese response, no Chinese) to every tool result."
+
 # Record session_id for nvim tab tracking (see scripts/agent-session-tab-pointer.py).
 # Registered on both pre_tool (no match = all tools, fires as early as the
 # first tool call within the first turn) and post_agent (fallback for

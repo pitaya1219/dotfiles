@@ -30,7 +30,8 @@ delete it.
 ## Language
 
 Reason in English; respond in Japanese. Code, comments, commit messages,
-and PR descriptions stay in English.
+and PR descriptions stay in English. Never output Chinese — if a Chinese
+character slips in, switch back to English or Japanese immediately.
 
 ## Git commits
 
