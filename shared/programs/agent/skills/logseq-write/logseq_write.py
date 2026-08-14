@@ -168,12 +168,82 @@ def _parse_json(body):
         return {}
 
 
-def create_page(url, token, page, props):
-    status, body = call_api(url, token, "logseq.Editor.createPage", [page, props, {"redirect": False}])
+def create_page(url, token, page):
+    status, body = call_api(url, token, "logseq.Editor.createPage", [page, {}, {"redirect": False}])
     result = _parse_json(body)
     if status != 200 or "uuid" not in result:
         print(f"createPage failed (HTTP {status}): {body}", file=sys.stderr)
         sys.exit(1)
+
+
+def get_page_blocks_tree(url, token, page):
+    status, body = call_api(url, token, "logseq.Editor.getPageBlocksTree", [page])
+    if status != 200:
+        print(f"getPageBlocksTree failed (HTTP {status}): {body}", file=sys.stderr)
+        sys.exit(1)
+    return _parse_json(body) or []
+
+
+def insert_block(url, token, sibling_uuid, content, before):
+    status, body = call_api(
+        url, token, "logseq.Editor.insertBlock",
+        [sibling_uuid, content, {"before": before, "sibling": True}],
+    )
+    if status != 200:
+        print(f"insertBlock failed (HTTP {status}): {body}", file=sys.stderr)
+        sys.exit(1)
+
+
+def update_block(url, token, block_uuid, content):
+    status, body = call_api(url, token, "logseq.Editor.updateBlock", [block_uuid, content])
+    if status != 200:
+        print(f"updateBlock failed (HTTP {status}): {body}", file=sys.stderr)
+        sys.exit(1)
+
+
+def upsert_block_property(url, token, block_uuid, key, value):
+    status, body = call_api(
+        url, token, "logseq.Editor.upsertBlockProperty", [block_uuid, key, value]
+    )
+    if status != 200:
+        print(f"upsertBlockProperty failed (HTTP {status}): {body}", file=sys.stderr)
+        sys.exit(1)
+
+
+def apply_page_properties(url, token, page, props):
+    """Write page properties, whether or not the page already existed.
+
+    createPage takes a properties argument but drops it when the page is
+    already there, and a page is already there more often than it looks: a
+    `[[Wiki link]]` from any other page materializes an empty one. Writing a
+    two-page set where the first links to the second therefore silently lost
+    every property on the second. So properties are never left to createPage;
+    they are always written here, against the page's own first block.
+
+    Existing properties are updated key by key rather than replaced wholesale,
+    so a property added by hand on a page this script rewrites survives.
+    """
+    if not props:
+        return
+
+    blocks = get_page_blocks_tree(url, token, page)
+    first = blocks[0] if blocks else None
+
+    if first and (first.get("properties") or {}):
+        for key, value in props.items():
+            upsert_block_property(url, token, first["uuid"], key, value)
+        return
+
+    content = "\n".join(f"{key}:: {value}" for key, value in props.items())
+    if first is None:
+        append_block_in_page(url, token, page, content)
+    elif not (first.get("content") or "").strip():
+        # createPage leaves one empty placeholder block behind. Fill that block
+        # instead of inserting before it, or the page keeps a blank block
+        # wedged between its properties and its content.
+        update_block(url, token, first["uuid"], content)
+    else:
+        insert_block(url, token, first["uuid"], content, before=True)
 
 
 def append_block_in_page(url, token, page, content):
@@ -242,8 +312,8 @@ def main():
         sys.exit(0 if is_available(url, token) else 1)
 
     if args.create_page:
-        props = dict(kv.split("=", 1) for kv in args.prop)
-        create_page(url, token, args.page, props)
+        create_page(url, token, args.page)
+        apply_page_properties(url, token, args.page, dict(kv.split("=", 1) for kv in args.prop))
 
     asset_blocks = []
     for spec in args.asset:

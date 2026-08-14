@@ -20,7 +20,7 @@ ambiguous, read the script rather than improvising shell around it.
 - `--title` — parent block heading; all content becomes its children (append mode only)
 - `--tag` — adds `tags:: #<tag>` property on the title block (requires `--title`, append mode only)
 - `--create-page` — create a new page instead of appending to an existing one; `<page>` becomes the page title
-- `--prop key=value` — set a page property (repeatable, requires `--create-page`)
+- `--prop key=value` — set a page property (repeatable, requires `--create-page`). Applied whether or not the page already exists, and existing properties are updated key by key rather than replaced, so re-running to flip one property (e.g. `status`) keeps the rest.
 - `--asset path[:name]` — upload a local file to Nextcloud and append a link block to the content (repeatable). Optional `:name` overrides the on-disk filename (defaults to the source basename). Image extensions render inline (`![]`), everything else as a download link (`[]`). Linked via Nextcloud's internal (login-required) URL.
 
 ## Usage
