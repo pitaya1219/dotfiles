@@ -27,6 +27,16 @@ in
   # Symlink .vibe/skills -> .agent/skills
   home.file.".vibe/skills".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/skills";
 
+  # User-level instructions. Vibe reads ~/.vibe/AGENTS.md as raw text
+  # (load_user_doc in vibe/core/config/harness_files) with no import mechanism
+  # and no config option pointing elsewhere, so the shared conventions are
+  # concatenated in at build time rather than referenced. Vibe-specific rules
+  # can be appended after them here.
+  home.file.".vibe/AGENTS.md".text = ''
+    <!-- Generated from dotfiles shared/programs/agent/conventions.md. Edit it there. -->
+
+  '' + builtins.readFile ./agent/conventions.md;
+
   # Custom agents. explore.toml overrides the builtin explore subagent to run
   # on a cheap model instead of inheriting the main session model.
   home.file.".vibe/agents" = {

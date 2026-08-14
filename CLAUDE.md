@@ -194,8 +194,6 @@ nix run home-manager/master -- switch --flake .#<profile>
 
 ## Git Commit Preferences
 
-- NEVER include Claude-related content in commit messages
-- Use Conventional Commits format with prefix
-- Prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:`, `style:`
-- Format: `prefix: Description ending with period.`
-- Example: `feat: Add rootless Docker configuration.`
+Commit message rules are not repository-specific and live in
+`shared/programs/agent/conventions.md`, which every agent loads as user-level
+instructions from `~/.agent/conventions.md`.

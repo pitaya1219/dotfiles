@@ -80,12 +80,9 @@ When working with Gitea repositories, use the `gitea` MCP tools for repository o
 
 ## Git Workflow
 
-### Commit Message Format
-Use Conventional Commits format:
-- Prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:`, `style:`
-- Format: `prefix: Description ending with period.`
-- Example: `feat: Add rootless Docker configuration.`
-- NEVER include AI tool names (Claude, OpenCode, etc.) in commit messages
+Commit message rules are not repository-specific and live in
+`shared/programs/agent/conventions.md`, which every agent loads as user-level
+instructions from `~/.agent/conventions.md`.
 
 ## Best Practices
 

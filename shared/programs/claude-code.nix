@@ -49,6 +49,13 @@
 
     dotfiles.claudeJson.mcpServers = config.dotfiles.claude-code.mcpServers;
 
+    # User-level memory. Claude Code expands @-imports in CLAUDE.md, so this
+    # stays a stub that pulls in the shared conventions; Claude-specific rules
+    # can be appended below the import without forking the shared file.
+    home.file.".claude/CLAUDE.md".text = ''
+      @${config.home.homeDirectory}/.agent/conventions.md
+    '';
+
     home.file.".claude/commands".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/commands";
     home.file.".claude/skills".source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.agent/skills";
 

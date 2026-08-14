@@ -80,6 +80,11 @@ in
         recursive = true;
       };
 
+      # Cross-agent, cross-repository conventions. Each agent reaches this file
+      # its own way (see claude-code.nix, vibe.nix, opencode.nix); this is the
+      # only copy.
+      ".agent/conventions.md".source = ./agent/conventions.md;
+
       # Generate ~/.agent/daily-report.json when config is provided
       ".agent/daily-report.json" = lib.mkIf (config.dotfiles.agent.dailyReport != {}) {
         text = builtins.toJSON config.dotfiles.agent.dailyReport;
