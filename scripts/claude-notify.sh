@@ -18,7 +18,8 @@ SESSION_ID="${SESSION_ID:-${CLAUDE_SESSION_ID:-unknown}}"
 
 # Extract session title from transcript as summary
 PROJECT_PATH=$(pwd | sed 's|/|-|g')
-SUMMARY=$(TRANSCRIPT="$HOME/.claude/projects/${PROJECT_PATH}/${SESSION_ID}.jsonl" python3 -c "
+TRANSCRIPT="$HOME/.claude/projects/${PROJECT_PATH}/${SESSION_ID}.jsonl"
+SUMMARY=$(TRANSCRIPT="$TRANSCRIPT" python3 -c "
 import json, os
 title = ''
 try:
@@ -35,6 +36,31 @@ except Exception:
 print(title)
 " 2>/dev/null || true)
 
+# Extract the first line of the last assistant message
+LAST_MSG=$(TRANSCRIPT="$TRANSCRIPT" python3 -c "
+import json, os
+try:
+    with open(os.environ['TRANSCRIPT']) as f:
+        for line in reversed(f.readlines()):
+            obj = json.loads(line)
+            if obj.get('type') == 'assistant':
+                msg = obj.get('message', {})
+                content = msg.get('content', '')
+                text = ''
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get('type') == 'text':
+                            text = block.get('text', '')
+                            break
+                elif isinstance(content, str):
+                    text = content
+                if text:
+                    print(text.split('\n')[0][:200])
+                    break
+except Exception:
+    pass
+" 2>/dev/null || true)
+
 # Per-session throttle state file
 STATE_FILE="/tmp/claude-notify-${SESSION_ID}"
 
@@ -45,7 +71,11 @@ if (( now - last >= THROTTLE )); then
   echo "$now" > "$STATE_FILE"
 
   SHORT_SESSION="${SESSION_ID:0:8}"
-  NVIM_MSG="${SUMMARY:+${SUMMARY} | }Waiting for response (session: ${SHORT_SESSION})"
+  CONFIRMATION="Claude Code is waiting for your response (session: ${SESSION_ID})"
+  if [ -n "$LAST_MSG" ]; then
+    CONFIRMATION="${LAST_MSG}"
+  fi
+  NVIM_MSG="${SUMMARY:+${SUMMARY} | }${CONFIRMATION}"
   SCRIPTS_DIR="$HOME/dotfiles/scripts"
 
   "$SCRIPTS_DIR/nvim-notify.sh" \
@@ -60,7 +90,7 @@ if (( now - last >= THROTTLE )); then
     --summary "$SUMMARY" \
     --type info \
     --priority medium \
-    --confirmation "Claude Code is waiting for your response (session: ${SESSION_ID})" \
+    --confirmation "$CONFIRMATION" \
     2>/dev/null &
 
   wait

@@ -32,14 +32,19 @@ STATE_FILE="/tmp/vibe-notify-${SESSION_ID}"
 NOW=$(date +%s)
 LAST_NOTIFY=$(cat "$STATE_FILE" 2>/dev/null || echo 0)
 if (( NOW - LAST_NOTIFY < RATE_LIMIT )); then
+    echo '{}'
     exit 0
 fi
 echo "$NOW" > "$STATE_FILE"
 
 # --- Extract session summary from transcript metadata ----------------------
 SESSION_SUMMARY=""
+LAST_MSG=""
 if [ -n "$TRANSCRIPT_PATH" ]; then
-    METAFILE="$(dirname "$TRANSCRIPT_PATH")/meta.json"
+    TRANSCRIPT_DIR="$(dirname "$TRANSCRIPT_PATH")"
+    METAFILE="${TRANSCRIPT_DIR}/meta.json"
+    MESSAGES="${TRANSCRIPT_DIR}/messages.jsonl"
+
     if [ -f "$METAFILE" ]; then
         SESSION_SUMMARY=$(METAFILE="$METAFILE" python3 -c "
 import json, os
@@ -50,10 +55,31 @@ except Exception:
     print('')
 " 2>/dev/null || true)
     fi
+
+    # Extract the first line of the last non-empty assistant message
+    if [ -f "$MESSAGES" ]; then
+        LAST_MSG=$(MESSAGES="$MESSAGES" python3 -c "
+import json, os
+try:
+    with open(os.environ['MESSAGES']) as f:
+        for line in reversed(f.readlines()):
+            obj = json.loads(line)
+            if obj.get('role') == 'assistant':
+                content = obj.get('content', '')
+                if content:
+                    print(content.split('\n')[0][:200])
+                    break
+except Exception:
+    pass
+" 2>/dev/null || true)
+    fi
 fi
 
 # --- Build notification content ---------------------------------------------
 CONFIRMATION_ITEM="Agent turn completed - awaiting next input"
+if [ -n "$LAST_MSG" ]; then
+    CONFIRMATION_ITEM="${LAST_MSG}"
+fi
 MESSAGE_TYPE="info"
 PRIORITY="low"
 NVIM_TITLE="Vibe"
@@ -67,7 +93,7 @@ SCRIPTS_DIR="$HOME/dotfiles/scripts"
   --title "$NVIM_TITLE" \
   --message "$NVIM_MSG" \
   --level "$NVIM_LEVEL" \
-  2>/dev/null &
+  >/dev/null 2>&1 &
 
 "$SCRIPTS_DIR/rocketchat-notify.sh" \
   --agent-type mistral-vibe \
@@ -76,7 +102,8 @@ SCRIPTS_DIR="$HOME/dotfiles/scripts"
   --type "$MESSAGE_TYPE" \
   --priority "$PRIORITY" \
   --confirmation "$CONFIRMATION_ITEM" \
-  2>/dev/null &
+  >/dev/null 2>&1 &
 
 wait
+echo '{}'
 exit 0

@@ -16,7 +16,8 @@ SESSION_ID="${SESSION_ID:-${CLAUDE_SESSION_ID:-unknown}}"
 
 # Extract session title from transcript as summary
 PROJECT_PATH=$(pwd | sed 's|/|-|g')
-SUMMARY=$(TRANSCRIPT="$HOME/.claude/projects/${PROJECT_PATH}/${SESSION_ID}.jsonl" python3 -c "
+TRANSCRIPT="$HOME/.claude/projects/${PROJECT_PATH}/${SESSION_ID}.jsonl"
+SUMMARY=$(TRANSCRIPT="$TRANSCRIPT" python3 -c "
 import json, os
 title = ''
 try:
@@ -31,6 +32,31 @@ try:
 except Exception:
     pass
 print(title)
+" 2>/dev/null || true)
+
+# Extract the first line of the last assistant message
+LAST_MSG=$(TRANSCRIPT="$TRANSCRIPT" python3 -c "
+import json, os
+try:
+    with open(os.environ['TRANSCRIPT']) as f:
+        for line in reversed(f.readlines()):
+            obj = json.loads(line)
+            if obj.get('type') == 'assistant':
+                msg = obj.get('message', {})
+                content = msg.get('content', '')
+                text = ''
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get('type') == 'text':
+                            text = block.get('text', '')
+                            break
+                elif isinstance(content, str):
+                    text = content
+                if text:
+                    print(text.split('\n')[0][:200])
+                    break
+except Exception:
+    pass
 " 2>/dev/null || true)
 
 TOOL_NAME=$(printf '%s' "$HOOK_INPUT" | python3 -c "
@@ -48,10 +74,10 @@ if [ -n "$TOOL_NAME" ]; then
   NVIM_MSG="Permission required: ${TOOL_NAME} (session: ${SESSION_ID:0:8})"
   NVIM_LEVEL="ERROR"
 else
-  CONFIRMATION="Claude Code notification (session: ${SESSION_ID})"
+  CONFIRMATION="${LAST_MSG:-Claude Code notification (session: ${SESSION_ID})}"
   PRIORITY="medium"
   MSG_TYPE="info"
-  NVIM_MSG="Notification (session: ${SESSION_ID:0:8})"
+  NVIM_MSG="${SUMMARY:+${SUMMARY} | }${CONFIRMATION}"
   NVIM_LEVEL="INFO"
 fi
 
