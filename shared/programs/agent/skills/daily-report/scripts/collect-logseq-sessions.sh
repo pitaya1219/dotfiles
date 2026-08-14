@@ -31,11 +31,17 @@ curl -sf --max-time 3 \
   -d '{"method":"logseq.App.getUserConfigs","args":[]}' \
   "$URL/api" > /dev/null 2>&1 || exit 0
 
-MIDNIGHT_MS=$(( $(midnight_ts) * 1000 ))
-EOD_MS=$(( MIDNIGHT_MS + 86400000 ))
+TODAY=$(today)
 
-# Query session pages (namespace "session/...") created today via datascript
-QUERY="[:find (pull ?p [:block/name :block/original-name :block/created-at]) :where [?p :block/name ?name] [(clojure.string/starts-with? ?name \"session/\")] [?p :block/created-at ?ts] [(>= ?ts ${MIDNIGHT_MS})] [(< ?ts ${EOD_MS})]]"
+# Pull every session page together with its properties in one datascript query.
+#
+# Deliberately NOT filtered on :block/created-at: that timestamp reflects when
+# the page entered the *local* graph database, so a re-index (or a fresh clone
+# on another device) rewrites it to the re-index time for every page at once.
+# A whole day of sessions then silently drops out of the report. The `date::`
+# property is written by session-save and stays put, so it is the only
+# trustworthy notion of "which day did this session happen".
+QUERY='[:find (pull ?p [:block/name :block/original-name :block/properties]) :where [?p :block/name ?name] [(clojure.string/starts-with? ?name "session/")] [?p :block/properties _]]'
 
 PAGES=$(curl -sf \
   -H "Authorization: Bearer $TOK" \
@@ -44,44 +50,30 @@ PAGES=$(curl -sf \
   "$URL/api" 2>/dev/null)
 
 [ -z "$PAGES" ] && exit 0
-COUNT=$(echo "$PAGES" | jq 'length' 2>/dev/null)
-[ "$COUNT" = "0" ] && exit 0
 
-TODAY=$(today)
+# Property keys come back in their on-disk kebab-case form here (git-branch),
+# unlike logseq.Editor.getPage which camel-cases them (gitBranch).
+#
+# `date` may be an array ["2026-06-15"], a plain string, or a page ref
+# "[[2026-06-15]]"; stringifying the whole value covers all three.
+echo "$PAGES" | jq -r --arg today "$TODAY" '
+  def one(v): if (v | type) == "array" then (v[0] // "") else (v // "") end;
 
-echo "$PAGES" | jq -r '.[][] | .["original-name"] // .["name"]' 2>/dev/null | \
-while IFS= read -r PAGE_NAME; do
-  [ -z "$PAGE_NAME" ] && continue
-
-  PAGE=$(curl -sf \
-    -H "Authorization: Bearer $TOK" \
-    -H "Content-Type: application/json" \
-    -d "$(jq -n --arg p "$PAGE_NAME" '{method: "logseq.Editor.getPage", args: [$p]}')" \
-    "$URL/api" 2>/dev/null)
-
-  # Filter by date property — only show sessions whose date == today.
-  # date may be an array ["2026-06-15"] (Logseq page ref) or a raw string "[[2026-06-15]]".
-  DATE_VAL=$(echo "$PAGE" | jq -r '.properties.date // ""')
-  case "$DATE_VAL" in
-    *"$TODAY"*) ;;  # string contains today → pass
-    *)
-      DATE_MATCH=$(echo "$PAGE" | jq -r --arg d "$TODAY" \
-        'if (.properties.date | type) == "array" then (.properties.date | any(. == $d)) else false end' 2>/dev/null)
-      [ "$DATE_MATCH" = "true" ] || continue ;;
-  esac
-
-  OBJECTIVE=$(echo "$PAGE" | jq -r 'if (.properties.objective | type) == "array" then .properties.objective[0] else (.properties.objective // "") end')
-  REPO=$(echo "$PAGE"      | jq -r '.properties.repository // ""')
-  BRANCH=$(echo "$PAGE"    | jq -r '.properties.gitBranch // ""')
-  STATUS=$(echo "$PAGE"    | jq -r '.properties.status // ""')
-  PR=$(echo "$PAGE"        | jq -r '.properties.pr // ""')
-  MODEL=$(echo "$PAGE"     | jq -r '.properties.model // ""')
-
-  echo "=== $PAGE_NAME ==="
-  [ -n "$OBJECTIVE" ] && echo "  Objective : $OBJECTIVE"
-  [ -n "$REPO" ]      && echo "  Repository: $REPO${BRANCH:+ @ $BRANCH}"
-  [ -n "$PR" ]        && echo "  PR        : $PR"
-  [ -n "$STATUS" ]    && echo "  Status    : $STATUS"
-  [ -n "$MODEL" ]     && echo "  Model     : $MODEL"
-  echo ""
-done
+  [ .[][] | select((.properties.date | tostring) | contains($today)) ]
+  | sort_by(.name)
+  | .[]
+  | (.["original-name"] // .name) as $name
+  | one(.properties.objective)    as $objective
+  | one(.properties.repository)   as $repo
+  | one(.properties["git-branch"]) as $branch
+  | one(.properties.pr)           as $pr
+  | one(.properties.status)       as $status
+  | one(.properties.model)        as $model
+  | "=== \($name) ===",
+    (if $objective != "" then "  Objective : \($objective)" else empty end),
+    (if $repo != "" then "  Repository: \($repo)\(if $branch != "" then " @ \($branch)" else "" end)" else empty end),
+    (if $pr != "" then "  PR        : \($pr)" else empty end),
+    (if $status != "" then "  Status    : \($status)" else empty end),
+    (if $model != "" then "  Model     : \($model)" else empty end),
+    ""
+' 2>/dev/null
