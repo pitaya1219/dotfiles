@@ -27,6 +27,11 @@ shape.
 Before keeping a comment, ask what a maintainer loses if it is gone. If nothing,
 delete it.
 
+## Language
+
+Reason in English; respond in Japanese. Code, comments, commit messages,
+and PR descriptions stay in English.
+
 ## Git commits
 
 - Never mention AI assistance: no `Co-Authored-By` line naming an AI tool or its
