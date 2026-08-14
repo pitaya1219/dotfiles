@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Throttled RocketChat notification for Claude Code Stop hook.
+# Throttled notification wrapper for Claude Code Stop hook.
 # Sends at most once per CLAUDE_NOTIFY_THROTTLE seconds per session (default 30).
 # Reads {"session_id": "..."} from stdin (provided by Claude Code Stop hook).
 
@@ -44,21 +44,24 @@ last=$(cat "$STATE_FILE" 2>/dev/null || echo 0)
 if (( now - last >= THROTTLE )); then
   echo "$now" > "$STATE_FILE"
 
-  # Notify the nvim that hosts this claude terminal (only when running inside nvim)
-  if [ -n "${NVIM:-}" ]; then
-    NVIM_MSG="${SUMMARY:+${SUMMARY} | }Waiting for response (session: ${SESSION_ID:0:8})"
-    "$HOME/dotfiles/scripts/nvim-notify.sh" \
-      --title "Claude Code" \
-      --message "$NVIM_MSG" \
-      --level WARN \
-      --skip-registry 2>/dev/null || true
-  fi
+  SHORT_SESSION="${SESSION_ID:0:8}"
+  NVIM_MSG="${SUMMARY:+${SUMMARY} | }Waiting for response (session: ${SHORT_SESSION})"
+  SCRIPTS_DIR="$HOME/dotfiles/scripts"
 
-  exec "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh" \
+  "$SCRIPTS_DIR/nvim-notify.sh" \
+    --title "Claude Code" \
+    --message "$NVIM_MSG" \
+    --level WARN \
+    2>/dev/null &
+
+  "$SCRIPTS_DIR/rocketchat-notify.sh" \
     --agent-type claude-code \
     --session-id "$SESSION_ID" \
     --summary "$SUMMARY" \
     --type info \
+    --priority medium \
     --confirmation "Claude Code is waiting for your response (session: ${SESSION_ID})" \
-    "$@"
+    2>/dev/null &
+
+  wait
 fi

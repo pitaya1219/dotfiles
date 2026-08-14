@@ -17,54 +17,17 @@ match = "re:(bash|read_file|grep)"
 command = "python3 $HOME/.vibe/hooks/secret_guard.py"
 description = "Redact secret-shaped strings from tool output before the model sees them."
 
-# Notification on agent turn completion (session progress)
+# Notification on agent turn completion (equivalent to Claude Code's Stop hook).
+# post_agent fires once per completed user turn — the correct "waiting for
+# response" signal. Tool-level hooks (pre_tool/post_tool) are intentionally
+# omitted to keep notifications quiet.
 [[hooks]]
-name = "rocket-chat-agent-turn"
+name = "notify-agent-turn"
 type = "post_agent"
-command = "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh"
+command = "$HOME/dotfiles/scripts/vibe-notify.sh"
 timeout = 30.0
 strict = false
-description = "Send RocketChat notification on agent turn completion"
-
-# Notification before critical bash execution
-[[hooks]]
-name = "rocket-chat-before-bash"
-type = "pre_tool"
-match = "bash"
-command = "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh"
-timeout = 30.0
-strict = false
-description = "Send RocketChat notification before bash tool execution"
-
-# Notification after bash execution
-[[hooks]]
-name = "rocket-chat-after-bash"
-type = "post_tool"
-match = "bash"
-command = "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh"
-timeout = 30.0
-strict = false
-description = "Send RocketChat notification after bash tool execution"
-
-# Notification before file modification
-[[hooks]]
-name = "rocket-chat-before-write"
-type = "pre_tool"
-match = "write_file"
-command = "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh"
-timeout = 30.0
-strict = false
-description = "Send RocketChat notification before write_file"
-
-# Notification before file edit
-[[hooks]]
-name = "rocket-chat-before-edit"
-type = "pre_tool"
-match = "edit"
-command = "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh"
-timeout = 30.0
-strict = false
-description = "Send RocketChat notification before edit"
+description = "Notify on agent turn completion"
 
 # Record session_id for nvim tab tracking (see scripts/agent-session-tab-pointer.py).
 # Registered on both pre_tool (no match = all tools, fires as early as the

@@ -55,20 +55,23 @@ else
   NVIM_LEVEL="INFO"
 fi
 
-# Notify the nvim that hosts this claude terminal (only when running inside nvim)
-if [ -n "${NVIM:-}" ]; then
-  "$HOME/dotfiles/scripts/nvim-notify.sh" \
-    --title "Claude Code" \
-    --message "$NVIM_MSG" \
-    --level "$NVIM_LEVEL" \
-    --skip-registry 2>/dev/null || true
-fi
+# Dispatch notifications
+SCRIPTS_DIR="$HOME/dotfiles/scripts"
 
-exec "$HOME/.agent/skills/agent-rocket-chat-notify/notify.sh" \
+"$SCRIPTS_DIR/nvim-notify.sh" \
+  --title "Claude Code" \
+  --message "$NVIM_MSG" \
+  --level "$NVIM_LEVEL" \
+  2>/dev/null &
+
+"$SCRIPTS_DIR/rocketchat-notify.sh" \
   --agent-type claude-code \
   --session-id "$SESSION_ID" \
   --summary "$SUMMARY" \
   --type "$MSG_TYPE" \
   --priority "$PRIORITY" \
   --confirmation "$CONFIRMATION" \
-  "$@"
+  2>/dev/null &
+
+wait
+exit 0
