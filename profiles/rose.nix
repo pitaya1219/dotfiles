@@ -38,6 +38,7 @@
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
           ./rose/tailscale.nix
           ./rose/logseq-sync.nix
+          ./rose/disk-cleanup-check.nix
         ];
 
         services.dns-updater.enable = true;
