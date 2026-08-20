@@ -8,9 +8,36 @@ tasks:
   clean:
     desc: Clean up Nix store
     silent: true
+    vars:
+      KEEP_DAYS: '{{.KEEP_DAYS | default "7"}}'
+      KEEP_MIN: '{{.KEEP_MIN | default "5"}}'
     cmds:
       - |
-        nix profile wipe-history --profile ~/.local/state/nix/profiles/home-manager --older-than 7d
+        PROFILE="$HOME/.local/state/nix/profiles/home-manager"
+
+        # BSD date (macOS) vs GNU date (Linux) relative-date syntax.
+        if date -v-1d >/dev/null 2>&1; then
+          CUTOFF=$(date -v-{{.KEEP_DAYS}}d +%Y-%m-%d)
+        else
+          CUTOFF=$(date -d "-{{.KEEP_DAYS}} days" +%Y-%m-%d)
+        fi
+
+        # nix always colorizes "profile history" output, so strip ANSI
+        # codes before parsing dates out of it.
+        RECENT=$(nix profile history --profile "$PROFILE" 2>&1 \
+          | perl -pe 's/\e\[[0-9;]*m//g' \
+          | awk '/^Version/{print $3}' | tr -d '()' \
+          | awk -v cutoff="$CUTOFF" '$0 >= cutoff' | wc -l)
+
+        # --older-than alone can wipe every generation down to the
+        # current one if switches have been sporadic. Only wipe by age
+        # once at least KEEP_MIN generations would still survive it.
+        if [ "$RECENT" -lt {{.KEEP_MIN}} ]; then
+          echo "Only $RECENT generation(s) within {{.KEEP_DAYS}}d (need {{.KEEP_MIN}}); skipping wipe-history"
+        else
+          nix profile wipe-history --profile "$PROFILE" --older-than {{.KEEP_DAYS}}d
+        fi
+
         nix store gc
   upgrade:
     desc: Update Nix flake inputs and rebuild
