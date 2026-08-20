@@ -10,6 +10,7 @@ tasks:
     silent: true
     cmds:
       - |
+        nix profile wipe-history --profile ~/.local/state/nix/profiles/home-manager --older-than 7d
         nix store gc
   upgrade:
     desc: Update Nix flake inputs and rebuild
