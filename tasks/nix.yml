@@ -11,10 +11,13 @@ tasks:
     vars:
       KEEP_DAYS: '{{.KEEP_DAYS | default "7"}}'
       KEEP_MIN: '{{.KEEP_MIN | default "5"}}'
+      # `profile` (see below) only tracks the home-manager tool's own
+      # build, not the user's actual config, and is bumped rarely (only on
+      # `task nix:upgrade`, not every switch) -- most of its history is
+      # duplicate "No changes" copies, so a much shallower floor is fine.
+      KEEP_MIN_PROFILE: '{{.KEEP_MIN_PROFILE | default "2"}}'
     cmds:
       - |
-        PROFILE="$HOME/.local/state/nix/profiles/home-manager"
-
         # BSD date (macOS) vs GNU date (Linux) relative-date syntax.
         if date -v-1d >/dev/null 2>&1; then
           CUTOFF=$(date -v-{{.KEEP_DAYS}}d +%Y-%m-%d)
@@ -24,19 +27,31 @@ tasks:
 
         # nix always colorizes "profile history" output, so strip ANSI
         # codes before parsing dates out of it.
-        RECENT=$(nix profile history --profile "$PROFILE" 2>&1 \
-          | perl -pe 's/\e\[[0-9;]*m//g' \
-          | awk '/^Version/{print $3}' | tr -d '()' \
-          | awk -v cutoff="$CUTOFF" '$0 >= cutoff' | wc -l)
+        wipe_profile() {
+          local profile="$1" keep_min="$2"
+          local recent
+          recent=$(nix profile history --profile "$profile" 2>&1 \
+            | perl -pe 's/\e\[[0-9;]*m//g' \
+            | awk '/^Version/{print $3}' | tr -d '()' \
+            | awk -v cutoff="$CUTOFF" '$0 >= cutoff' | wc -l)
 
-        # --older-than alone can wipe every generation down to the
-        # current one if switches have been sporadic. Only wipe by age
-        # once at least KEEP_MIN generations would still survive it.
-        if [ "$RECENT" -lt {{.KEEP_MIN}} ]; then
-          echo "Only $RECENT generation(s) within {{.KEEP_DAYS}}d (need {{.KEEP_MIN}}); skipping wipe-history"
-        else
-          nix profile wipe-history --profile "$PROFILE" --older-than {{.KEEP_DAYS}}d
-        fi
+          # --older-than alone can wipe every generation down to the
+          # current one if switches have been sporadic. Only wipe by age
+          # once at least keep_min generations would still survive it.
+          if [ "$recent" -lt "$keep_min" ]; then
+            echo "$profile: only $recent generation(s) within {{.KEEP_DAYS}}d (need $keep_min); skipping wipe-history"
+          else
+            nix profile wipe-history --profile "$profile" --older-than {{.KEEP_DAYS}}d
+          fi
+        }
+
+        # `home-manager` is the profile home-manager switch itself manages.
+        # `profile` is a separate, unnamed default profile that `nix run
+        # home-manager/master -- switch` also bumps whenever `nix flake
+        # update` moves home-manager's own pinned commit -- easy to miss
+        # since it doesn't grow on every switch, only on every upgrade.
+        wipe_profile "$HOME/.local/state/nix/profiles/home-manager" {{.KEEP_MIN}}
+        wipe_profile "$HOME/.local/state/nix/profiles/profile" {{.KEEP_MIN_PROFILE}}
 
         nix store gc
   upgrade:
