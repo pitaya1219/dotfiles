@@ -31,6 +31,7 @@
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix
           ../shared/programs/tmux.nix
+          ../shared/programs/herdr.nix
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "rose")

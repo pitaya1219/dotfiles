@@ -26,6 +26,7 @@
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix
           ../shared/programs/tmux.nix
+          ../shared/programs/herdr.nix
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
           ../shared/activations/huggingface_hub.nix
