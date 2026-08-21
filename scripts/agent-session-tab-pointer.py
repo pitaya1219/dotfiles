@@ -1,27 +1,36 @@
 #!/usr/bin/env python3
-# Records the authoritative session_id for the current nvim-managed agent
-# terminal tab, so the nvim tabline and RocketChat notifications never have
-# to guess it (via terminal-buffer text scanning or log-directory mtimes).
+# Records the authoritative session_id of the current agent terminal for
+# whichever multiplexer is hosting it, so tab/sidebar labels and RocketChat
+# notifications never have to guess it (via terminal-buffer text scanning or
+# log-directory mtimes).
 #
 # Called from:
 #   - Claude Code's SessionStart hook   (~/.claude/settings.json)
+#   - Mistral Vibe's pre_tool hook      (~/.vibe/hooks.toml)
 #   - Mistral Vibe's post_agent hook    (~/.vibe/hooks.toml)
 #
 # Consumed by:
-#   - shared/programs/neovim/plugin/90_claude.lua
-#   - shared/programs/neovim/plugin/92_vibe.lua
+#   - nvim tabline, via a pointer file
+#       shared/programs/neovim/plugin/90_claude.lua
+#       shared/programs/neovim/plugin/92_vibe.lua
+#   - herdr sidebar, via the socket API
+#       shared/programs/herdr.nix  ($session token in ui.sidebar.agents.rows)
 #
-# nvim tags each termopen() it starts for claude/vibe with a unique
-# AGENT_TAB_MARKER env var. That var flows down through the shell into the
-# agent process and, in turn, into every hook subprocess the agent spawns
-# (hooks inherit the parent process environment). This script reads the
-# marker plus session_id from the hook's JSON stdin and writes it to a
-# pointer file nvim polls for — no guessing required on either side.
+# Both consumers rely on the same trick: the host tags the agent's shell with
+# an env var, and that var flows down through the shell into the agent process
+# and, in turn, into every hook subprocess the agent spawns (hooks inherit the
+# parent process environment). nvim sets AGENT_TAB_MARKER per termopen(); herdr
+# sets HERDR_PANE_ID and HERDR_SOCKET_PATH per pane. Whichever is present wins;
+# both are absent when the agent is run from a bare terminal, and then this
+# script does nothing.
 #
-# Usage: agent-session-tab-pointer.py
+# Usage: agent-session-tab-pointer.py --agent <label> [--state <status>]
 
+import argparse
 import json
 import os
+import random
+import socket
 import sys
 import tempfile
 import time
@@ -32,26 +41,54 @@ import time
 # swallows OSError).
 POINTER_DIR = f"/tmp/agent-tab-sessions-{os.getuid()}"
 
+# Identifies this reporter to herdr, which arbitrates between sources when
+# more than one claims the same pane. Distinct from "herdr:claude", the source
+# herdr's own `integration install claude` hook uses — that hook cannot be
+# installed here because it rewrites ~/.claude/settings.json, which is a
+# read-only symlink into the Nix store.
+HERDR_SOURCE = "dotfiles:agent-session"
 
-def main() -> None:
+# The nvim tabline shows the same prefix (see 07_tab_titles.lua), and a full
+# UUID would crowd the agent label out of a sidebar row that is 26 columns
+# wide by default.
+SESSION_TOKEN_CHARS = 8
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--agent",
+        required=True,
+        help="Agent label to report to herdr (matches herdr's canonical id "
+        "where one exists, e.g. claude).",
+    )
+    parser.add_argument(
+        "--state",
+        choices=("working", "idle", "blocked"),
+        default="",
+        help="Lifecycle state to report to herdr. Omit for agents herdr "
+        "detects on its own — see report_to_herdr().",
+    )
+    return parser.parse_args()
+
+
+def read_payload() -> dict:
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def write_tab_pointer(session_id: str) -> None:
     marker = os.environ.get("AGENT_TAB_MARKER", "")
-    if not marker:
-        # Not launched from a marker-tagged nvim tab; nothing to record.
+    if not marker or not session_id:
         return
 
     out_path = os.path.join(POINTER_DIR, f"{marker}.json")
     if os.path.exists(out_path):
         # Already resolved for this tab (Vibe's pre_tool hook re-fires on
         # every tool call in the session) — nothing left to do.
-        return
-
-    try:
-        payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
-        return
-
-    session_id = payload.get("session_id", "")
-    if not session_id:
         return
 
     data = {"session_id": session_id, "updated_at": time.time()}
@@ -67,6 +104,114 @@ def main() -> None:
             os.unlink(tmp_path)
         except OSError:
             pass
+
+
+def herdr_call(sock_path: str, method: str, params: dict) -> None:
+    request = {
+        "id": f"{HERDR_SOURCE}:{time.time_ns()}:{random.randrange(1_000_000):06d}",
+        "method": method,
+        "params": params,
+    }
+    try:
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.settimeout(0.5)
+        client.connect(sock_path)
+        client.sendall((json.dumps(request) + "\n").encode())
+        try:
+            client.recv(4096)
+        except OSError:
+            pass
+        client.close()
+    except OSError:
+        pass
+
+
+def report_to_herdr(agent: str, state: str, payload: dict) -> None:
+    if os.environ.get("HERDR_ENV") != "1":
+        return
+    sock_path = os.environ.get("HERDR_SOCKET_PATH", "")
+    pane_id = os.environ.get("HERDR_PANE_ID", "")
+    if not sock_path or not pane_id:
+        return
+
+    # A subagent's session is not the pane's session; reporting it would
+    # relabel the sidebar row for the duration of the subagent's run.
+    if payload.get("agent_id"):
+        return
+
+    session_id = payload.get("session_id") or ""
+
+    # herdr orders reports by seq, so a hook that fires late (Vibe's pre_tool
+    # runs on every tool call) cannot undo a newer one.
+    seq = time.time_ns()
+
+    if state:
+        # Reporting a state claims lifecycle authority for the pane, which
+        # switches herdr's own screen-scraping detection off. That is correct
+        # for Vibe, which ships no detection manifest and would otherwise never
+        # appear in the sidebar at all; it would be a downgrade for Claude
+        # Code, which has a manifest that distinguishes blocked from working.
+        # If a Vibe turn dies before its post_agent hook runs, the row stays
+        # "working" — `herdr pane release-agent <pane>` hands detection back.
+        herdr_call(
+            sock_path,
+            "pane.report_agent",
+            {
+                "pane_id": pane_id,
+                "source": HERDR_SOURCE,
+                "agent": agent,
+                "state": state,
+                "seq": seq,
+            },
+        )
+
+    if not session_id:
+        return
+
+    params = {
+        "pane_id": pane_id,
+        "source": HERDR_SOURCE,
+        "agent": agent,
+        "seq": seq,
+        "agent_session_id": session_id,
+    }
+    transcript_path = payload.get("transcript_path")
+    if isinstance(transcript_path, str) and transcript_path:
+        params["agent_session_path"] = transcript_path
+    if payload.get("hook_event_name") == "SessionStart":
+        session_start_source = payload.get("source")
+        if isinstance(session_start_source, str) and session_start_source:
+            params["session_start_source"] = session_start_source
+    # Feeds [session] resume_agents_on_restore: herdr replays the pane back
+    # into this conversation after a server restart.
+    herdr_call(sock_path, "pane.report_agent_session", params)
+
+    herdr_call(
+        sock_path,
+        "pane.report_metadata",
+        {
+            "pane_id": pane_id,
+            "source": HERDR_SOURCE,
+            "seq": seq,
+            "tokens": {"session": session_id[:SESSION_TOKEN_CHARS]},
+        },
+    )
+
+
+def main() -> None:
+    args = parse_args()
+    payload = read_payload()
+
+    # Independent of each other: a broken pointer directory must not cost the
+    # herdr report, and vice versa.
+    try:
+        write_tab_pointer(payload.get("session_id") or "")
+    except Exception:
+        pass
+    try:
+        report_to_herdr(args.agent, args.state, payload)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

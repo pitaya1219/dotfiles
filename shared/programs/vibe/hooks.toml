@@ -39,24 +39,30 @@ command = "python3 $HOME/.vibe/hooks/language_steering.py"
 strict = false
 description = "Append language reminder (English reasoning, Japanese response, no Chinese) to every tool result."
 
-# Record session_id for nvim tab tracking (see scripts/agent-session-tab-pointer.py).
+# Report session_id to the host multiplexer, nvim or herdr (see
+# scripts/agent-session-tab-pointer.py).
 # Registered on both pre_tool (no match = all tools, fires as early as the
 # first tool call within the first turn) and post_agent (fallback for
 # turns that never call a tool). The script no-ops once the pointer file
 # for this tab already exists, so pre_tool firing on every later tool call
 # is cheap.
+#
+# --state additionally drives herdr's sidebar. Vibe ships no herdr detection
+# manifest, so unlike Claude Code it has to report its own lifecycle, and these
+# two hooks are the only signals available — a permission prompt is not
+# distinguishable from ordinary work, so "blocked" is never reported.
 [[hooks]]
 name = "session-tab-pointer-pre-tool"
 type = "pre_tool"
-command = "$HOME/dotfiles/scripts/agent-session-tab-pointer.py"
+command = "$HOME/dotfiles/scripts/agent-session-tab-pointer.py --agent vibe --state working"
 timeout = 10.0
 strict = false
-description = "Write session_id to a pointer file for nvim tab tracking (early: first tool call)"
+description = "Report session_id and working state to the host multiplexer (early: first tool call)"
 
 [[hooks]]
 name = "session-tab-pointer-post-agent"
 type = "post_agent"
-command = "$HOME/dotfiles/scripts/agent-session-tab-pointer.py"
+command = "$HOME/dotfiles/scripts/agent-session-tab-pointer.py --agent vibe --state idle"
 timeout = 10.0
 strict = false
-description = "Write session_id to a pointer file for nvim tab tracking (fallback: turn end)"
+description = "Report session_id and idle state to the host multiplexer (fallback: turn end)"

@@ -111,7 +111,7 @@
             hooks = [
               {
                 type = "command";
-                command = "${config.home.homeDirectory}/dotfiles/scripts/agent-session-tab-pointer.py || true";
+                command = "${config.home.homeDirectory}/dotfiles/scripts/agent-session-tab-pointer.py --agent claude || true";
               }
             ];
           }
