@@ -34,6 +34,7 @@
           ./droid/activations/termux-font.nix
           ./droid/packages/shellm.nix
           ./droid/ssh/config.nix
+          ./droid/ssh/headscale.nix
           ./droid/tailscale.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "droid")
           ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "droid")
