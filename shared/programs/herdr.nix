@@ -3,6 +3,10 @@
 {
   programs.herdr = {
     enable = true;
+    # herdrdev/herdr tracked at master (see the flake input), not the version
+    # nixpkgs/home-manager bundles: herdr-mirror needs the preview-only
+    # terminal-session-stream API (2026-06-30+).
+    package = pkgs.herdr;
     settings = {
       # Onboarding asks for the theme and notification choices this file
       # already makes, and it cannot persist an answer: config.toml is a
@@ -40,6 +44,20 @@
         # the counterpart to prefix+o (jump to the pane a notification came
         # from) when the agent you want is not the one that just fired.
         focus_agent = "prefix+alt+1..9";
+
+        # herdr-mirror plugin (github:nikok6/herdr-mirror, ~/.config/herdr-mirror/hosts.toml):
+        # folds remote hosts' herdr sessions into this sidebar as <host>:<name>
+        # mirror workspaces.
+        command = [
+          { key = "prefix+shift+m"; type = "plugin_action"; command = "mirror.start"; }
+          { key = "prefix+shift+s"; type = "plugin_action"; command = "mirror.pause"; }
+          { key = "prefix+shift+b"; type = "plugin_action"; command = "mirror.restore"; }
+          { key = "prefix+alt+d"; type = "plugin_action"; command = "mirror.teardown"; }
+          { key = "prefix+alt+n"; type = "plugin_action"; command = "mirror.remote-new-workspace"; }
+          { key = "prefix+alt+c"; type = "plugin_action"; command = "mirror.remote-new-tab"; }
+          { key = "prefix+alt+v"; type = "plugin_action"; command = "mirror.remote-split-right"; }
+          { key = "prefix+alt+minus"; type = "plugin_action"; command = "mirror.remote-split-down"; }
+        ];
       };
 
       experimental = {

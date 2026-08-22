@@ -28,9 +28,16 @@
       url = "github:ryoppippi/nix-claude-code";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Tracks master rather than a release tag: home-manager's bundled herdr
+    # lags behind, and the herdr-mirror plugin needs a preview build
+    # (2026-06-30 or newer) for its terminal-session-stream API.
+    herdr = {
+      url = "github:herdrdev/herdr";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, home-manager, nix-darwin, neovim-nightly-overlay, mistral-vibe, homelab, logseq-view, nix-claude-code }:
+  outputs = { self, nixpkgs, home-manager, nix-darwin, neovim-nightly-overlay, mistral-vibe, homelab, logseq-view, nix-claude-code, herdr }:
     let
       profileLib = import ./lib/profiles.nix { inherit (nixpkgs) lib; };
 
@@ -40,6 +47,10 @@
         nix-claude-code = nix-claude-code.overlays.default;
         logseq-view = final: prev: {
           logseq-view = logseq-view.packages.${final.stdenv.hostPlatform.system}.logseq-view;
+        };
+
+        herdr = final: prev: {
+          herdr = herdr.packages.${final.stdenv.hostPlatform.system}.default;
         };
 
         # mistral-vibe overlay modifies neovim-unwrapped and drops the lua passthru

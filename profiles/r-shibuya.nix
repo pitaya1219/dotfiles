@@ -30,6 +30,7 @@ let
     overlays.nix-claude-code
     overlays.parquet-tools-relax-pandas
     overlays.starship-lld
+    overlays.herdr
   ];
 
   # Shared home-manager modules used by both mkHomeConfiguration and mkDarwinConfiguration
