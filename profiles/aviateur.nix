@@ -16,6 +16,7 @@
         };
 
         imports = [
+          ../lib/passage-secrets.nix
           ../shared/activations/proton-pass.nix
           ((import ../lib/taskfile-overrides.nix { inherit lib pkgs; }).forProfile "aviateur")
           ../shared/programs/bash.nix
@@ -33,6 +34,18 @@
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "aviateur")
           ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "aviateur")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
+        ];
+
+        # Keys allowed to log in as aviateur, one passage entry per purpose —
+        # this activation OWNS ~/.ssh/authorized_keys fully, so anything
+        # currently authorized on aviateur but not listed here must be added
+        # as its own passage entry BEFORE switching, or that access is
+        # revoked on activation.
+        dotfiles.passageAuthorizedKeys = [
+          {
+            purpose = "lepetitprince-herdr-mirror";
+            passagePath = "ssh/aviateur/authorized_keys/lepetitprince-herdr-mirror";
+          }
         ];
 
         home = {

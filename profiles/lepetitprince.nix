@@ -34,6 +34,8 @@
           ../shared/programs/herdr.nix
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
+          ./lepetitprince/ssh/local-mirrors.nix
+          ./lepetitprince/activations/herdr_mirror.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "lepetitprince")
           ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "lepetitprince")
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "lepetitprince")
@@ -57,6 +59,20 @@
           username = "lepetitprince";
           homeDirectory = "/home/lepetitprince";
           stateVersion = "23.11";
+          # herdr-mirror plugin config, mirroring rose and aviateur (local
+          # accounts on this same machine — reached over localhost, see
+          # ./lepetitprince/ssh/local-mirrors.nix) into this sidebar.
+          file.".config/herdr-mirror/hosts.toml".text = ''
+            [hosts.rose]
+            target = "rose@rose-herdr-mirror"
+            prefix = "rose"
+            remote_bin = "~/.nix-profile/bin/herdr"
+
+            [hosts.aviateur]
+            target = "aviateur@aviateur-herdr-mirror"
+            prefix = "aviateur"
+            remote_bin = "~/.nix-profile/bin/herdr"
+          '';
           packages = with pkgs; [
             gitea-mcp-server
             cloudflared

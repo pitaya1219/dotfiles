@@ -16,6 +16,7 @@
         };
 
         imports = [
+          ../lib/passage-secrets.nix
           ../shared/activations/huggingface_hub.nix
           ../shared/activations/rootless-docker.nix
           ../shared/activations/proton-pass.nix
@@ -40,6 +41,18 @@
           ./rose/tailscale.nix
           ./rose/logseq-sync.nix
           ./rose/disk-cleanup-check.nix
+        ];
+
+        # Keys allowed to log in as rose, one passage entry per purpose —
+        # this activation OWNS ~/.ssh/authorized_keys fully, so anything
+        # currently authorized on rose but not listed here must be added as
+        # its own passage entry BEFORE switching, or that access is revoked
+        # on activation.
+        dotfiles.passageAuthorizedKeys = [
+          {
+            purpose = "lepetitprince-herdr-mirror";
+            passagePath = "ssh/rose/authorized_keys/lepetitprince-herdr-mirror";
+          }
         ];
 
         services.dns-updater.enable = true;
