@@ -57,6 +57,12 @@
             [hosts.dragonfruit]
             target = "lepetitprince@dragonfruit-herdr-mirror"
             prefix = "dragonfruit"
+            # herdr-mirror's own remote-herdr lookup is just
+            # `command -v herdr || ~/.local/bin/herdr` over a non-interactive
+            # ssh exec, whose PATH never picks up ~/.nix-profile/bin — so
+            # without this it can't find dragonfruit's (home-manager-managed)
+            # herdr at all. Confirmed against the live host.
+            remote_bin = "~/.nix-profile/bin/herdr"
           '';
           packages = with pkgs; [
             android-tools
