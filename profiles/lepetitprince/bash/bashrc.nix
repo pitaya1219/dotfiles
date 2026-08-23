@@ -1,3 +1,3 @@
 ''
-export PATH="~/.nix-profile/bin:$PATH"
+export PATH="$HOME/.nix-profile/bin:$PATH"
 ''

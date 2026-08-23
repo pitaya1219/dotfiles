@@ -5,7 +5,8 @@
     LESS = "-R";
     LANG = "en_US.UTF-8";
     LC_LANGUAGE = "en_US.UTF-8";
-    PATH = "~/dotfiles/scripts:~/.nix-profile/bin:~/.local/bin:$PATH";
+    # ~ doesn't expand inside double quotes — only $HOME does, even quoted.
+    PATH = "$HOME/dotfiles/scripts:$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH";
     PYTHONDONTWRITEBYTECODE = 1;
 
     # shellm - LLM-powered shell completion
