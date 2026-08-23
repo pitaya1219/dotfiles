@@ -11,8 +11,17 @@ let
     Host dragonfruit
       HostName 100.64.0.13
       Port 1771
-      User lepetitprince
       ProxyCommand ${pkgs.socat}/bin/socat - SOCKS5:localhost:%h:%p,socksport=1055
+
+    # herdr-mirror only (see profiles/lepetitprince.nix for the matching
+    # authorized_keys entry). Kept as its own alias, not folded into
+    # "dragonfruit" above, so this dedicated key is never what an
+    # interactive "ssh dragonfruit" picks up.
+    Host dragonfruit-herdr-mirror
+      HostName 100.64.0.13
+      Port 1771
+      ProxyCommand ${pkgs.socat}/bin/socat - SOCKS5:localhost:%h:%p,socksport=1055
+      User lepetitprince
       IdentityFile ${dragonfruitMirrorKeyPath}
       IdentitiesOnly yes
   '';
