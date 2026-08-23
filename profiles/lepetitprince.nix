@@ -16,6 +16,7 @@
         };
 
         imports = [
+          ../lib/passage-secrets.nix
           ../shared/activations/rootless-docker.nix
           ../shared/activations/proton-pass.nix
           ((import ../lib/taskfile-overrides.nix { inherit lib pkgs; }).forProfile "lepetitprince")
@@ -37,6 +38,19 @@
           ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "lepetitprince")
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "lepetitprince")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
+        ];
+
+        # Keys allowed to log in as lepetitprince, one passage entry per
+        # purpose under ssh/dragonfruit/authorized_keys/<purpose> — this
+        # activation OWNS ~/.ssh/authorized_keys fully, so anything
+        # currently authorized on dragonfruit but not listed here must be
+        # added as its own passage entry BEFORE switching, or that access
+        # is revoked on activation.
+        dotfiles.passageAuthorizedKeys = [
+          {
+            purpose = "droid-herdr-mirror";
+            passagePath = "ssh/dragonfruit/authorized_keys/droid-herdr-mirror";
+          }
         ];
 
         home = {
