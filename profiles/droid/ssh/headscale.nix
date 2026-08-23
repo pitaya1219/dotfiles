@@ -11,6 +11,7 @@ let
     Host dragonfruit
       HostName 100.64.0.13
       Port 1771
+      User lepetitprince
       ProxyCommand ${pkgs.socat}/bin/socat - SOCKS5:localhost:%h:%p,socksport=1055
       IdentityFile ${dragonfruitMirrorKeyPath}
       IdentitiesOnly yes
