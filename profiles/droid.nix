@@ -74,11 +74,18 @@
             target = "rose@rose-herdr-mirror"
             prefix = "df:rose"
             remote_bin = "~/.nix-profile/bin/herdr"
+            # rose has its own active sessions (confirmed live: a mirror
+            # attach failed with "terminal already has ..." against a real,
+            # in-progress agent pane there) — always_control's default (true)
+            # is for headless remotes and fights that. false starts read-only
+            # and only takes control when you type into the mirror pane.
+            always_control = false
 
             [hosts.aviateur]
             target = "aviateur@aviateur-herdr-mirror"
             prefix = "df:aviateur"
             remote_bin = "~/.nix-profile/bin/herdr"
+            always_control = false
           '';
           packages = with pkgs; [
             android-tools
