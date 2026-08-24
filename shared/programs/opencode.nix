@@ -12,5 +12,10 @@
   home.file.".config/opencode/opencode.json".text = builtins.toJSON {
     "$schema" = "https://opencode.ai/config.json";
     instructions = [ "${config.home.homeDirectory}/.agent/conventions.md" ];
+    # Dedicated, passphrase-less herdr-mirror keys (see profiles/*/ssh/) let
+    # an agent session ssh to dragonfruit/rose/aviateur with no human in the
+    # loop. Hard deny, not "ask" — last matching rule wins, so this can't be
+    # shadowed by a broader allow rule added later.
+    permission.bash."ssh *" = "deny";
   };
 }

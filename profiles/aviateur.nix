@@ -46,6 +46,10 @@
             purpose = "lepetitprince-herdr-mirror";
             passagePath = "ssh/aviateur/authorized_keys/lepetitprince-herdr-mirror";
           }
+          {
+            purpose = "droid-herdr-mirror";
+            passagePath = "ssh/aviateur/authorized_keys/droid-herdr-mirror";
+          }
         ];
 
         home = {

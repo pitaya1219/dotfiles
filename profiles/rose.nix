@@ -53,6 +53,10 @@
             purpose = "lepetitprince-herdr-mirror";
             passagePath = "ssh/rose/authorized_keys/lepetitprince-herdr-mirror";
           }
+          {
+            purpose = "droid-herdr-mirror";
+            passagePath = "ssh/rose/authorized_keys/droid-herdr-mirror";
+          }
         ];
 
         services.dns-updater.enable = true;

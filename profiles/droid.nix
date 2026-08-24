@@ -53,15 +53,31 @@
           # dragonfruit-herdr-mirror SSH alias (profiles/droid/ssh/headscale.nix),
           # not the general-purpose "dragonfruit" one, so this dedicated key
           # stays scoped to herdr-mirror.
+          # herdr-mirror deliberately skips any remote workspace made entirely
+          # of another herdr-mirror's own streamer panes (src/mirror.rs,
+          # "so mutual mirroring can't nest") — so dragonfruit's own mirror of
+          # rose/aviateur never surfaces here transitively. droid mirrors
+          # rose/aviateur directly instead (see profiles/droid/ssh/headscale.nix
+          # for the ProxyJump-through-dragonfruit routing).
           file.".config/herdr-mirror/hosts.toml".text = ''
             [hosts.dragonfruit]
             target = "lepetitprince@dragonfruit-herdr-mirror"
-            prefix = "dragonfruit"
+            prefix = "df:lepetitprince"
             # herdr-mirror's own remote-herdr lookup is just
             # `command -v herdr || ~/.local/bin/herdr` over a non-interactive
             # ssh exec, whose PATH never picks up ~/.nix-profile/bin — so
             # without this it can't find dragonfruit's (home-manager-managed)
             # herdr at all. Confirmed against the live host.
+            remote_bin = "~/.nix-profile/bin/herdr"
+
+            [hosts.rose]
+            target = "rose@rose-herdr-mirror"
+            prefix = "df:rose"
+            remote_bin = "~/.nix-profile/bin/herdr"
+
+            [hosts.aviateur]
+            target = "aviateur@aviateur-herdr-mirror"
+            prefix = "df:aviateur"
             remote_bin = "~/.nix-profile/bin/herdr"
           '';
           packages = with pkgs; [

@@ -11,6 +11,11 @@ enable_experimental_hooks = true
 # through it keeps working if the certificate is rotated or its path changes.
 enable_system_trust_store = true
 
+# Dedicated, passphrase-less herdr-mirror keys (see profiles/*/ssh/) let an
+# agent session ssh to dragonfruit/rose/aviateur with no human in the loop.
+[tools.bash]
+deny = ["ssh *"]
+
 [[providers]]
 name = "mistral"
 api_base = "https://api.mistral.ai/v1"

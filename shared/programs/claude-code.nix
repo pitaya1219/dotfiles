@@ -83,6 +83,11 @@
         command = "${config.home.homeDirectory}/dotfiles/scripts/claude-statusline.sh";
       };
       model = config.dotfiles.claude-code.model;
+      # Dedicated, passphrase-less herdr-mirror keys (see profiles/*/ssh/)
+      # let an agent session ssh to dragonfruit/rose/aviateur with no human
+      # in the loop. This is a hard deny, not "ask" — an agent can't
+      # negotiate its way past it mid-session.
+      permissions.deny = [ "Bash(ssh:*)" ];
       hooks = {
         PreToolUse = [
           {
