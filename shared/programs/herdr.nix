@@ -37,8 +37,13 @@ in
       # Must live under [terminal]: a top-level default_shell is silently
       # ignored by the running server (`herdr server reload-config` reports
       # "unknown config key default_shell").
+      #
+      # Absolute store path, not the bare name: the running server's own
+      # PATH carries a literal, unexpanded "~/.nix-profile/bin" entry, so a
+      # bare "herdr-direnv-shell" fails pane spawns with "No viable
+      # candidates found in PATH" even though the binary is on disk.
       terminal = {
-        default_shell = "herdr-direnv-shell";
+        default_shell = "${direnvShell}/bin/herdr-direnv-shell";
       };
 
       update = {
