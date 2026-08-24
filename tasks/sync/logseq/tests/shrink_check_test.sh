@@ -18,6 +18,8 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
+TEST_MACHINE_NAME="testhost"
+
 PASS=0
 FAIL=0
 FAILURES=()
@@ -63,11 +65,20 @@ run_shrink_check() {
     local root="$1"
     (
         cd "$REPO_ROOT" &&
-            LOGSEQ_SYNC_NO_NOTIFY=1 task sync:logseq:_shrink_check \
+            LOGSEQ_SYNC_NO_NOTIFY=1 SYNC_MACHINE_NAME="$TEST_MACHINE_NAME" \
+            task sync:logseq:_shrink_check \
                 LOGSEQ_LOCAL="$root/logseq" \
                 BACKUP_DIR="$root/backups" \
                 LOG_FILE="$root/log.txt"
     ) >"$root/task_output.log" 2>&1
+}
+
+# The report filename the task will use for the first report today about the
+# given original basename (no extension) - conflict-<machine>-<today>-<name>.md.
+conflict_page_path() {
+    local root="$1" name="$2" today
+    today=$(date '+%Y-%m-%d')
+    echo "$root/logseq/pages/conflict-${TEST_MACHINE_NAME}-${today}-${name}.md"
 }
 
 # --- Test 1: drastic shrink -> conflict page generated ---
@@ -86,7 +97,8 @@ test_drastic_shrink() {
         return
     fi
 
-    local page="$root/logseq/pages/conflict-2026-08-13.md"
+    local page
+    page=$(conflict_page_path "$root" "2026-08-13")
     if [[ -f "$page" ]] && grep -q "shrank from" "$page" && grep -q "# Conflict detected: \[\[2026_08_13\]\]" "$page"; then
         log_pass "$name"
     else
@@ -146,11 +158,12 @@ test_deleted_file_detected() {
         return
     fi
 
-    local page="$root/logseq/pages/conflict-deleted-page.md"
+    local page
+    page=$(conflict_page_path "$root" "deleted-page")
     if [[ -f "$page" ]] && grep -q "shrank from" "$page"; then
         log_pass "$name"
     else
-        log_fail "$name" "expected conflict page at $page, see $root/task_output.log"
+        log_fail "$name" "expected a conflict page for deleted-page, see $root/task_output.log"
     fi
 }
 
@@ -188,7 +201,8 @@ test_existing_conflict_page_appended() {
         >"$root/backups/20260813_090000/journals/2026_08_13.md"
     printf '' >"$root/logseq/journals/2026_08_13.md"
 
-    local page="$root/logseq/pages/conflict-2026-08-13.md"
+    local page
+    page=$(conflict_page_path "$root" "2026-08-13")
     cat >"$page" <<'EOF'
 tags:: #conflict
 created:: 2026-08-13 08:00:00

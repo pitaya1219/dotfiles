@@ -15,6 +15,8 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
+TEST_MACHINE_NAME="testhost"
+
 PASS=0
 FAIL=0
 FAILURES=()
@@ -57,10 +59,23 @@ run_conflict() {
     local root="$1"
     (
         cd "$REPO_ROOT" &&
-            LOGSEQ_SYNC_NO_NOTIFY=1 task sync:logseq:_conflict \
+            LOGSEQ_SYNC_NO_NOTIFY=1 SYNC_MACHINE_NAME="$TEST_MACHINE_NAME" \
+            task sync:logseq:_conflict \
                 LOGSEQ_LOCAL="$root/logseq" \
                 LOG_FILE="$root/log.txt"
     ) >"$root/task_output.log" 2>&1
+}
+
+# The report filename the task will use for the Nth report today about the
+# given original basename (no extension) - unsuffixed for N=1, then -2, -3...
+conflict_page_path() {
+    local root="$1" name="$2" n="${3:-1}" today
+    today=$(date '+%Y-%m-%d')
+    if [[ "$n" -le 1 ]]; then
+        echo "$root/logseq/pages/conflict-${TEST_MACHINE_NAME}-${today}-${name}.md"
+    else
+        echo "$root/logseq/pages/conflict-${TEST_MACHINE_NAME}-${today}-${name}-${n}.md"
+    fi
 }
 
 # --- Test 1: an ordinary page conflict still produces a conflict page ---
@@ -79,7 +94,8 @@ test_ordinary_conflict_reported() {
         return
     fi
 
-    local page="$root/logseq/pages/conflict-2026-08-13.md"
+    local page
+    page=$(conflict_page_path "$root" "2026-08-13")
     if [[ -f "$page" ]] &&
         grep -q '# Conflict detected: \[\[2026_08_13\]\]' "$page" &&
         grep -q 'older content' "$page" &&
@@ -165,7 +181,9 @@ test_identical_copy_produces_no_page() {
         return
     fi
 
-    if [[ -e "$root/logseq/pages/conflict-2026-08-13.md" ]]; then
+    local page
+    page=$(conflict_page_path "$root" "2026-08-13")
+    if [[ -e "$page" ]]; then
         log_fail "$name" "an identical copy still produced a conflict page"
     elif [[ -e "$copy" ]]; then
         log_fail "$name" "the conflict copy was left behind"
@@ -198,6 +216,75 @@ test_missing_base_restored() {
     fi
 }
 
+# --- Test 6: a second same-day conflict on the same page gets a new slot,
+# not an overwrite of the first still-unmerged report ---
+test_second_same_day_conflict_gets_new_slot() {
+    local name="second_same_day_conflict_gets_new_slot"
+    local root
+    root=$(new_fixture)
+    cleanup_roots+=("$root")
+
+    printf -- '- round one content\n' >"$root/logseq/journals/2026_08_13.md"
+    printf -- '- round one older copy\n' >"$root/logseq/journals/2026_08_13.md.conflict-2026-08-14-1"
+    if ! run_conflict "$root"; then
+        log_fail "$name" "first round invocation failed, see $root/task_output.log"
+        return
+    fi
+
+    local first
+    first=$(conflict_page_path "$root" "2026-08-13")
+    if [[ ! -f "$first" ]]; then
+        log_fail "$name" "expected a first-round report at $first"
+        return
+    fi
+    printf -- 'PRE_EXISTING_MARKER_DO_NOT_LOSE_ME\n' >>"$first"
+
+    printf -- '- round two content, unrelated to round one\n' >"$root/logseq/journals/2026_08_13.md"
+    printf -- '- round two older copy\n' >"$root/logseq/journals/2026_08_13.md.conflict-2026-08-14-2"
+    if ! run_conflict "$root"; then
+        log_fail "$name" "second round invocation failed, see $root/task_output.log"
+        return
+    fi
+
+    local second
+    second=$(conflict_page_path "$root" "2026-08-13" 2)
+    if [[ -f "$second" ]] &&
+        grep -q 'PRE_EXISTING_MARKER_DO_NOT_LOSE_ME' "$first" &&
+        grep -q 'round two content' "$second" &&
+        ! grep -q 'round two content' "$first"; then
+        log_pass "$name"
+    else
+        log_fail "$name" "expected a second slot at $second and the first report untouched, see $root/task_output.log"
+    fi
+}
+
+# --- Test 7: an unmerged report from an earlier day is not clobbered by a
+# new, unrelated conflict on the same page detected today ---
+test_earlier_days_report_not_clobbered() {
+    local name="earlier_days_report_not_clobbered"
+    local root
+    root=$(new_fixture)
+    cleanup_roots+=("$root")
+
+    local stale="$root/logseq/pages/conflict-${TEST_MACHINE_NAME}-2020-01-01-2026-08-13.md"
+    printf -- 'tags:: #conflict\n\nPRE_EXISTING_MARKER_DO_NOT_LOSE_ME\n' >"$stale"
+
+    printf -- '- current content\n' >"$root/logseq/journals/2026_08_13.md"
+    printf -- '- older content\n' >"$root/logseq/journals/2026_08_13.md.conflict-2026-08-14-1"
+    if ! run_conflict "$root"; then
+        log_fail "$name" "task invocation failed, see $root/task_output.log"
+        return
+    fi
+
+    local today_page
+    today_page=$(conflict_page_path "$root" "2026-08-13")
+    if grep -q 'PRE_EXISTING_MARKER_DO_NOT_LOSE_ME' "$stale" && [[ -f "$today_page" ]]; then
+        log_pass "$name"
+    else
+        log_fail "$name" "expected $stale untouched and a fresh report at $today_page, see $root/task_output.log"
+    fi
+}
+
 echo "Running conflict_test.sh against $REPO_ROOT"
 echo
 
@@ -206,6 +293,8 @@ test_conflict_page_dropped_without_append
 test_partial_leftover_dropped
 test_identical_copy_produces_no_page
 test_missing_base_restored
+test_second_same_day_conflict_gets_new_slot
+test_earlier_days_report_not_clobbered
 
 echo
 echo "Results: $PASS passed, $FAIL failed"
