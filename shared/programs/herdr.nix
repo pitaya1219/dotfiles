@@ -57,6 +57,12 @@ in
         # workspace, so a blocked agent surfaces without scanning the list.
         agent_panel_sort = "priority";
 
+        # Herdr's only lever against clipboard churn: a drag or double-click
+        # stays selected until Ctrl+C instead of overwriting the system
+        # clipboard on the way past. Copy mode's y still writes the clipboard —
+        # herdr has no paste buffer of its own to yank into.
+        copy_on_select = false;
+
         # In-app toasts rather than the OS notification service: they render
         # the same wherever the TUI is attached, including over SSH. Being away
         # from the terminal is already covered by scripts/rocketchat-notify.sh.
@@ -78,6 +84,11 @@ in
         # from) when the agent you want is not the one that just fired.
         focus_agent = "prefix+alt+1..9";
 
+        # Unbound in 0.8.0; upstream made prefix+[ the built-in default in
+        # 0.8.2. Setting it here keeps the tmux chord working either side of a
+        # flake bump.
+        copy_mode = "prefix+[";
+
         # herdr-mirror plugin (github:nikok6/herdr-mirror, ~/.config/herdr-mirror/hosts.toml):
         # folds remote hosts' herdr sessions into this sidebar as <host>:<name>
         # mirror workspaces.
@@ -90,6 +101,16 @@ in
           { key = "prefix+alt+c"; type = "plugin_action"; command = "mirror.remote-new-tab"; description = "Mirror: new remote tab"; }
           { key = "prefix+alt+v"; type = "plugin_action"; command = "mirror.remote-split-right"; description = "Mirror: split remote right"; }
           { key = "prefix+alt+minus"; type = "plugin_action"; command = "mirror.remote-split-down"; description = "Mirror: split remote down"; }
+          # Copy mode yanks, but herdr has no paste action to pair with it
+          # (still true in 0.8.2), so prefix+] injects the text through the
+          # socket API instead. See scripts/herdr-paste.py for why it goes
+          # through pane.send_input rather than `herdr pane send-text`.
+          {
+            key = "prefix+]";
+            type = "shell";
+            description = "paste";
+            command = "${config.home.homeDirectory}/dotfiles/scripts/herdr-paste.py";
+          }
         ];
       };
 
