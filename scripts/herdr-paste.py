@@ -25,7 +25,11 @@ CLIPBOARD_READERS = [
 
 
 def socket_path():
-    """Resolve the API socket the way herdr's own client does."""
+    """Resolve the API socket the way herdr's own client does.
+
+    Herdr exports HERDR_SOCKET_PATH to every custom-command keybinding, so the
+    rest of this only matters when the script is run by hand from a shell.
+    """
     override = os.environ.get("HERDR_SOCKET_PATH")
     if override:
         return Path(override)
@@ -69,7 +73,11 @@ def main():
     if not text:
         return
 
-    pane_id = request("session.snapshot", {})["snapshot"]["focused_pane_id"]
+    # Herdr captures the invoking pane in HERDR_ACTIVE_PANE_ID before running
+    # the keybinding, which stays right even for commands that steal focus.
+    pane_id = os.environ.get("HERDR_ACTIVE_PANE_ID")
+    if not pane_id:
+        pane_id = request("session.snapshot", {})["snapshot"]["focused_pane_id"]
     request("pane.send_input", {"pane_id": pane_id, "text": text})
 
 
