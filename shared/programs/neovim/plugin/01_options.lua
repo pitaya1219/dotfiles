@@ -50,8 +50,4 @@ vim.cmd("syntax enable")
 -- Set default colorscheme
 vim.cmd("colorscheme aquarium")
 
-if vim.env.TERM_PROGRAM == "tmux" then
-  vim.env.TERM = "tmux-256color"
-end
-
 require'colorizer'.setup()

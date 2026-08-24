@@ -27,7 +27,6 @@
           ../shared/programs/vibe.nix
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix
-          ../shared/programs/tmux.nix
           ../shared/programs/herdr.nix
           ../shared/programs/agent-resume.nix
           ../shared/programs/starship.nix
