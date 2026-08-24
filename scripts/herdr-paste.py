@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 # Herdr ships a tmux-style copy mode but no paste counterpart, so prefix+] is
-# bound to this script instead. The text is handed over through the socket
-# API's pane.send_input rather than `herdr pane send-text`, because
-# send_input is the only entry point that wraps the payload in the pane's live
-# bracketed-paste mode; without it a multi-line paste reaches the pane as a
-# burst of Enter presses and an agent prompt submits itself line by line.
+# bound to this script instead. It pastes the register scripts/herdr-copy.sh
+# writes, or the system clipboard, which is where herdr's own copy mode yanks.
+#
+# The text is handed over through the socket API's pane.send_input rather than
+# `herdr pane send-text`, because send_input is the only entry point that wraps
+# the payload in the pane's live bracketed-paste mode; without it a multi-line
+# paste reaches the pane as a burst of Enter presses and an agent prompt
+# submits itself line by line.
 
+import argparse
 import json
 import os
 import shutil
@@ -68,8 +72,30 @@ def clipboard_text():
     raise SystemExit("no clipboard reader available")
 
 
+def register_path():
+    override = os.environ.get("HERDR_PASTE_REGISTER")
+    if override:
+        return Path(override)
+    state_home = os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state")
+    return Path(state_home) / "herdr" / "paste-register"
+
+
 def main():
-    text = clipboard_text()
+    parser = argparse.ArgumentParser(description="Paste into the focused herdr pane.")
+    parser.add_argument(
+        "--source",
+        choices=["register", "clipboard"],
+        default="register",
+        help="register falls back to the clipboard until scripts/herdr-copy.sh has run once",
+    )
+    args = parser.parse_args()
+
+    text = ""
+    if args.source == "register":
+        register = register_path()
+        text = register.read_text() if register.is_file() else ""
+    if not text:
+        text = clipboard_text()
     if not text:
         return
 

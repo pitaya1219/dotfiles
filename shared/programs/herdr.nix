@@ -105,11 +105,31 @@ in
           # (still true in 0.8.2), so prefix+] injects the text through the
           # socket API instead. See scripts/herdr-paste.py for why it goes
           # through pane.send_input rather than `herdr pane send-text`.
+          #
+          # prefix+y is the clipboard-free half: prefix+[ copy mode can only
+          # yank into the system clipboard, so this opens the same scrollback
+          # in nvim and lets its registers hold the text. prefix+] prefers
+          # what it wrote and falls back to the clipboard, which keeps the
+          # native copy mode usable; prefix+shift+] forces the clipboard.
+          {
+            key = "prefix+y";
+            type = "popup";
+            description = "copy (nvim)";
+            command = "${config.home.homeDirectory}/dotfiles/scripts/herdr-copy.sh";
+            width = "90%";
+            height = "90%";
+          }
           {
             key = "prefix+]";
             type = "shell";
             description = "paste";
             command = "${config.home.homeDirectory}/dotfiles/scripts/herdr-paste.py";
+          }
+          {
+            key = "prefix+shift+]";
+            type = "shell";
+            description = "paste clipboard";
+            command = "${config.home.homeDirectory}/dotfiles/scripts/herdr-paste.py --source clipboard";
           }
         ];
       };
