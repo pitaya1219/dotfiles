@@ -27,7 +27,12 @@ in
       # read-only symlink into the Nix store.
       onboarding = false;
 
-      default_shell = "herdr-direnv-shell";
+      # Must live under [terminal]: a top-level default_shell is silently
+      # ignored by the running server (`herdr server reload-config` reports
+      # "unknown config key default_shell").
+      terminal = {
+        default_shell = "herdr-direnv-shell";
+      };
 
       update = {
         # Nix owns the binary, so `herdr update` cannot write over it and the
