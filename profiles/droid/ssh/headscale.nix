@@ -71,12 +71,14 @@ in
   # Not actually secret (it's the server's public host key, the whole point
   # of known_hosts is that this is meant to be known) — sourced from passage
   # anyway for consistency with the rest of this file: one mechanism for all
-  # key material, regardless of which half is sensitive.
-  dotfiles.passageSecrets.dragonfruitLoopbackKnownHosts = {
-    passagePath = "ssh/dragonfruit-loopback/known_hosts";
-    path = dragonfruitLoopbackKnownHosts;
-    mode = "0644";
-  };
+  # key material, regardless of which half is sensitive. Adding a second
+  # host here later is a one-line addition to this list, no further edits.
+  dotfiles.passageKnownHosts."dragonfruit-loopback" = [
+    {
+      purpose = "dragonfruit-loopback";
+      passagePath = "ssh/dragonfruit-loopback/known_hosts";
+    }
+  ];
 
   # Dedicated, passphrase-less key scoped to this one connection (herdr-mirror
   # runs as an unattended daemon, so it can't wait on an agent). Not reused

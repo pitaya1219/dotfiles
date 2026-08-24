@@ -5,6 +5,7 @@ with lib;
 let
   cfg = config.dotfiles.passageSecrets;
   authorizedKeysCfg = config.dotfiles.passageAuthorizedKeys;
+  knownHostsCfg = config.dotfiles.passageKnownHosts;
 in
 {
   options.dotfiles.passageSecrets = mkOption {
@@ -56,6 +57,32 @@ in
     '';
   };
 
+  options.dotfiles.passageKnownHosts = mkOption {
+    type = types.attrsOf (types.listOf (types.submodule {
+      options = {
+        purpose = mkOption {
+          type = types.str;
+          description = "Label for what this key is for, e.g. \"dragonfruit-loopback\". Written as a comment above the entry.";
+        };
+        passagePath = mkOption {
+          type = types.str;
+          description = "Passage path holding this one \"host key\" known_hosts line.";
+        };
+      };
+    }));
+    default = { };
+    description = ''
+      known_hosts entries sourced from passage. Not secret — it's the
+      server's own public host key — but kept in passage anyway for the
+      same one-mechanism-for-all-key-material reason as passageSecrets.
+      Each attrset key names a destination file under
+      ~/.ssh/known_hosts.d/<name>, concatenated from its list of entries;
+      point a Host's UserKnownHostsFile at ~/.ssh/known_hosts.d/<name> to
+      use it. Adding an entry to an existing file is a one-line change
+      here — no separate UserKnownHostsFile edit needed.
+    '';
+  };
+
   config.home.activation = mkMerge [
     (mapAttrs'
       (name: secret:
@@ -78,5 +105,20 @@ in
         chmod 0600 "$HOME/.ssh/authorized_keys"
       '';
     })
+    (mapAttrs'
+      (name: entries:
+        nameValuePair "passageKnownHosts-${name}" (
+          lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+            install -d -m 700 "$HOME/.ssh/known_hosts.d"
+            dest="$HOME/.ssh/known_hosts.d/${name}"
+            : > "$dest"
+            ${concatMapStrings (e: ''
+              echo "# ${e.purpose}" >> "$dest"
+              ${pkgs.passage}/bin/passage show ${escapeShellArg e.passagePath} >> "$dest"
+            '') entries}
+            chmod 0644 "$dest"
+          ''
+        ))
+      knownHostsCfg)
   ];
 }
