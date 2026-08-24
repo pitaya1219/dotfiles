@@ -211,55 +211,70 @@ tasks:
             [[ "$name" == conflict-*.md ]] || [[ "$name" == *.partial* ]]
         }
 
-        # Each device only ever writes to its own {machine} namespace, so a page
+        # Each device only ever writes to its own machine namespace, so a page
         # can never be modified on two peers at once - bisync sees a one-sided
         # change and propagates it cleanly, with no *.conflict copy and so no
-        # possibility of the page conflicting with itself. {TODAY} keys each
+        # possibility of the page conflicting with itself. TODAY keys each
         # family by the day it was detected (not the original page's own date,
         # which for non-journal pages there isn't one) so a later, unrelated
         # conflict on the same page can never silently clobber an earlier
-        # unmerged report - see conflict_stem/next_conflict_slot below.
+        # unmerged report.
         # printf, not echo: echo's trailing newline would otherwise survive
         # tr's -c complement translation as a trailing '-'.
         MACHINE_NAME=$(printf '%s' "${SYNC_MACHINE_NAME:-$(hostname -s 2>/dev/null || echo unknown)}" | tr -c 'A-Za-z0-9_-' '-')
         TODAY=$(date '+%Y-%m-%d')
 
-        # The family of report pages about one original page, detected on one
-        # machine, on one day. conflict_stem identifies the family;
-        # next_conflict_slot/latest_conflict_slot pick a member within it.
-        conflict_stem() {
-            local date_str
-            date_str=$(echo "$1" | tr '_' '-')
-            echo "conflict-${MACHINE_NAME}-${TODAY}-${date_str}"
+        # Every report this machine writes today shares this prefix; each one
+        # is <prefix><slot>-<page>.md.
+        #
+        # The slot leads the page name, and is present even on the first
+        # report, so that splitting a name back into (slot, page) is
+        # unambiguous: the prefix fixes the left edge and the slot runs to the
+        # first '-' after it. A trailing slot cannot be parsed that way, since
+        # the page name's right edge is unknown - conflict-...-notes-2.md reads
+        # equally as slot 2 of "notes" and as the first report about "notes-2",
+        # so a page whose own name ends in a number collides with another
+        # page's slots. Leaving the first report unnumbered reintroduces the
+        # same ambiguity from the other side: a journal key like 2026-08-13
+        # would parse as slot 2026 of a page named "08-13".
+        CONFLICT_PREFIX="conflict-${MACHINE_NAME}-${TODAY}-"
+
+        # A page's on-disk basename as it appears inside a report filename.
+        # Journal files are named 2026_08_13 but the page is titled 2026-08-13.
+        conflict_page_key() {
+            echo "$1" | tr '_' '-'
         }
 
-        # A never-before-used path in this family - unsuffixed for the first
-        # report today, then -2, -3, ... Always fresh, so writers here never
-        # append to or overwrite an earlier report; a full write to a new path
-        # is bounded by the current divergence, not by what came before.
+        conflict_slot_path() {
+            echo "$LOGSEQ_LOCAL/pages/${CONFLICT_PREFIX}${1}-${2}.md"
+        }
+
+        # A never-before-used path in this page's family. Always fresh, so
+        # writers here never append to or overwrite an earlier report; a full
+        # write to a new path is bounded by the current divergence, not by what
+        # came before.
         next_conflict_slot() {
-            local stem="$1" n=1 candidate
-            candidate="$LOGSEQ_LOCAL/pages/${stem}.md"
-            while [[ -f "$candidate" ]]; do
+            local page_key="$1" n=1
+            while [[ -f "$(conflict_slot_path "$n" "$page_key")" ]]; do
                 n=$((n + 1))
-                candidate="$LOGSEQ_LOCAL/pages/${stem}-${n}.md"
             done
-            echo "$candidate"
+            conflict_slot_path "$n" "$page_key"
         }
 
-        # The most recently allocated path in this family, or empty if today's
-        # family has no members yet.
+        # The highest-numbered report about this page today, or empty if the
+        # family has no members yet. Names are parsed rather than matched with
+        # a glob: a glob for <prefix>*-<page>.md also matches reports about a
+        # different page whose key happens to end in the same text.
         latest_conflict_slot() {
-            local stem="$1" latest="" max=0 f n
-            if [[ -f "$LOGSEQ_LOCAL/pages/${stem}.md" ]]; then
-                latest="$LOGSEQ_LOCAL/pages/${stem}.md"
-                max=1
-            fi
-            for f in "$LOGSEQ_LOCAL/pages/${stem}-"*.md; do
+            local page_key="$1" latest="" max=0 f rest n
+            for f in "$LOGSEQ_LOCAL/pages/${CONFLICT_PREFIX}"*.md; do
                 [[ -f "$f" ]] || continue
-                n="${f#"$LOGSEQ_LOCAL/pages/${stem}-"}"
-                n="${n%.md}"
+                rest=$(basename "$f" .md)
+                rest="${rest#"$CONFLICT_PREFIX"}"
+                [[ "$rest" == *-* ]] || continue
+                n="${rest%%-*}"
                 [[ "$n" =~ ^[0-9]+$ ]] || continue
+                [[ "${rest#*-}" == "$page_key" ]] || continue
                 if (( n > max )); then
                     max=$n
                     latest="$f"
@@ -326,7 +341,7 @@ tasks:
                 basename=$(basename "$base_file" .md)
                 page_name=$(page_name_from_basename "$basename")
                 mkdir -p "$LOGSEQ_LOCAL/pages"
-                conflict_page=$(next_conflict_slot "$(conflict_stem "$basename")")
+                conflict_page=$(next_conflict_slot "$(conflict_page_key "$basename")")
                 timestamp=$(date '+%Y-%m-%d %H:%M:%S')
                 # Build one ordered list of the versions that actually exist on
                 # disk (each conflict first, then the current file last). Both
@@ -487,55 +502,70 @@ tasks:
             [[ "$name" == conflict-*.md ]] || [[ "$name" == *.partial* ]]
         }
 
-        # Each device only ever writes to its own {machine} namespace, so a page
+        # Each device only ever writes to its own machine namespace, so a page
         # can never be modified on two peers at once - bisync sees a one-sided
         # change and propagates it cleanly, with no *.conflict copy and so no
         # possibility of the page conflicting with itself. TODAY keys each
         # family by the day it was detected (not the original page's own date,
         # which for non-journal pages there isn't one) so a later, unrelated
         # conflict on the same page can never silently clobber an earlier
-        # unmerged report - see conflict_stem/next_conflict_slot below.
+        # unmerged report.
         # printf, not echo: echo's trailing newline would otherwise survive
         # tr's -c complement translation as a trailing '-'.
         MACHINE_NAME=$(printf '%s' "${SYNC_MACHINE_NAME:-$(hostname -s 2>/dev/null || echo unknown)}" | tr -c 'A-Za-z0-9_-' '-')
         TODAY=$(date '+%Y-%m-%d')
 
-        # The family of report pages about one original page, detected on one
-        # machine, on one day. conflict_stem identifies the family;
-        # next_conflict_slot/latest_conflict_slot pick a member within it.
-        conflict_stem() {
-            local date_str
-            date_str=$(echo "$1" | tr '_' '-')
-            echo "conflict-${MACHINE_NAME}-$TODAY-${date_str}"
+        # Every report this machine writes today shares this prefix; each one
+        # is <prefix><slot>-<page>.md.
+        #
+        # The slot leads the page name, and is present even on the first
+        # report, so that splitting a name back into (slot, page) is
+        # unambiguous: the prefix fixes the left edge and the slot runs to the
+        # first '-' after it. A trailing slot cannot be parsed that way, since
+        # the page name's right edge is unknown - conflict-...-notes-2.md reads
+        # equally as slot 2 of "notes" and as the first report about "notes-2",
+        # so a page whose own name ends in a number collides with another
+        # page's slots. Leaving the first report unnumbered reintroduces the
+        # same ambiguity from the other side: a journal key like 2026-08-13
+        # would parse as slot 2026 of a page named "08-13".
+        CONFLICT_PREFIX="conflict-${MACHINE_NAME}-${TODAY}-"
+
+        # A page's on-disk basename as it appears inside a report filename.
+        # Journal files are named 2026_08_13 but the page is titled 2026-08-13.
+        conflict_page_key() {
+            echo "$1" | tr '_' '-'
         }
 
-        # A never-before-used path in this family - unsuffixed for the first
-        # report today, then -2, -3, ... Always fresh, so writers here never
-        # append to or overwrite an earlier report; a full write to a new path
-        # is bounded by the current divergence, not by what came before.
+        conflict_slot_path() {
+            echo "$LOGSEQ_LOCAL/pages/${CONFLICT_PREFIX}${1}-${2}.md"
+        }
+
+        # A never-before-used path in this page's family. Always fresh, so
+        # writers here never append to or overwrite an earlier report; a full
+        # write to a new path is bounded by the current divergence, not by what
+        # came before.
         next_conflict_slot() {
-            local stem="$1" n=1 candidate
-            candidate="$LOGSEQ_LOCAL/pages/${stem}.md"
-            while [[ -f "$candidate" ]]; do
+            local page_key="$1" n=1
+            while [[ -f "$(conflict_slot_path "$n" "$page_key")" ]]; do
                 n=$((n + 1))
-                candidate="$LOGSEQ_LOCAL/pages/${stem}-${n}.md"
             done
-            echo "$candidate"
+            conflict_slot_path "$n" "$page_key"
         }
 
-        # The most recently allocated path in this family, or empty if today's
-        # family has no members yet.
+        # The highest-numbered report about this page today, or empty if the
+        # family has no members yet. Names are parsed rather than matched with
+        # a glob: a glob for <prefix>*-<page>.md also matches reports about a
+        # different page whose key happens to end in the same text.
         latest_conflict_slot() {
-            local stem="$1" latest="" max=0 f n
-            if [[ -f "$LOGSEQ_LOCAL/pages/${stem}.md" ]]; then
-                latest="$LOGSEQ_LOCAL/pages/${stem}.md"
-                max=1
-            fi
-            for f in "$LOGSEQ_LOCAL/pages/${stem}-"*.md; do
+            local page_key="$1" latest="" max=0 f rest n
+            for f in "$LOGSEQ_LOCAL/pages/${CONFLICT_PREFIX}"*.md; do
                 [[ -f "$f" ]] || continue
-                n="${f#"$LOGSEQ_LOCAL/pages/${stem}-"}"
-                n="${n%.md}"
+                rest=$(basename "$f" .md)
+                rest="${rest#"$CONFLICT_PREFIX"}"
+                [[ "$rest" == *-* ]] || continue
+                n="${rest%%-*}"
                 [[ "$n" =~ ^[0-9]+$ ]] || continue
+                [[ "${rest#*-}" == "$page_key" ]] || continue
                 if (( n > max )); then
                     max=$n
                     latest="$f"
@@ -614,8 +644,9 @@ tasks:
                     # from an earlier round today) rather than allocating a new
                     # slot - a shrink is supplementary information about an
                     # existing report, not an independent event.
-                    conflict_page=$(latest_conflict_slot "$(conflict_stem "$basename")")
-                    [[ -z "$conflict_page" ]] && conflict_page="$LOGSEQ_LOCAL/pages/$(conflict_stem "$basename").md"
+                    page_key=$(conflict_page_key "$basename")
+                    conflict_page=$(latest_conflict_slot "$page_key")
+                    [[ -z "$conflict_page" ]] && conflict_page=$(next_conflict_slot "$page_key")
                     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
                     if [[ -f "$conflict_page" ]]; then

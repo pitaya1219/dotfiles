@@ -67,15 +67,12 @@ run_conflict() {
 }
 
 # The report filename the task will use for the Nth report today about the
-# given original basename (no extension) - unsuffixed for N=1, then -2, -3...
+# given original basename (no extension) - conflict-<machine>-<today>-<N>-<name>.md.
+# The slot is present even for N=1; see CONFLICT_PREFIX in tasks/sync/logseq.yml.
 conflict_page_path() {
     local root="$1" name="$2" n="${3:-1}" today
     today=$(date '+%Y-%m-%d')
-    if [[ "$n" -le 1 ]]; then
-        echo "$root/logseq/pages/conflict-${TEST_MACHINE_NAME}-${today}-${name}.md"
-    else
-        echo "$root/logseq/pages/conflict-${TEST_MACHINE_NAME}-${today}-${name}-${n}.md"
-    fi
+    echo "$root/logseq/pages/conflict-${TEST_MACHINE_NAME}-${today}-${n}-${name}.md"
 }
 
 # --- Test 1: an ordinary page conflict still produces a conflict page ---
@@ -266,7 +263,7 @@ test_earlier_days_report_not_clobbered() {
     root=$(new_fixture)
     cleanup_roots+=("$root")
 
-    local stale="$root/logseq/pages/conflict-${TEST_MACHINE_NAME}-2020-01-01-2026-08-13.md"
+    local stale="$root/logseq/pages/conflict-${TEST_MACHINE_NAME}-2020-01-01-1-2026-08-13.md"
     printf -- 'tags:: #conflict\n\nPRE_EXISTING_MARKER_DO_NOT_LOSE_ME\n' >"$stale"
 
     printf -- '- current content\n' >"$root/logseq/journals/2026_08_13.md"
@@ -285,6 +282,44 @@ test_earlier_days_report_not_clobbered() {
     fi
 }
 
+# --- Test 8: a page whose own name ends in a number does not collide with
+# another page's slots ---
+# The slot leads the page name precisely so that conflict-...-notes-2.md can
+# only mean "slot 2 about notes"; with a trailing slot it read equally as the
+# first report about the page "notes-2".
+test_numeric_suffixed_page_does_not_collide() {
+    local name="numeric_suffixed_page_does_not_collide"
+    local root
+    root=$(new_fixture)
+    cleanup_roots+=("$root")
+
+    printf -- '- current notes\n' >"$root/logseq/pages/notes.md"
+    printf -- '- older notes\n' >"$root/logseq/pages/notes.md.conflict-2026-08-14-1"
+    printf -- '- current notes-2\n' >"$root/logseq/pages/notes-2.md"
+    printf -- '- older notes-2\n' >"$root/logseq/pages/notes-2.md.conflict-2026-08-14-1"
+
+    if ! run_conflict "$root"; then
+        log_fail "$name" "task invocation failed, see $root/task_output.log"
+        return
+    fi
+
+    local notes_report notes2_report
+    notes_report=$(conflict_page_path "$root" "notes")
+    notes2_report=$(conflict_page_path "$root" "notes-2")
+
+    if [[ ! -f "$notes_report" ]]; then
+        log_fail "$name" "expected a report about [[notes]] at $notes_report"
+    elif [[ ! -f "$notes2_report" ]]; then
+        log_fail "$name" "expected a report about [[notes-2]] at $notes2_report"
+    elif ! grep -q '# Conflict detected: \[\[notes\]\]' "$notes_report"; then
+        log_fail "$name" "$notes_report is not about [[notes]]"
+    elif ! grep -q '# Conflict detected: \[\[notes-2\]\]' "$notes2_report"; then
+        log_fail "$name" "$notes2_report is not about [[notes-2]]"
+    else
+        log_pass "$name"
+    fi
+}
+
 echo "Running conflict_test.sh against $REPO_ROOT"
 echo
 
@@ -295,6 +330,7 @@ test_identical_copy_produces_no_page
 test_missing_base_restored
 test_second_same_day_conflict_gets_new_slot
 test_earlier_days_report_not_clobbered
+test_numeric_suffixed_page_does_not_collide
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

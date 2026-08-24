@@ -73,12 +73,13 @@ run_shrink_check() {
     ) >"$root/task_output.log" 2>&1
 }
 
-# The report filename the task will use for the first report today about the
-# given original basename (no extension) - conflict-<machine>-<today>-<name>.md.
+# The report filename the task will use for the Nth report today about the
+# given original basename (no extension) - conflict-<machine>-<today>-<N>-<name>.md.
+# The slot is present even for N=1; see CONFLICT_PREFIX in tasks/sync/logseq.yml.
 conflict_page_path() {
-    local root="$1" name="$2" today
+    local root="$1" name="$2" n="${3:-1}" today
     today=$(date '+%Y-%m-%d')
-    echo "$root/logseq/pages/conflict-${TEST_MACHINE_NAME}-${today}-${name}.md"
+    echo "$root/logseq/pages/conflict-${TEST_MACHINE_NAME}-${today}-${n}-${name}.md"
 }
 
 # --- Test 1: drastic shrink -> conflict page generated ---
@@ -256,6 +257,84 @@ test_unicode_and_spaces_filename() {
     fi
 }
 
+# --- Test 9: a shrink is not appended to a report about a different page
+# whose name merely resembles this one's ---
+# latest_conflict_slot parses <slot>-<page> out of the filename rather than
+# globbing for a trailing slot; a glob would match notes-2's report when
+# looking for notes' latest slot and file the shrink under the wrong page.
+test_shrink_not_filed_under_lookalike_page() {
+    local name="shrink_not_filed_under_lookalike_page"
+    local root today
+    root=$(new_fixture)
+    cleanup_roots+=("$root")
+    today=$(date '+%Y-%m-%d')
+
+    # Both neighbours a naive filename match would confuse with "notes":
+    # "notes-2" shares its text plus a trailing number (the shape that broke
+    # when the slot trailed the page name), and "2-notes" produces a report
+    # whose name ends in "-notes.md" (the shape a <prefix>*-notes.md glob
+    # would still confuse now that the slot leads).
+    local trailing_report leading_report
+    trailing_report="$root/logseq/pages/conflict-${TEST_MACHINE_NAME}-${today}-1-notes-2.md"
+    leading_report="$root/logseq/pages/conflict-${TEST_MACHINE_NAME}-${today}-1-2-notes.md"
+    printf 'tags:: #conflict\n\nA REPORT ABOUT THE PAGE notes-2 ONLY\n' >"$trailing_report"
+    printf 'tags:: #conflict\n\nA REPORT ABOUT THE PAGE 2-notes ONLY\n' >"$leading_report"
+
+    printf 'A long body for the page notes, long enough to clear the min-bytes floor.\n' \
+        >"$root/backups/20260813_090000/pages/notes.md"
+    printf '' >"$root/logseq/pages/notes.md"
+
+    if ! run_shrink_check "$root"; then
+        log_fail "$name" "task invocation failed, see $root/task_output.log"
+        return
+    fi
+
+    local own_report
+    own_report=$(conflict_page_path "$root" "notes")
+    if grep -q 'shrank from' "$trailing_report"; then
+        log_fail "$name" "the shrink was appended to $trailing_report, a report about [[notes-2]]"
+    elif grep -q 'shrank from' "$leading_report"; then
+        log_fail "$name" "the shrink was appended to $leading_report, a report about [[2-notes]]"
+    elif [[ ! -f "$own_report" ]] || ! grep -q 'shrank from' "$own_report"; then
+        log_fail "$name" "expected a report about [[notes]] at $own_report, see $root/task_output.log"
+    else
+        log_pass "$name"
+    fi
+}
+
+# --- Test 10: a shrink appends to today's highest-numbered report about the
+# same page, leaving earlier slots alone ---
+test_shrink_appends_to_latest_slot() {
+    local name="shrink_appends_to_latest_slot"
+    local root first second
+    root=$(new_fixture)
+    cleanup_roots+=("$root")
+
+    first=$(conflict_page_path "$root" "2026-08-13" 1)
+    second=$(conflict_page_path "$root" "2026-08-13" 2)
+    printf 'tags:: #conflict\n\nFIRST_SLOT_MARKER\n' >"$first"
+    printf 'tags:: #conflict\n\nSECOND_SLOT_MARKER\n' >"$second"
+
+    printf 'A long journal entry, long enough to clear the min-bytes floor easily.\n' \
+        >"$root/backups/20260813_090000/journals/2026_08_13.md"
+    printf '' >"$root/logseq/journals/2026_08_13.md"
+
+    if ! run_shrink_check "$root"; then
+        log_fail "$name" "task invocation failed, see $root/task_output.log"
+        return
+    fi
+
+    if grep -q 'Shrink detected' "$first"; then
+        log_fail "$name" "the shrink was appended to slot 1 instead of the latest slot"
+    elif ! grep -q 'Shrink detected' "$second"; then
+        log_fail "$name" "expected the shrink appended to $second, see $root/task_output.log"
+    elif ! grep -q 'SECOND_SLOT_MARKER' "$second"; then
+        log_fail "$name" "$second was overwritten rather than appended to"
+    else
+        log_pass "$name"
+    fi
+}
+
 echo "Running shrink_check_test.sh against $REPO_ROOT"
 echo
 
@@ -317,6 +396,8 @@ test_existing_conflict_page_appended
 test_unicode_and_spaces_filename
 test_conflict_page_not_reported
 test_partial_file_not_reported
+test_shrink_not_filed_under_lookalike_page
+test_shrink_appends_to_latest_slot
 
 echo
 echo "Results: $PASS passed, $FAIL failed"
