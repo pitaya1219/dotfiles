@@ -116,7 +116,7 @@
             hooks = [
               {
                 type = "command";
-                command = "${config.home.homeDirectory}/dotfiles/scripts/agent-session-tab-pointer.py --agent claude || true";
+                command = "${config.home.homeDirectory}/dotfiles/scripts/herdr-agent-report.py --agent claude || true";
               }
             ];
           }

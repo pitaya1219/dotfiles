@@ -69,7 +69,7 @@ in
         toast.delivery = "herdr";
 
         # $session is not a built-in token. It carries the agent's own session
-        # id (first 8 chars) and is fed by scripts/agent-session-tab-pointer.py
+        # id (first 8 chars) and is fed by scripts/herdr-agent-report.py
         # from the Claude Code and Vibe hooks — with no reporter running, the
         # token renders empty.
         sidebar.agents.rows = [

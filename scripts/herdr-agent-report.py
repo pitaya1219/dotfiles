@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-# Records the authoritative session_id of the current agent terminal for
-# whichever multiplexer is hosting it, so tab/sidebar labels and RocketChat
-# notifications never have to guess it (via terminal-buffer text scanning or
-# log-directory mtimes).
+# Reports the authoritative session_id and lifecycle state of the current agent
+# to herdr, so the sidebar never has to guess either one (via terminal-buffer
+# text scanning or log-directory mtimes).
 #
 # Called from:
 #   - Claude Code's SessionStart hook   (~/.claude/settings.json)
@@ -10,21 +9,16 @@
 #   - Mistral Vibe's post_agent hook    (~/.vibe/hooks.toml)
 #
 # Consumed by:
-#   - nvim tabline, via a pointer file
-#       shared/programs/neovim/plugin/90_claude.lua
-#       shared/programs/neovim/plugin/92_vibe.lua
-#   - herdr sidebar, via the socket API
+#   - herdr's sidebar, via the socket API
 #       shared/programs/herdr.nix  ($session token in ui.sidebar.agents.rows)
 #
-# Both consumers rely on the same trick: the host tags the agent's shell with
-# an env var, and that var flows down through the shell into the agent process
-# and, in turn, into every hook subprocess the agent spawns (hooks inherit the
-# parent process environment). nvim sets AGENT_TAB_MARKER per termopen(); herdr
-# sets HERDR_PANE_ID and HERDR_SOCKET_PATH per pane. Whichever is present wins;
-# both are absent when the agent is run from a bare terminal, and then this
-# script does nothing.
+# herdr tags each pane's shell with HERDR_PANE_ID and HERDR_SOCKET_PATH, and
+# those flow down through the shell into the agent process and, in turn, into
+# every hook subprocess the agent spawns (hooks inherit the parent process
+# environment). Both are absent when the agent runs from a bare terminal, and
+# then this script does nothing.
 #
-# Usage: agent-session-tab-pointer.py --agent <label> [--state <status>]
+# Usage: herdr-agent-report.py --agent <label> [--state <status>]
 
 import argparse
 import json
@@ -32,14 +26,7 @@ import os
 import random
 import socket
 import sys
-import tempfile
 import time
-
-# Keyed by uid: /tmp is shared across unix accounts on multi-tenant hosts,
-# and whichever account creates the directory first owns it, locking every
-# other account out of writing pointer files (silently, since main() below
-# swallows OSError).
-POINTER_DIR = f"/tmp/agent-tab-sessions-{os.getuid()}"
 
 # Identifies this reporter to herdr, which arbitrates between sources when
 # more than one claims the same pane. Distinct from "herdr:claude", the source
@@ -48,9 +35,8 @@ POINTER_DIR = f"/tmp/agent-tab-sessions-{os.getuid()}"
 # read-only symlink into the Nix store.
 HERDR_SOURCE = "dotfiles:agent-session"
 
-# The nvim tabline shows the same prefix (see 07_tab_titles.lua), and a full
-# UUID would crowd the agent label out of a sidebar row that is 26 columns
-# wide by default.
+# A full UUID would crowd the agent label out of a sidebar row that is 26
+# columns wide by default.
 SESSION_TOKEN_CHARS = 8
 
 
@@ -78,32 +64,6 @@ def read_payload() -> dict:
     except (json.JSONDecodeError, ValueError):
         return {}
     return payload if isinstance(payload, dict) else {}
-
-
-def write_tab_pointer(session_id: str) -> None:
-    marker = os.environ.get("AGENT_TAB_MARKER", "")
-    if not marker or not session_id:
-        return
-
-    out_path = os.path.join(POINTER_DIR, f"{marker}.json")
-    if os.path.exists(out_path):
-        # Already resolved for this tab (Vibe's pre_tool hook re-fires on
-        # every tool call in the session) — nothing left to do.
-        return
-
-    data = {"session_id": session_id, "updated_at": time.time()}
-
-    os.makedirs(POINTER_DIR, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(dir=POINTER_DIR)
-    try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(data, f)
-        os.replace(tmp_path, out_path)
-    except OSError:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
 
 
 def herdr_call(sock_path: str, method: str, params: dict) -> None:
@@ -200,18 +160,7 @@ def report_to_herdr(agent: str, state: str, payload: dict) -> None:
 
 def main() -> None:
     args = parse_args()
-    payload = read_payload()
-
-    # Independent of each other: a broken pointer directory must not cost the
-    # herdr report, and vice versa.
-    try:
-        write_tab_pointer(payload.get("session_id") or "")
-    except Exception:
-        pass
-    try:
-        report_to_herdr(args.agent, args.state, payload)
-    except Exception:
-        pass
+    report_to_herdr(args.agent, args.state, read_payload())
 
 
 if __name__ == "__main__":
