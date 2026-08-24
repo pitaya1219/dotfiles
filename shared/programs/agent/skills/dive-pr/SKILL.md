@@ -1,8 +1,8 @@
 ---
 name: dive-pr
-description: Set up a local workspace for reviewing a PR — clone branch, install deps, open nvim in tmux
+description: Set up a local workspace for reviewing a PR — clone branch, install deps, open nvim in a herdr tab
 user-invocable: true
-version: 1.2.4
+version: 1.3.0
 ---
 
 # Dive PR Skill
@@ -15,7 +15,7 @@ Automates the workspace setup required to review a pull request:
 3. Fetches the PR head branch name via the appropriate API/CLI/MCP tool
 4. Creates a session directory and clones (or updates) the branch
 5. Auto-detects and installs dependencies
-6. Opens nvim in a new tmux window named after the session ID
+6. Opens nvim in a new herdr tab named after the session ID
 
 ## Usage
 
@@ -148,7 +148,7 @@ SESSION_DIR="$HOME/agent-sessions/session-${SESSION_ID}"
 mkdir -p "$SESSION_DIR"
 ```
 
-The **first 8 characters** of `SESSION_ID` will be used as the tmux window name.
+The **first 8 characters** of `SESSION_ID` will be used as the herdr tab label.
 
 ---
 
@@ -221,7 +221,7 @@ fi
 
 ---
 
-## Phase 6: Open nvim in tmux
+## Phase 6: Open nvim in a herdr tab
 
 nvim is opened with `exe` to wrap `CocCommand explorer` so the surrounding `|` separators are not passed as arguments to CocCommand:
 
@@ -231,12 +231,14 @@ nvim +'try | exe "CocCommand explorer" | catch | Explore | endtry'
 
 Note: **do not** split this into multiple `-c` flags — each `-c` runs in an independent context, breaking the `try/catch/endtry` block.
 
-**Quoting rule for the tmux context:** the outer shell uses `bash -c '...'` (single-quoted), so the `NVIM_CMD` variable must use single quotes on the outside and `\"` for the Vimscript string literal — this avoids single quotes inside the `bash -c` argument, which would break the shell string.
+**Quoting rule for `herdr pane run`:** it types its argument into the new pane's shell rather than exec'ing it, so the whole command has to arrive as a *single* argument or the quoting is flattened on the way. What survives is then read by bash, which is why `NVIM_CMD` below wraps the Vimscript in double quotes and escapes the inner ones as `\"` — a `|` inside double quotes is literal rather than a pipe.
 
-### If inside a tmux session (`$TMUX` is set)
+### If inside a herdr pane (`$HERDR_ENV` is set)
+
+The tab is created in the workspace the current pane belongs to, which is the first half of `$HERDR_PANE_ID` (`w3:pS` → `w3`).
 
 ```bash
-WINDOW_NAME="${SESSION_ID:0:8}"
+TAB_LABEL="${SESSION_ID:0:8}"
 
 ACTIVATE=""
 [ -f "$REPO_DIR/.venv/bin/activate" ] && \
@@ -244,13 +246,19 @@ ACTIVATE=""
 
 NVIM_CMD='nvim +"try | exe \"CocCommand explorer\" | catch | Explore | endtry"'
 
-tmux new-window -c "$REPO_DIR" -n "$WINDOW_NAME" \
-  "bash -c '${ACTIVATE}${NVIM_CMD}'"
+PANE=$(herdr tab create \
+    --workspace "${HERDR_PANE_ID%%:*}" \
+    --cwd "$REPO_DIR" \
+    --label "$TAB_LABEL" \
+    --focus \
+  | jq -r '.result.root_pane.pane_id')
+
+herdr pane run "$PANE" "${ACTIVATE}${NVIM_CMD}"
 ```
 
-### If NOT in a tmux session (`$TMUX` is unset)
+### If NOT in a herdr pane (`$HERDR_ENV` is unset)
 
-Output the commands for the user to run manually and do not attempt to open tmux:
+Output the commands for the user to run manually and do not attempt to reach herdr:
 
 ```
 # Workspace ready — open manually:
@@ -272,5 +280,5 @@ Review workspace ready
   PR       : <owner>/<repo>#<pr_number>  [<branch>]
   Directory: <REPO_DIR>
   Deps     : <comma-separated list of tools run, or "none detected">
-  tmux     : window "<WINDOW_NAME>" opened  |  (not in tmux — run manually)
+  herdr    : tab "<TAB_LABEL>" opened  |  (not in herdr — run manually)
 ```
