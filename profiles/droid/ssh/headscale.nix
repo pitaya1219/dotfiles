@@ -7,6 +7,14 @@ let
   roseMirrorKeyPath = "${config.home.homeDirectory}/.ssh/id_ed25519_droid-herdr-mirror-rose";
   aviateurMirrorKeyPath = "${config.home.homeDirectory}/.ssh/id_ed25519_droid-herdr-mirror-aviateur";
 
+  # rose/aviateur are reached as "localhost" from dragonfruit's end of the
+  # ProxyJump, which is a host identity droid has never seen before — but
+  # it's the exact same sshd/host key as "dragonfruit"/"dragonfruit-herdr-mirror"
+  # (100.64.0.13:1771), just under a different apparent name. Pin that known
+  # key explicitly (scoped to just these two aliases) instead of either
+  # trusting on first use or leaving BatchMode to reject it outright.
+  dragonfruitLoopbackKnownHosts = "${config.home.homeDirectory}/.ssh/known_hosts.d/dragonfruit-loopback";
+
   # Android's kernel lacks the tun module, so tailscaled here only runs in
   # userspace-networking mode with a local SOCKS5 proxy (see ../tailscale.nix).
   # ssh has to be routed through it explicitly instead of relying on OS routing.
@@ -43,6 +51,7 @@ let
       ProxyJump lepetitprince@dragonfruit-herdr-mirror
       IdentityFile ${roseMirrorKeyPath}
       IdentitiesOnly yes
+      UserKnownHostsFile ${dragonfruitLoopbackKnownHosts}
 
     Host aviateur-herdr-mirror
       HostName localhost
@@ -51,12 +60,23 @@ let
       ProxyJump lepetitprince@dragonfruit-herdr-mirror
       IdentityFile ${aviateurMirrorKeyPath}
       IdentitiesOnly yes
+      UserKnownHostsFile ${dragonfruitLoopbackKnownHosts}
   '';
 in
 {
   imports = [ ../../../lib/passage-secrets.nix ];
 
   home.file.".ssh/config.d/headscale".text = sshConfig;
+
+  # Not actually secret (it's the server's public host key, the whole point
+  # of known_hosts is that this is meant to be known) — sourced from passage
+  # anyway for consistency with the rest of this file: one mechanism for all
+  # key material, regardless of which half is sensitive.
+  dotfiles.passageSecrets.dragonfruitLoopbackKnownHosts = {
+    passagePath = "ssh/dragonfruit-loopback/known_hosts";
+    path = dragonfruitLoopbackKnownHosts;
+    mode = "0644";
+  };
 
   # Dedicated, passphrase-less key scoped to this one connection (herdr-mirror
   # runs as an unattended daemon, so it can't wait on an agent). Not reused
