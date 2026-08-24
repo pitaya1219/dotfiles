@@ -67,11 +67,19 @@
             target = "rose@rose-herdr-mirror"
             prefix = "rose"
             remote_bin = "~/.nix-profile/bin/herdr"
+            # rose has its own active sessions, and droid *also* mirrors it
+            # directly (profiles/droid/ssh/headscale.nix) — always_control's
+            # default (true) here meant this mirror held the write-lock
+            # permanently, starving droid's mirror of control entirely.
+            # false lets both stay read-only until whichever one is actually
+            # being typed into promotes.
+            always_control = false
 
             [hosts.aviateur]
             target = "aviateur@aviateur-herdr-mirror"
             prefix = "aviateur"
             remote_bin = "~/.nix-profile/bin/herdr"
+            always_control = false
           '';
           packages = with pkgs; [
             gitea-mcp-server
