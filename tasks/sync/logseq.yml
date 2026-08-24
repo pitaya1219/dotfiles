@@ -201,6 +201,16 @@ tasks:
             fi
         }
 
+        # Conflict pages and rclone's *.partial leftovers are artifacts of the
+        # sync itself, not notes. Reporting on them yields a report about a
+        # report, and because each report embeds the previous one, the chain
+        # compounds instead of converging.
+        is_sync_artifact() {
+            local name
+            name=$(basename "$1")
+            [[ "$name" == conflict-*.md ]] || [[ "$name" == *.partial* ]]
+        }
+
         ALL_CONFLICTS=$(find "$LOGSEQ_LOCAL/journals" "$LOGSEQ_LOCAL/pages" -name "*.conflict*" 2>/dev/null || true)
         if [[ -z "$ALL_CONFLICTS" ]]; then exit 0; fi
         echo "Processing conflict files:"
@@ -221,38 +231,20 @@ tasks:
         HAS_CONFLICTS=false
         for base_file in "${!conflict_groups[@]}"; do
             IFS='|' read -ra conflict_array <<< "${conflict_groups[$base_file]}"
-            # If the base file is itself a conflict page, append the diff to it
-            # rather than creating another conflict page (which would loop forever)
-            base_basename=$(basename "$base_file")
-            if [[ "$base_basename" == conflict-*.md ]] && [[ "$base_file" == *"/pages/"* ]]; then
-                actual_base="$base_file"
-                if ! [[ -f "$actual_base" ]]; then
-                    encoded_base=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$base_file")
-                    [[ -f "$encoded_base" ]] && actual_base="$encoded_base"
-                fi
-                if [[ -f "$actual_base" ]]; then
-                    for cf in "${conflict_array[@]}"; do
-                        if [[ -f "$cf" ]] && ! diff -q "$actual_base" "$cf" >/dev/null 2>&1; then
-                            timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-                            {
-                                echo ""
-                                echo "---"
-                                echo "## Re-conflict detected: $timestamp"
-                                echo ""
-                                echo "Legend: removed | added | unchanged"
-                                echo ""
-                                echo '```'
-                                safe_diff "$cf" "$actual_base"
-                                echo '```'
-                            } >> "$actual_base"
-                        fi
-                        [[ -f "$cf" ]] && rm -f "$cf" 2>/dev/null || true
-                    done
-                else
-                    for cf in "${conflict_array[@]}"; do
-                        [[ -f "$cf" ]] && rm -f "$cf" 2>/dev/null || true
-                    done
-                fi
+            # Drop the copies and move on rather than reporting on them.
+            #
+            # This branch used to append diff(copy, page) back into the page
+            # itself. That fed each round's diff its own previous output, so the
+            # page grew by roughly its own size every round: 24 rounds reached
+            # 136MB and took Logseq's renderer down with it. The appended diff
+            # never carried anything unique either - it restated the page's own
+            # Version blocks, the report's `created::` timestamp, and the hunk
+            # headers of the diff it was diffing. Whole timestamped generations
+            # of the page survive in logseq/bak/ regardless.
+            if is_sync_artifact "$base_file"; then
+                for cf in "${conflict_array[@]}"; do
+                    [[ -f "$cf" ]] && rm -f "$cf" 2>/dev/null || true
+                done
                 continue
             fi
             has_diff=false
@@ -365,7 +357,13 @@ tasks:
                 [[ -f "$cf" ]] && rm -f "$cf" 2>/dev/null || true
             done
         done
-        $HAS_CONFLICTS && task sync:logseq:notify TITLE="Conflicts Detected" MESSAGE="Found conflict files" PRIORITY="high"
+        # Must not be `$HAS_CONFLICTS && task ...`: that leaves the task's exit
+        # status at 1 whenever nothing was reported, and the caller runs under
+        # `set -e`, so a run that only had sync artifacts to drop would abort
+        # the sync before _shrink_check ever got to run.
+        if $HAS_CONFLICTS; then
+            task sync:logseq:notify TITLE="Conflicts Detected" MESSAGE="Found conflict files" PRIORITY="high"
+        fi
         INNEREOF
 
   _shrink_check:
@@ -423,6 +421,16 @@ tasks:
             fi
         }
 
+        # Conflict pages and rclone's *.partial leftovers are artifacts of the
+        # sync itself, not notes. Reporting on them yields a report about a
+        # report, and because each report embeds the previous one, the chain
+        # compounds instead of converging.
+        is_sync_artifact() {
+            local name
+            name=$(basename "$1")
+            [[ "$name" == conflict-*.md ]] || [[ "$name" == *.partial* ]]
+        }
+
         file_size() {
             stat -f%z "$1" 2>/dev/null || stat -c%s "$1" 2>/dev/null || echo 0
         }
@@ -453,6 +461,7 @@ tasks:
             src_dir="$SNAPSHOT/$sub"
             [[ -d "$src_dir" ]] || continue
             while IFS= read -r -d '' before_file; do
+                is_sync_artifact "$before_file" && continue
                 rel="${before_file#$src_dir/}"
                 full_rel="$sub/$rel"
                 before_size=$(file_size "$before_file")

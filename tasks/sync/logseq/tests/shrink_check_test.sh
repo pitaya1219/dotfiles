@@ -245,12 +245,64 @@ test_unicode_and_spaces_filename() {
 echo "Running shrink_check_test.sh against $REPO_ROOT"
 echo
 
+# --- Test 7: a shrunk conflict page is a sync artifact -> no report about it ---
+test_conflict_page_not_reported() {
+    local name="conflict_page_not_reported"
+    local root
+    root=$(new_fixture)
+    cleanup_roots+=("$root")
+
+    printf 'A conflict page long enough to clear the min-bytes floor before it gets emptied.\n' \
+        >"$root/backups/20260813_090000/pages/conflict-2026-08-13.md"
+    printf '' >"$root/logseq/pages/conflict-2026-08-13.md"
+
+    if ! run_shrink_check "$root"; then
+        log_fail "$name" "task invocation failed, see $root/task_output.log"
+        return
+    fi
+
+    if [[ -e "$root/logseq/pages/conflict-conflict-2026-08-13.md" ]]; then
+        log_fail "$name" "shrunk conflict page produced a conflict-conflict page"
+    else
+        log_pass "$name"
+    fi
+}
+
+# --- Test 8: a shrunk *.partial leftover is a sync artifact -> no report about it ---
+test_partial_file_not_reported() {
+    local name="partial_file_not_reported"
+    local root
+    root=$(new_fixture)
+    cleanup_roots+=("$root")
+
+    # _conflict's "restore the base from the largest copy" step re-adds a .md
+    # suffix to a partial leftover, which is how one lands in the tree looking
+    # like a page. That is the shape the shrink check has to ignore.
+    local leftover="2026_08_13.md.64270ff0.partial.md"
+    printf 'An rclone partial long enough to clear the min-bytes floor before it gets emptied.\n' \
+        >"$root/backups/20260813_090000/journals/$leftover"
+    printf '' >"$root/logseq/journals/$leftover"
+
+    if ! run_shrink_check "$root"; then
+        log_fail "$name" "task invocation failed, see $root/task_output.log"
+        return
+    fi
+
+    if compgen -G "$root/logseq/pages/conflict-*partial*" >/dev/null 2>&1; then
+        log_fail "$name" "shrunk partial leftover produced a conflict page"
+    else
+        log_pass "$name"
+    fi
+}
+
 test_drastic_shrink
 test_no_false_positive
 test_deleted_file_detected
 test_below_min_bytes_ignored
 test_existing_conflict_page_appended
 test_unicode_and_spaces_filename
+test_conflict_page_not_reported
+test_partial_file_not_reported
 
 echo
 echo "Results: $PASS passed, $FAIL failed"
