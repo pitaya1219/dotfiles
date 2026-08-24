@@ -54,6 +54,19 @@ tasks:
         wipe_profile "$HOME/.local/state/nix/profiles/profile" {{.KEEP_MIN_PROFILE}}
 
         nix store gc
+
+        # A collection can leave a path gone from disk while the database
+        # still records it as valid. Nothing re-fetches such a path: builds
+        # that need it fail with FileNotFound on a store path nix insists
+        # exists, and the failure surfaces far from here -- what broke was a
+        # fixed-output dependency several derivations down.
+        #
+        # --verify deregisters those, which is enough; the next build then
+        # fetches them through the normal path. --check-contents is left off
+        # deliberately -- it re-hashes every valid path in the store, and the
+        # inconsistency this guards against is a missing file, not an altered
+        # one.
+        nix-store --verify
   upgrade:
     desc: Update Nix flake inputs and rebuild
     cmds:
