@@ -1,6 +1,20 @@
 { config, pkgs, lib, ... }:
 
+let
+  # herdr starts every pane's default_shell the same way, including the one
+  # it types `<agent> --resume <id>` into on agent-session restore (source:
+  # start_pending_agent_resume in herdrdev/herdr's src/app/agent_resume.rs).
+  # Wrapping default_shell itself, rather than relying on direnv's bash
+  # PROMPT_COMMAND hook, makes the .envrc load happen deterministically
+  # before that resume keystroke lands, and keeps working if default_shell
+  # ever moves off bash.
+  direnvShell = pkgs.writeShellScriptBin "herdr-direnv-shell" ''
+    exec ${pkgs.direnv}/bin/direnv exec . ${pkgs.bashInteractive}/bin/bash "$@"
+  '';
+in
 {
+  home.packages = [ direnvShell ];
+
   programs.herdr = {
     enable = true;
     # herdrdev/herdr tracked at master (see the flake input), not the version
@@ -12,6 +26,8 @@
       # already makes, and it cannot persist an answer: config.toml is a
       # read-only symlink into the Nix store.
       onboarding = false;
+
+      default_shell = "herdr-direnv-shell";
 
       update = {
         # Nix owns the binary, so `herdr update` cannot write over it and the
