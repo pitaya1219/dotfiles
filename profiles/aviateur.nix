@@ -29,6 +29,7 @@
           ../shared/programs/neovim.nix
           ../shared/programs/tmux.nix
           ../shared/programs/herdr.nix
+          ../shared/programs/agent-resume.nix
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "aviateur")

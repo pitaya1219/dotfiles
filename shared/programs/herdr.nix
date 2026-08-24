@@ -89,10 +89,16 @@ in
         # flake bump.
         copy_mode = "prefix+[";
 
-        # herdr-mirror plugin (github:nikok6/herdr-mirror, ~/.config/herdr-mirror/hosts.toml):
-        # folds remote hosts' herdr sessions into this sidebar as <host>:<name>
-        # mirror workspaces.
         command = [
+          # Resuming a past agent session is the one thing herdr has no entry
+          # point for: [[keys.command]] runs a fixed string with no argument
+          # prompt, and neither the workspace picker nor `goto` accepts rows
+          # from outside herdr. agent-resume supplies the picker itself.
+          { key = "prefix+alt+r"; type = "popup"; command = "agent-resume"; width = "90%"; height = "80%"; description = "Resume an agent session"; }
+
+          # herdr-mirror plugin (github:nikok6/herdr-mirror, ~/.config/herdr-mirror/hosts.toml):
+          # folds remote hosts' herdr sessions into this sidebar as <host>:<name>
+          # mirror workspaces.
           { key = "prefix+shift+m"; type = "plugin_action"; command = "mirror.start"; description = "Mirror: start"; }
           { key = "prefix+shift+s"; type = "plugin_action"; command = "mirror.pause"; description = "Mirror: pause"; }
           { key = "prefix+shift+b"; type = "plugin_action"; command = "mirror.restore"; description = "Mirror: restore"; }
