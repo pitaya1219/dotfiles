@@ -9,7 +9,14 @@ let
   # before that resume keystroke lands, and keeps working if default_shell
   # ever moves off bash.
   direnvShell = pkgs.writeShellScriptBin "herdr-direnv-shell" ''
-    exec ${pkgs.direnv}/bin/direnv exec . ${pkgs.bashInteractive}/bin/bash "$@"
+    # Unlike the bash PROMPT_COMMAND hook, `direnv exec` treats a blocked
+    # (not yet `direnv allow`ed) or erroring .envrc as fatal and refuses to
+    # run the wrapped command at all. Probe with a no-op first so a blocked
+    # .envrc degrades to a plain shell instead of killing the pane outright.
+    if ${pkgs.direnv}/bin/direnv exec . true; then
+      exec ${pkgs.direnv}/bin/direnv exec . ${pkgs.bashInteractive}/bin/bash "$@"
+    fi
+    exec ${pkgs.bashInteractive}/bin/bash "$@"
   '';
 in
 {
