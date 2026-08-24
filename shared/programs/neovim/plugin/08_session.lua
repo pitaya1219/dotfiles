@@ -102,10 +102,8 @@ local function collect_terminal_info()
         and vim.bo[buf].buftype == 'terminal' then
         seen_bufs[buf] = true
         table.insert(terminals, {
-          tab        = i,
-          type       = vim.b[buf].terminal_type or 'bash',
-          cwd        = vim.b[buf].terminal_cwd or vim.fn.getcwd(),
-          session_id = vim.b[buf].terminal_session_id,
+          tab = i,
+          cwd = vim.b[buf].terminal_cwd or vim.fn.getcwd(),
         })
       end
     end
@@ -129,46 +127,16 @@ end
 -- ─── terminal sidecar: restore ───────────────────────────────────────────────
 
 local function open_terminal_entry(entry)
-  local cwd        = entry.cwd or vim.fn.getcwd()
-  local session_id = entry.session_id
-  local term_type  = entry.type or 'bash'
+  local cwd = entry.cwd or vim.fn.getcwd()
 
   vim.cmd('tabnew')
   local buf = vim.api.nvim_get_current_buf()
 
-  if term_type == 'claude' then
-    local cmd = 'eval "$(direnv export bash)" && claude'
-    if session_id and session_id ~= '' then
-      cmd = cmd .. ' --resume ' .. vim.fn.shellescape(session_id)
-    end
-    cmd = 'cd ' .. vim.fn.shellescape(cwd) .. ' && ' .. cmd
-    vim.b[buf].terminal_type = 'claude'
-    vim.b[buf].terminal_cwd  = cwd
-    -- claude requires single-width ambiguous chars to render correctly
-    vim.opt.ambiwidth = 'single'
-    pcall(function()
-      vim.opt.cellwidths = { { 0x2500, 0x257f, 1 }, { 0x2100, 0x214d, 1 } }
-    end)
-    vim.fn.termopen(cmd)
-
-  elseif term_type == 'vibe' then
-    local cmd = 'eval "$(direnv export bash)" && vibe'
-    if session_id and session_id ~= '' then
-      cmd = cmd .. ' --resume ' .. vim.fn.shellescape(session_id)
-    end
-    cmd = 'cd ' .. vim.fn.shellescape(cwd) .. ' && ' .. cmd
-    vim.b[buf].terminal_type = 'vibe'
-    vim.b[buf].terminal_cwd  = cwd
-    vim.fn.termopen(cmd)
-
-  else
-    -- plain bash
-    if vim.fn.isdirectory(cwd) == 1 then
-      vim.cmd('lcd ' .. vim.fn.fnameescape(cwd))
-    end
-    vim.b[buf].terminal_cwd = cwd
-    vim.fn.termopen({ 'bash', '-l' })
+  if vim.fn.isdirectory(cwd) == 1 then
+    vim.cmd('lcd ' .. vim.fn.fnameescape(cwd))
   end
+  vim.b[buf].terminal_cwd = cwd
+  vim.fn.termopen({ 'bash', '-l' })
 
   vim.cmd('startinsert')
 end
