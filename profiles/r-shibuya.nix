@@ -67,6 +67,8 @@ let
         # 常駐は端末から `voice-in --daemon` で上げる(iTerm の許可がそのまま効く)。
       };
 
+      programs.browse.enable = true;
+
       programs.obs-noise-cancel = {
         enable = true;
         configSourceDir = ./r-shibuya/obs;
@@ -96,6 +98,7 @@ let
         ../shared/programs/logseq-view.nix
         ./r-shibuya/logseq-sync.nix
         ../shared/programs/mtg-minutes.nix
+        ../shared/programs/browse.nix
         ../shared/programs/obs.nix
         ((import ../lib/taskfile-overrides.nix { inherit lib pkgs; }).forProfile "r-shibuya")
         ../shared/programs/bash.nix
