@@ -49,14 +49,14 @@
         # folds remote hosts' herdr sessions into this sidebar as <host>:<name>
         # mirror workspaces.
         command = [
-          { key = "prefix+shift+m"; type = "plugin_action"; command = "mirror.start"; }
-          { key = "prefix+shift+s"; type = "plugin_action"; command = "mirror.pause"; }
-          { key = "prefix+shift+b"; type = "plugin_action"; command = "mirror.restore"; }
-          { key = "prefix+alt+d"; type = "plugin_action"; command = "mirror.teardown"; }
-          { key = "prefix+alt+n"; type = "plugin_action"; command = "mirror.remote-new-workspace"; }
-          { key = "prefix+alt+c"; type = "plugin_action"; command = "mirror.remote-new-tab"; }
-          { key = "prefix+alt+v"; type = "plugin_action"; command = "mirror.remote-split-right"; }
-          { key = "prefix+alt+minus"; type = "plugin_action"; command = "mirror.remote-split-down"; }
+          { key = "prefix+shift+m"; type = "plugin_action"; command = "mirror.start"; description = "Mirror: start"; }
+          { key = "prefix+shift+s"; type = "plugin_action"; command = "mirror.pause"; description = "Mirror: pause"; }
+          { key = "prefix+shift+b"; type = "plugin_action"; command = "mirror.restore"; description = "Mirror: restore"; }
+          { key = "prefix+alt+d"; type = "plugin_action"; command = "mirror.teardown"; description = "Mirror: tear down"; }
+          { key = "prefix+alt+n"; type = "plugin_action"; command = "mirror.remote-new-workspace"; description = "Mirror: new remote workspace"; }
+          { key = "prefix+alt+c"; type = "plugin_action"; command = "mirror.remote-new-tab"; description = "Mirror: new remote tab"; }
+          { key = "prefix+alt+v"; type = "plugin_action"; command = "mirror.remote-split-right"; description = "Mirror: split remote right"; }
+          { key = "prefix+alt+minus"; type = "plugin_action"; command = "mirror.remote-split-down"; description = "Mirror: split remote down"; }
         ];
       };
 
