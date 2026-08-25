@@ -41,6 +41,7 @@
           ../shared/activations/huggingface_hub.nix
           ../shared/activations/proton-pass.nix
           ./droid/activations/termux-font.nix
+          ./droid/activations/linux-terminal-font.nix
           ./droid/activations/herdr_mirror.nix
           ./droid/packages/shellm.nix
           ./droid/ssh/config.nix
