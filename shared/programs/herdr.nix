@@ -93,8 +93,15 @@ in
           # Resuming a past agent session is the one thing herdr has no entry
           # point for: [[keys.command]] runs a fixed string with no argument
           # prompt, and neither the workspace picker nor `goto` accepts rows
-          # from outside herdr. agent-resume supplies the picker itself.
-          { key = "prefix+alt+r"; type = "popup"; command = "agent-resume"; width = "90%"; height = "80%"; description = "Resume an agent session"; }
+          # from outside herdr. agent-open supplies the picker itself.
+          { key = "prefix+alt+r"; type = "popup"; command = "agent-open"; width = "90%"; height = "80%"; description = "Resume an agent session"; }
+
+          # Starting fresh needs no picker, and a popup for it would only add a
+          # screen to dismiss: type = "shell" runs detached, so the tab appears
+          # without anything being drawn over the pane that asked for it.
+          # Vibe has no chord of its own — `agent-open --new vibe` is there for
+          # anyone who wants to bind one.
+          { key = "prefix+alt+a"; type = "shell"; command = "agent-open --new claude"; description = "New Claude session in a tab"; }
 
           # tools/herdr-run: a single fzf command palette over resume, live
           # agents (`herdr agent list`), and mirror actions (`herdr plugin

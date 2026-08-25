@@ -1,6 +1,11 @@
-# agent-resume — one fzf picker over past Claude Code and Vibe sessions that
-# opens the chosen one as a herdr tab, already `cd`'d into the directory the
-# session ran in.
+# agent-open — opens a coding agent as a herdr tab, either fresh in the current
+# workspace (`--new <agent>`) or by resuming a past session picked out of fzf,
+# in which case the tab starts in the directory that session ran in.
+#
+# Both paths label the new tab with the target directory's git branch. That is
+# a placeholder as much as a label: the agent is expected to replace it with a
+# short task name through herdr-tab-name (see shared/programs/herdr.nix), and
+# the branch is what stays visible until it does — or forever, if it does not.
 #
 # Every source prints the same five tab-separated fields, which is what lets a
 # single launcher handle any row the picker returns:
@@ -17,14 +22,14 @@
 # Sources are switched inside fzf via reload(), which re-enters this script
 # with `--source <name>`; that subcommand is also usable on its own.
 
-LIMIT="${AGENT_RESUME_LIMIT:-80}"
+LIMIT="${AGENT_OPEN_LIMIT:-80}"
 TAB=$'\t'
 
 # A popup closes the moment its command exits, so an error written on the way
 # out is never seen. Hold the window open until a key is pressed whenever there
 # is a terminal to hold.
 die() {
-  printf 'agent-resume: %s\n' "$1" >&2
+  printf 'agent-open: %s\n' "$1" >&2
   if [ -t 0 ]; then
     printf '\nPress any key to close.\n' >&2
     read -r -n 1 -s || true
@@ -165,23 +170,41 @@ preview() {
 
 # ----------------------------------------------------------------- launch ---
 
+# What a tab is called before the agent renames itself. A branch says more than
+# a session id about what a tab is for, and in ~/agent-sessions — where every
+# session directory is its own clone — it is usually the only thing that tells
+# two tabs of the same project apart.
+tab_label_for() {
+  local cwd="$1" branch=""
+  branch=$(git -C "$cwd" symbolic-ref --quiet --short HEAD 2>/dev/null) ||
+    branch=$(git -C "$cwd" rev-parse --short HEAD 2>/dev/null) ||
+    branch=""
+  printf '%s' "${branch:-$(basename "$cwd")}"
+}
+
 # herdr keeps one workspace per project in normal use, so a workspace whose
 # label already matches gets a new tab instead of a second workspace.
 # `workspace create --cwd` falls back to the server's own directory when the
 # path does not exist instead of failing, which is why cwd is checked first.
 open_in_herdr() {
-  local cwd="$1" label="$2" cmdline="$3" project workspace created pane tab out
+  local cwd="$1" label="$2" cmdline="$3" workspace="${4:-}" project created pane tab out
 
   [ -d "$cwd" ] || die "no such directory: $cwd"
   project=$(basename "$cwd")
 
+  # A caller that already knows the workspace (opening a new session beside the
+  # one asking for it) passes it in; the picker does not, and looks one up by
+  # project name instead.
+  #
   # No workspace yet, herdr not running, or a reply jq cannot read all land on
   # the same branch below: create rather than reuse. `|| true` because head
   # closing the pipe early would otherwise fail the pipeline under pipefail.
-  workspace=$({ herdr workspace list 2>/dev/null |
-    jq -r --arg label "$project" \
-      '.result.workspaces[]? | select(.label == $label) | .workspace_id' 2>/dev/null |
-    head -1; } || true)
+  if [ -z "$workspace" ]; then
+    workspace=$({ herdr workspace list 2>/dev/null |
+      jq -r --arg label "$project" \
+        '.result.workspaces[]? | select(.label == $label) | .workspace_id' 2>/dev/null |
+      head -1; } || true)
+  fi
 
   # Every herdr call is checked by hand. Left bare, a non-zero exit inside a
   # command substitution trips errexit and kills the script before it reaches
@@ -209,6 +232,33 @@ open_in_herdr() {
   out=$(herdr pane run "$pane" "$cmdline" 2>&1) || die "herdr pane run failed: $out"
 }
 
+# Opening a fresh session goes beside the pane that asked for it rather than
+# into a workspace named after the directory: the point of the binding is "an
+# agent, here, now". herdr's foreground_cwd follows `cd` inside the pane, so it
+# beats the pane's starting cwd for guessing where "here" is.
+open_new() {
+  local agent="$1" pane_id pane cwd workspace
+
+  # herdr captures the pane a keybinding fired from in HERDR_ACTIVE_PANE_ID,
+  # which is the only one of these that is set for a `type = "shell"` command
+  # (scripts/herdr-paste.py leans on the same variable). HERDR_PANE_ID covers
+  # running this by hand from inside a pane; the snapshot covers neither being
+  # set, and is the same fallback herdr-paste.py uses.
+  pane_id="${HERDR_ACTIVE_PANE_ID:-${HERDR_PANE_ID:-}}"
+  if [ -z "$pane_id" ]; then
+    pane_id=$({ herdr api snapshot 2>/dev/null |
+      jq -r '.result.snapshot.focused_pane_id // empty' 2>/dev/null; } || true)
+  fi
+  [ -n "$pane_id" ] || die "no pane to open beside — is this running inside herdr?"
+
+  pane=$(herdr pane get "$pane_id" 2>&1) || die "herdr pane get failed: $pane"
+  cwd=$(jq -r '.result.pane.foreground_cwd // .result.pane.cwd // empty' <<<"$pane" 2>/dev/null) || cwd=""
+  workspace=$(jq -r '.result.pane.workspace_id // empty' <<<"$pane" 2>/dev/null) || workspace=""
+  [ -n "$cwd" ] && [ -d "$cwd" ] || cwd="$PWD"
+
+  open_in_herdr "$cwd" "$(tab_label_for "$cwd")" "$agent" "$workspace"
+}
+
 # The project's .envrc is already loaded: herdr's default_shell wraps every
 # pane in `direnv exec` (see shared/programs/herdr.nix), so the shell this
 # command lands in has the environment before it reads the first keystroke.
@@ -220,6 +270,11 @@ resume_command() {
 # ------------------------------------------------------------------- main ---
 
 case "${1:-}" in
+  --new)
+    [ -n "${2:-}" ] || die "--new needs an agent name (claude or vibe)"
+    open_new "$2"
+    exit 0
+    ;;
   --source)
     case "${2:-all}" in
       claude) source_claude ;;
@@ -270,4 +325,4 @@ case "$agent:$key" in
   # Vibe has no plan mode, so ctrl-p there falls through to a plain resume.
 esac
 
-open_in_herdr "$cwd" "$agent-${id:0:8}" "$(resume_command "$agent" "$id" "$flags")"
+open_in_herdr "$cwd" "$(tab_label_for "$cwd")" "$(resume_command "$agent" "$id" "$flags")"

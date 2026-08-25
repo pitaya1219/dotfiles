@@ -103,7 +103,7 @@ let
         ../shared/programs/git.nix
         ../shared/programs/neovim.nix
         ../shared/programs/herdr.nix
-        ../shared/programs/agent-resume.nix
+        ../shared/programs/agent-open.nix
         ../shared/programs/herdr-run.nix
         ../shared/programs/starship.nix
         ../shared/programs/readline.nix
