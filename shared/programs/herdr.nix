@@ -96,6 +96,21 @@ in
           # from outside herdr. agent-resume supplies the picker itself.
           { key = "prefix+alt+r"; type = "popup"; command = "agent-resume"; width = "90%"; height = "80%"; description = "Resume an agent session"; }
 
+          # tools/herdr-run: a single fzf command palette over resume, live
+          # agents (`herdr agent list`), and mirror actions (`herdr plugin
+          # action list --plugin mirror`) — every action the alt+... chords
+          # below also reach. alt is unreliable across terminals (see the
+          # [keys] comment in `herdr --default-config`) and unusable at all on
+          # some (Termux and other droid-profile terminals), so the palette
+          # lives on a plain-letter prefix chord instead — f is otherwise
+          # unbound. herdr-run itself is always reachable typed, with no
+          # keybinding, on every profile.
+          { key = "prefix+f"; type = "popup"; command = "herdr-run"; width = "90%"; height = "80%"; description = "Command palette"; }
+          # Same palette, pre-filtered to mirror actions — m is otherwise
+          # unbound too, and worth keeping as a direct shortcut alongside the
+          # shift+m/s/b quick actions below.
+          { key = "prefix+m"; type = "popup"; command = "herdr-run mirror"; width = "90%"; height = "80%"; description = "Mirror: run an action"; }
+
           # herdr-mirror plugin (github:nikok6/herdr-mirror, ~/.config/herdr-mirror/hosts.toml):
           # folds remote hosts' herdr sessions into this sidebar as <host>:<name>
           # mirror workspaces.

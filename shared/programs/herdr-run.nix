@@ -3,7 +3,7 @@
 let
   herdr-run = pkgs.writeShellApplication {
     name = "herdr-run";
-    runtimeInputs = with pkgs; [ jq herdr ];
+    runtimeInputs = with pkgs; [ jq herdr fzf ];
     text = builtins.readFile ../../tools/herdr-run/herdr-run.sh;
   };
 in
