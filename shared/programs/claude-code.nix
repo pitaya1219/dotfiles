@@ -88,6 +88,10 @@
       # in the loop. This is a hard deny, not "ask" — an agent can't
       # negotiate its way past it mid-session.
       permissions.deny = [ "Bash(ssh:*)" ];
+      # ~/.agent/conventions.md asks every session to rename its own tab, and
+      # the rename touches nothing but the label herdr draws. Confirming that
+      # once per session would cost more attention than it protects.
+      permissions.allow = [ "Bash(herdr-tab-name:*)" ];
       hooks = {
         PreToolUse = [
           {

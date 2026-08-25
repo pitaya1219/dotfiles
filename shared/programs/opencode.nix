@@ -17,5 +17,8 @@
     # loop. Hard deny, not "ask" — last matching rule wins, so this can't be
     # shadowed by a broader allow rule added later.
     permission.bash."ssh *" = "deny";
+    # See the matching note in claude-code.nix: renaming a tab is what
+    # ~/.agent/conventions.md asks for, and it changes nothing but a label.
+    permission.bash."herdr-tab-name *" = "allow";
   };
 }

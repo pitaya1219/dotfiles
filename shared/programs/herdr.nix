@@ -18,9 +18,18 @@ let
     fi
     exec ${pkgs.bashInteractive}/bin/bash "$@"
   '';
+
+  # Named in ~/.agent/conventions.md, so every agent can rename its own tab.
+  # Lives here rather than in its own module because it is a herdr helper with
+  # no meaning anywhere else — it exits silently when HERDR_ENV is unset.
+  tabName = pkgs.writeShellApplication {
+    name = "herdr-tab-name";
+    runtimeInputs = [ pkgs.herdr pkgs.jq ];
+    text = builtins.readFile ../../tools/herdr-tab-name/herdr-tab-name.sh;
+  };
 in
 {
-  home.packages = [ direnvShell ];
+  home.packages = [ direnvShell tabName ];
 
   programs.herdr = {
     enable = true;

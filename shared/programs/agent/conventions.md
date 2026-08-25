@@ -39,3 +39,19 @@ character slips in, switch back to English or Japanese immediately.
   vendor, and no reference to the agent anywhere in the message.
 - Conventional Commits, formatted `prefix: Description ending with period.`
 - Prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:`, `style:`
+
+## Terminal tabs
+
+When the session runs inside herdr — `HERDR_ENV` is set — name the tab after
+the task as soon as you know what it is:
+
+```
+herdr-tab-name 'logseq read skill'
+```
+
+The tab starts out labelled with the git branch, which says where you are but
+not what you are working on. Replace it once, and again if the task turns into
+something else. Keep it to about 12 columns: the tab bar divides its width
+among every tab in the workspace, and Japanese costs two columns per character.
+
+Outside herdr the command exits without doing anything.
