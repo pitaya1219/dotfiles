@@ -10,6 +10,15 @@
       ({ config, pkgs, lib, ... }: {
         dotfiles.agent.skills.exclude = [ "asana-create-task" "my-review" ];
 
+        # This Debian base doesn't ship en_US.UTF-8 pre-generated (only
+        # C/C.UTF-8/POSIX), so LANG=en_US.UTF-8 (shared/programs/bash/env.nix)
+        # fails setlocale() without this — home-manager builds the archive
+        # into the Nix store and points LOCALE_ARCHIVE at it, no root needed.
+        i18n.glibcLocales = pkgs.glibcLocales.override {
+          allLocales = false;
+          locales = [ "en_US.UTF-8/UTF-8" ];
+        };
+
         dotfiles.agent.logseq = {
           url = { command = "passage show logseq/http-api/host"; };
           token = { command = "passage show logseq/http-api/claude-code/token"; };
