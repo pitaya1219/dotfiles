@@ -34,7 +34,7 @@ let
   ];
 
   # Shared home-manager modules used by both mkHomeConfiguration and mkDarwinConfiguration
-  homeModules = [
+  homeModules = extraModules ++ [
     ({ config, pkgs, lib, ... }: {
       dotfiles.protonPass.caCertFile = "/Library/Application Support/Netskope/STAgent/data/nscacert_combined.pem";
 
@@ -69,6 +69,18 @@ let
 
       programs.browse.enable = true;
 
+      # llama-server on this machine is the only endpoint here — no client
+      # exists for ai.pitaya.f5.si under this profile, and this one is a
+      # corporate laptop, so nothing leaves it.
+      programs.hermes = {
+        enable = true;
+        default = "local";
+        local = {
+          enable = true;
+          model = "gemma-4-e2b";
+        };
+      };
+
       programs.obs-noise-cancel = {
         enable = true;
         configSourceDir = ./r-shibuya/obs;
@@ -92,6 +104,7 @@ let
         ../shared/programs/bare.nix
         ../shared/programs/logseq-view.nix
         ./r-shibuya/logseq-sync.nix
+        ./r-shibuya/llama-server.nix
         ../shared/programs/mtg-minutes.nix
         ../shared/programs/browse.nix
         ../shared/programs/obs.nix
@@ -100,6 +113,7 @@ let
         ../shared/programs/claude-code.nix
         ../shared/programs/opencode.nix
         ../shared/programs/vibe.nix
+        ../shared/programs/hermes.nix
         ../shared/programs/git.nix
         ../shared/programs/neovim.nix
         ../shared/programs/herdr.nix

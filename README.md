@@ -188,3 +188,31 @@ export GITEA_AI_BOT_TOKEN="your-ai-bot-token"
 ```
 
 **Note**: Each AI tool uses a different Gitea user token for proper attribution of automated changes.
+
+### Hermes Agent
+
+`programs.hermes` (`shared/programs/hermes.nix`) wires Hermes Agent to one or
+two OpenAI-compatible endpoints per profile:
+
+| Profile | Endpoints | Default |
+|---------|-----------|---------|
+| r-shibuya | llama-server on `localhost:11434` | local |
+| droid | `localhost:11434`, `ai.pitaya.f5.si` | local |
+| lepetitprince | `ai.pitaya.f5.si` | pitaya |
+
+Switch between them in a session with `/model local` / `/model pitaya`, or for
+one run with `hermes --model <name>`.
+
+Any profile reaching `ai.pitaya.f5.si` needs its **own** OAuth client — the
+passage store is shared across machines through Proton Pass, so one client per
+profile is what keeps the issuer's log able to tell them apart and lets a
+single machine be revoked on its own. Create the client in Zitadel, then:
+
+```bash
+passage insert hermes/client/<profile>/id
+passage insert hermes/client/<profile>/secret
+```
+
+`home-manager switch` does not create these, and Hermes only reads them when it
+first calls the endpoint — so a missing entry shows up as a failed turn, not a
+failed activation.

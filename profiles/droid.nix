@@ -6,7 +6,7 @@
       system = "aarch64-linux";
       overlays = [ overlays.mistral-vibe overlays.fix-neovim-lua-passthru overlays.pipx-no-check overlays.poetry-no-check overlays.logseq-view overlays.nix-claude-code overlays.herdr ];
     };
-    modules = [
+    modules = extraModules ++ [
       ({ config, pkgs, lib, ... }: {
         dotfiles.agent.skills.exclude = [ "asana-create-task" "my-review" ];
 
@@ -17,6 +17,26 @@
         i18n.glibcLocales = pkgs.glibcLocales.override {
           allLocales = false;
           locales = [ "en_US.UTF-8/UTF-8" ];
+        };
+
+        # Both endpoints, switched with `/model local` and `/model pitaya`.
+        # Local is the default: this machine leaves the network often enough
+        # that the endpoint that keeps working offline is the better one to
+        # land on, and llama-cpp is already in home.packages below to serve
+        # it. Nothing here starts that server — home-manager's systemd user
+        # units do not run under proot, so it is started by hand.
+        programs.hermes = {
+          enable = true;
+          default = "local";
+          local = {
+            enable = true;
+            model = "gemma-4-e2b";
+          };
+          pitaya = {
+            enable = true;
+            model = "Gemma-4";
+            passagePrefix = "hermes/client/droid";
+          };
         };
 
         dotfiles.agent.logseq = {
@@ -32,6 +52,7 @@
           ../shared/programs/claude-code.nix
           ../shared/programs/opencode.nix
           ../shared/programs/vibe.nix
+          ../shared/programs/hermes.nix
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix
           ../shared/programs/herdr.nix

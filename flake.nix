@@ -35,9 +35,14 @@
       url = "github:herdrdev/herdr";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    hermes-agent = {
+      url = "github:NousResearch/hermes-agent";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.home-manager.follows = "home-manager";
+    };
   };
 
-  outputs = { self, nixpkgs, home-manager, nix-darwin, neovim-nightly-overlay, mistral-vibe, homelab, logseq-view, nix-claude-code, herdr }:
+  outputs = { self, nixpkgs, home-manager, nix-darwin, neovim-nightly-overlay, mistral-vibe, homelab, logseq-view, nix-claude-code, herdr, hermes-agent }:
     let
       profileLib = import ./lib/profiles.nix { inherit (nixpkgs) lib; };
 
@@ -121,16 +126,27 @@
 
       };
       
+      # hermes-agent ships its own home-manager module, and its default package
+      # is this flake's own build rather than one re-instantiated against our
+      # nixpkgs — so the module has to come from the input directly. There is
+      # nothing for an overlay to carry.
+      hermesModules = [ hermes-agent.homeManagerModules.default ];
+
+      profileExtraModules = {
+        rose = [
+          homelab.homeManagerModules.dns-updater
+          homelab.homeManagerModules.nextcloud-backup
+        ];
+        r-shibuya = hermesModules;
+        droid = hermesModules;
+        lepetitprince = hermesModules;
+      };
+
       # Load all profiles automatically
       profiles = profileLib.loadProfiles {
         profilesPath = ./profiles;
         inherit nixpkgs home-manager overlays;
-        extraModules = {
-          rose = [
-            homelab.homeManagerModules.dns-updater
-            homelab.homeManagerModules.nextcloud-backup
-          ];
-        };
+        extraModules = profileExtraModules;
       };
 
       # Generate home configurations from profiles
@@ -173,7 +189,7 @@
       darwinConfigurations."r-shibuya" =
         (import ./profiles/r-shibuya.nix {
           inherit nixpkgs home-manager overlays nix-darwin;
-          extraModules = [];
+          extraModules = profileExtraModules.r-shibuya;
         }).mkDarwinConfiguration;
 
     in

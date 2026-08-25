@@ -196,7 +196,7 @@ and the plists were still sitting in `LaunchAgents`.
 
 ### Key Packages
 - **Base**: gnused, tree, curl, ripgrep, age, passage, direnv, pipx, poetry
-- **AI**: opencode, claude-code, ollama
+- **AI**: opencode, claude-code, hermes-agent, ollama
 - **Development**: nodejs, sqlite, duckdb, openssh
 - **Fonts**: daddy-time-mono, shure-tech-mono (Nerd Fonts)
 

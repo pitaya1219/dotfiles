@@ -6,9 +6,21 @@
       system = "x86_64-linux";
       overlays = [ overlays.neovim-nightly overlays.mistral-vibe overlays.pipx-no-check overlays.poetry-no-check overlays.logseq-view overlays.nix-claude-code overlays.herdr ];
     };
-    modules = [
+    modules = extraModules ++ [
       ({ config, pkgs, lib, ... }: {
         dotfiles.agent.skills.exclude = [ "asana-create-task" "my-review" ];
+
+        # koi's endpoint only. This host runs no model of its own, and it
+        # reaches ai.pitaya.f5.si over the mesh either way.
+        programs.hermes = {
+          enable = true;
+          default = "pitaya";
+          pitaya = {
+            enable = true;
+            model = "Gemma-4";
+            passagePrefix = "hermes/client/lepetitprince";
+          };
+        };
 
         dotfiles.agent.logseq = {
           url = { command = "passage show logseq/http-api/host"; };
@@ -27,6 +39,7 @@
           ../shared/programs/claude-code.nix
           ../shared/programs/opencode.nix
           ../shared/programs/vibe.nix
+          ../shared/programs/hermes.nix
           ../shared/programs/direnv.nix
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix
