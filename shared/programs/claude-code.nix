@@ -83,6 +83,13 @@
         command = "${config.home.homeDirectory}/dotfiles/scripts/claude-statusline.sh";
       };
       model = config.dotfiles.claude-code.model;
+      # Claude Code's "fullscreen" renderer draws on the alternate screen and
+      # keeps its scrollback virtualized inside itself, so nothing reaches the
+      # host terminal: herdr reports an empty scrollback for every agent pane
+      # and prefix+[ / prefix+y come back with only the visible rows. The
+      # classic main-screen renderer flickers but leaves the transcript where
+      # herdr can scroll and copy it.
+      tui = "default";
       # Dedicated, passphrase-less herdr-mirror keys (see profiles/*/ssh/)
       # let an agent session ssh to dragonfruit/rose/aviateur with no human
       # in the loop. This is a hard deny, not "ask" — an agent can't
