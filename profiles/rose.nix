@@ -33,6 +33,7 @@
           ../shared/programs/neovim.nix
           ../shared/programs/herdr.nix
           ../shared/programs/agent-resume.nix
+          ../shared/programs/herdr-run.nix
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "rose")
