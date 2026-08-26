@@ -45,7 +45,8 @@ EOF
 static_rows() {
   printf '%s\t%s\t%s\n' \
     resume 'Resume an agent session' 'agent-open' \
-    new 'Start a new agent session' 'agent-open --new'
+    new 'Start a new agent session' 'agent-open --new' \
+    toggle-term 'Toggle terminal workspace' "$HOME/dotfiles/scripts/herdr-toggle-terminal.sh"
 }
 
 agent_rows() {

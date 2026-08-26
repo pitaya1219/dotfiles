@@ -165,6 +165,20 @@ in
           # On an agent pane that history is the agent's session log rather
           # than the scrollback, which alternate-screen renderers leave empty;
           # prefix+[ has no such escape hatch and stays blank there.
+
+          # nvim's <A-j> (ToggleTerm) counterpart: prefix+backtick over a bare
+          # alt+j, both because alt chords are unreliable on this profile's
+          # terminals (see the prefix+f comment above) and because a raw
+          # alt+j binding would shadow the very nvim mapping this mirrors
+          # whenever nvim runs inside a pane. Backtick follows the toggle
+          # terminal convention every other tool already uses (VS Code's
+          # ctrl+backtick, i3's scratchpad, ...).
+          {
+            key = "prefix+backtick";
+            type = "shell";
+            description = "toggle terminal workspace";
+            command = "${config.home.homeDirectory}/dotfiles/scripts/herdr-toggle-terminal.sh";
+          }
           {
             key = "prefix+y";
             type = "popup";
