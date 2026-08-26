@@ -34,7 +34,7 @@ before it is deployed.
 
 ```bash
 task nix:sandbox                                    # /tmp/dotfiles-sandbox
-task nix:sandbox SANDBOX_HOME=/tmp/hm PROFILE=rose
+task nix:sandbox SANDBOX_HOME=$PWD/sandbox PROFILE=rose
 task nix:sandbox:shell                              # re-enter without re-activating
 task nix:sandbox:clean
 ```
@@ -91,11 +91,28 @@ down to `.config/herdr/sessions/<name>/herdr.sock`, spending another
 
 ### Path length
 
-Keep `SANDBOX_HOME` short. Unix socket paths cap at 104 bytes on macOS and
-several configurations bind sockets under `$HOME/.config`; herdr alone spends 25
-of those bytes on `.config/herdr/herdr.sock`. Working out of a deeply nested
-directory does not mean giving that up -- leave the sandbox under `/tmp` and
-symlink to it from where you are working.
+Unix socket paths cap at 104 bytes on macOS and several configurations bind
+sockets under `$HOME/.config`, herdr alone spending 25 of them on
+`.config/herdr/herdr.sock`. A `SANDBOX_HOME` deep enough to exhaust that budget
+would fail during activation with a `sun_path` error naming neither the sandbox
+nor the length, so the task does not let it get that far: past its ceiling, the
+sandbox is created as `/tmp/sbx-<checksum of the requested path>` and
+`SANDBOX_HOME` becomes a symlink to it.
+
+That is what makes an agent session directory a usable `SANDBOX_HOME` despite
+being 76 characters deep on its own:
+
+```console
+$ task nix:sandbox SANDBOX_HOME=$PWD/sandbox
+/Users/r-shibuya/agent-sessions/session-<id>/sandbox is too deep to hold a unix socket.
+The sandbox lives at /tmp/sbx-1787187797 and is linked from there.
+```
+
+The checksum is of the requested path, so the same caller reaches the same
+directory on every run and two callers never collide. `nix:sandbox:shell` and
+`nix:sandbox:clean` resolve it the same way -- pass them the `SANDBOX_HOME` you
+asked for, not the `/tmp` path -- and `clean` removes the symlink along with the
+sandbox.
 
 ## Environment Variables
 

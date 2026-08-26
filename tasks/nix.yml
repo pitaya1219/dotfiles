@@ -1,7 +1,26 @@
 version: '3'
 
 vars:
+  # Where you want to reach the sandbox from.
   SANDBOX_HOME: '/tmp/dotfiles-sandbox'
+
+  # Where it actually lives. Unix socket paths cap at 104 bytes on macOS and
+  # configurations activated here bind sockets under $HOME/.config -- herdr's
+  # .config/herdr/herdr.sock accounts for 25 of them -- so a requested home too
+  # deep to leave room for one is relocated under /tmp, and SANDBOX_HOME
+  # becomes a symlink pointing at it. The ceiling keeps room for a socket
+  # somewhat deeper than herdr's. Naming the relocated directory after a
+  # checksum of the requested path makes it the same directory on every run and
+  # a different one per caller.
+  SANDBOX_REAL_HOME:
+    sh: |
+      requested='{{.SANDBOX_HOME}}'
+      if [ "${#requested}" -le 48 ]; then
+        printf '%s\n' "$requested"
+      else
+        printf '/tmp/sbx-%s\n' "$(printf '%s' "$requested" | cksum | cut -d' ' -f1)"
+      fi
+
   # HERDR_SOCKET_PATH and NIX_PROFILES hold absolute paths into the real home,
   # so overriding HOME alone leaves a sandbox talking to the live herdr session
   # and resolving the live profiles.
@@ -82,55 +101,58 @@ tasks:
     cmds:
       - |
         set -euo pipefail
-        sandbox="{{.SANDBOX_HOME}}"
+        mkdir -p "{{.SANDBOX_REAL_HOME}}"
 
-        # Unix socket paths cap at 104 bytes on macOS and configurations
-        # activated here bind sockets under $HOME/.config, herdr's
-        # .config/herdr/herdr.sock accounting for 25 of them. The ceiling below
-        # leaves room for a deeper socket than that one. Past it, activation
-        # fails with a sun_path error naming neither the sandbox nor the length.
-        max_length=48
-        if [ "${#sandbox}" -gt "$max_length" ]; then
-          echo "SANDBOX_HOME is ${#sandbox} characters; keep it to $max_length or sockets under it cannot bind." >&2
-          exit 1
+        if [ "{{.SANDBOX_REAL_HOME}}" != "{{.SANDBOX_HOME}}" ]; then
+          if [ -e "{{.SANDBOX_HOME}}" ] && [ ! -L "{{.SANDBOX_HOME}}" ]; then
+            echo "{{.SANDBOX_HOME}} already exists and is not a symlink; move it aside or choose another SANDBOX_HOME." >&2
+            exit 1
+          fi
+          ln -sfn "{{.SANDBOX_REAL_HOME}}" "{{.SANDBOX_HOME}}"
+          echo "{{.SANDBOX_HOME}} is too deep to hold a unix socket."
+          echo "The sandbox lives at {{.SANDBOX_REAL_HOME}} and is linked from there."
         fi
-
-        mkdir -p "$sandbox"
 
         # Paths written as $HOME/dotfiles/scripts/... have to land on this
         # checkout, so that what runs in the sandbox is the change under test
         # and not whatever is already deployed.
-        ln -sfn "$PWD" "$sandbox/dotfiles"
+        ln -sfn "$PWD" "{{.SANDBOX_REAL_HOME}}/dotfiles"
 
-        DOTFILES_SANDBOX_HOME="$sandbox" nix build --impure \
+        DOTFILES_SANDBOX_HOME="{{.SANDBOX_REAL_HOME}}" nix build --impure \
           ".#sandboxConfigurations.{{.PROFILE}}.activationPackage" \
-          --out-link "$sandbox/.activation-package"
+          --out-link "{{.SANDBOX_REAL_HOME}}/.activation-package"
 
-        {{.SANDBOX_ENV}} HOME="$sandbox" "$sandbox/.activation-package/activate"
+        {{.SANDBOX_ENV}} HOME="{{.SANDBOX_REAL_HOME}}" \
+          "{{.SANDBOX_REAL_HOME}}/.activation-package/activate"
       - task: sandbox:shell
 
   sandbox:shell:
     desc: Open a login shell in an existing sandbox home without re-activating it
     silent: true
     preconditions:
-      - sh: '[ -x "{{.SANDBOX_HOME}}/.nix-profile/bin/bash" ]'
-        msg: "{{.SANDBOX_HOME}} has no activated profile. Run `task nix:sandbox` first."
+      - sh: '[ -x "{{.SANDBOX_REAL_HOME}}/.nix-profile/bin/bash" ]'
+        msg: "{{.SANDBOX_REAL_HOME}} has no activated profile. Run `task nix:sandbox` first."
     cmds:
       - |
-        echo "Sandbox home: {{.SANDBOX_HOME}}"
+        echo "Sandbox home: {{.SANDBOX_REAL_HOME}}"
         echo "Exit the shell to return."
-        {{.SANDBOX_ENV}} HOME="{{.SANDBOX_HOME}}" \
-          "{{.SANDBOX_HOME}}/.nix-profile/bin/bash" -l
+        {{.SANDBOX_ENV}} HOME="{{.SANDBOX_REAL_HOME}}" \
+          "{{.SANDBOX_REAL_HOME}}/.nix-profile/bin/bash" -l
 
   sandbox:clean:
     desc: Remove a sandbox home directory created by nix:sandbox
     silent: true
     preconditions:
-      - sh: '[ -e "{{.SANDBOX_HOME}}/.activation-package" ]'
-        msg: "{{.SANDBOX_HOME}} does not look like a sandbox home; refusing to remove it."
+      - sh: '[ -e "{{.SANDBOX_REAL_HOME}}/.activation-package" ]'
+        msg: "{{.SANDBOX_REAL_HOME}} does not look like a sandbox home; refusing to remove it."
     cmds:
-      - 'rm -rf "{{.SANDBOX_HOME}}"'
-      - 'echo "Removed {{.SANDBOX_HOME}}"'
+      - |
+        rm -rf "{{.SANDBOX_REAL_HOME}}"
+        # The pointer exists only for a sandbox that had to be relocated.
+        if [ -L "{{.SANDBOX_HOME}}" ]; then
+          rm -f "{{.SANDBOX_HOME}}"
+        fi
+        echo "Removed {{.SANDBOX_REAL_HOME}}"
 
   upgrade:
     desc: Update Nix flake inputs and rebuild
