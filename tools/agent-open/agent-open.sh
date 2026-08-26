@@ -25,6 +25,11 @@
 LIMIT="${AGENT_OPEN_LIMIT:-80}"
 TAB=$'\t'
 
+# What `--new` offers, in the order the picker lists them, which is also the
+# order of how often they get picked. Only claude and vibe keep the session
+# logs the resume half reads, so opencode appears here and nowhere else.
+NEW_AGENTS=(claude vibe opencode)
+
 # A popup closes the moment its command exits, so an error written on the way
 # out is never seen. Hold the window open until a key is pressed whenever there
 # is a terminal to hold.
@@ -236,6 +241,14 @@ open_in_herdr() {
 # into a workspace named after the directory: the point of the binding is "an
 # agent, here, now". herdr's foreground_cwd follows `cd` inside the pane, so it
 # beats the pane's starting cwd for guessing where "here" is.
+# `--new` with no agent named. Three rows is not much of a list, but picking
+# from it beats memorising a chord per agent, and the first row is one keypress
+# away either way.
+pick_agent() {
+  printf '%s\n' "${NEW_AGENTS[@]}" |
+    fzf --prompt='new > ' --header='start a new agent session here' --no-info
+}
+
 open_new() {
   local agent="$1" pane_id pane cwd workspace
 
@@ -271,8 +284,12 @@ resume_command() {
 
 case "${1:-}" in
   --new)
-    [ -n "${2:-}" ] || die "--new needs an agent name (claude or vibe)"
-    open_new "$2"
+    agent="${2:-}"
+    if [ -z "$agent" ]; then
+      agent=$(pick_agent) || exit 0
+      [ -n "$agent" ] || exit 0
+    fi
+    open_new "$agent"
     exit 0
     ;;
   --source)

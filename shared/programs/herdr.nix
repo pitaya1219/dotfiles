@@ -105,12 +105,11 @@ in
           # from outside herdr. agent-open supplies the picker itself.
           { key = "prefix+alt+r"; type = "popup"; command = "agent-open"; width = "90%"; height = "80%"; description = "Resume an agent session"; }
 
-          # Starting fresh needs no picker, and a popup for it would only add a
-          # screen to dismiss: type = "shell" runs detached, so the tab appears
-          # without anything being drawn over the pane that asked for it.
-          # Vibe has no chord of its own — `agent-open --new vibe` is there for
-          # anyone who wants to bind one.
-          { key = "prefix+alt+a"; type = "shell"; command = "agent-open --new claude"; description = "New Claude session in a tab"; }
+          # A chord per agent would be three chords to remember, so --new asks
+          # which one instead. The list is short enough that the common case is
+          # still the chord and one keypress. `agent-open --new <agent>` skips
+          # the question for anyone who would rather bind a chord after all.
+          { key = "prefix+alt+a"; type = "popup"; command = "agent-open --new"; width = "40%"; height = "30%"; description = "Start a new agent session"; }
 
           # tools/herdr-run: a single fzf command palette over resume, live
           # agents (`herdr agent list`), and mirror actions (`herdr plugin
