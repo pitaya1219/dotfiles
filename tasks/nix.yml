@@ -28,7 +28,21 @@ vars:
   # HERDR_SOCKET_PATH and NIX_PROFILES hold absolute paths into the real home,
   # so overriding HOME alone leaves a sandbox talking to the live herdr session
   # and resolving the live profiles.
-  SANDBOX_ENV: 'env -u HERDR_SOCKET_PATH -u HERDR_ENV -u NIX_PROFILES'
+  #
+  # PASSAGE_DIR and PASSAGE_IDENTITIES_FILE go the other way: passage
+  # (lib/passage-secrets.nix) resolves both relative to $HOME by default, and
+  # a throwaway sandbox home never has a store or identity under it, so any
+  # profile with a passageSecrets/passageAuthorizedKeys/passageKnownHosts
+  # entry -- droid, rose, aviateur, lepetitprince -- fails activation outright
+  # ("You must place an age identity at ...") rather than merely leaving a
+  # feature untested. Pinning both to the real home before HOME is overridden
+  # keeps the sandbox reading real secrets, the same way `nix:sandbox` already
+  # symlinks $HOME/dotfiles back to the checkout under test rather than
+  # leaving it absent.
+  SANDBOX_ENV: >-
+    env -u HERDR_SOCKET_PATH -u HERDR_ENV -u NIX_PROFILES
+    PASSAGE_DIR="${PASSAGE_DIR:-$HOME/.passage/store}"
+    PASSAGE_IDENTITIES_FILE="${PASSAGE_IDENTITIES_FILE:-$HOME/.passage/identities}"
 
 tasks:
   default:

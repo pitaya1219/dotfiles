@@ -106,6 +106,18 @@ Prefer the default session for this. `herdr --session <name>` moves the socket
 down to `.config/herdr/sessions/<name>/herdr.sock`, spending another
 `/sessions/<name>` worth of the budget below.
 
+### passage
+
+Unlike everything else `HOME` carries along, `PASSAGE_DIR` and
+`PASSAGE_IDENTITIES_FILE` are pinned to the real home's store and identity
+file before `HOME` is overridden. passage resolves both relative to `$HOME` by
+default, and a throwaway sandbox home never has a store or identity under it
+-- without this, any profile with a `dotfiles.passageSecrets` /
+`passageAuthorizedKeys` / `passageKnownHosts` entry (`lib/passage-secrets.nix`)
+fails activation outright instead of merely leaving a feature untested.
+Secrets `passage show` decrypts still land under the sandbox home, same as a
+real switch; only the read side points at the real store.
+
 ### Path length
 
 Unix socket paths cap at 104 bytes on macOS and several configurations bind
