@@ -1,0 +1,15 @@
+id = "vibe-resume"
+name = "Vibe resume"
+version = "0.1.0"
+# Not a known floor for [[startup]] hooks — just the version the resume
+# behaviour below was measured against.
+min_herdr_version = "0.8.2"
+description = "Resume Vibe panes into their conversation after a herdr server restart"
+platforms = ["macos", "linux"]
+
+# Absolute interpreter, relative script: the command inherits the PATH of
+# whatever started the server, which on these machines carries a literal,
+# unexpanded "~/.nix-profile/bin" entry (see shared/programs/herdr.nix), while
+# the working directory is reliably the plugin root.
+[[startup]]
+command = ["@python3@", "vibe-resume.py"]

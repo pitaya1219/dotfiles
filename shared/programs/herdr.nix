@@ -27,6 +27,17 @@ let
     runtimeInputs = [ pkgs.herdr pkgs.jq ];
     text = builtins.readFile ../../tools/herdr-tab-name/herdr-tab-name.sh;
   };
+
+  # The other half of agent-session restore: herdr only replays panes whose
+  # agent it ships a resume command for, which leaves Vibe behind. This plugin
+  # picks those up from its [[startup]] hook — see the script for why that is
+  # the only event a restore is visible through.
+  vibeResumePlugin = pkgs.runCommand "herdr-vibe-resume-plugin" { } ''
+    mkdir -p "$out"
+    cp ${../../tools/herdr-vibe-resume/vibe-resume.py} "$out/vibe-resume.py"
+    substitute ${../../tools/herdr-vibe-resume/herdr-plugin.toml} "$out/herdr-plugin.toml" \
+      --subst-var-by python3 ${pkgs.python3}/bin/python3
+  '';
 in
 {
   home.packages = [ direnvShell tabName ];
@@ -177,4 +188,14 @@ in
       };
     };
   };
+
+  # `plugin link` copies the manifest into ~/.config/herdr/plugins.json rather
+  # than following it, and the store path moves on every rebuild, so this has
+  # to run again on every switch. Linking an already-linked plugin replaces the
+  # entry, which is exactly what that needs.
+  home.activation.linkHerdrVibeResume = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    export PATH="${pkgs.herdr}/bin:$PATH"
+    herdr plugin link ${vibeResumePlugin} >/dev/null ||
+      echo "herdr vibe-resume plugin link failed, continuing"
+  '';
 }
