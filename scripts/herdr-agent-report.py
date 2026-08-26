@@ -55,7 +55,8 @@ HERDR_SESSION_SOURCES = {"claude": "herdr:claude"}
 PARKED_SESSION_DIR = "herdr-vibe-resume/panes"
 
 # A full UUID would crowd the agent label out of a sidebar row that is 26
-# columns wide by default.
+# columns wide by default. scripts/agent-transcript.py resolves a session log
+# back from this token, so both ends spell the width out — keep them in step.
 SESSION_TOKEN_CHARS = 8
 
 

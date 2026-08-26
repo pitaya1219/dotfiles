@@ -157,10 +157,14 @@ in
           # through pane.send_input rather than `herdr pane send-text`.
           #
           # prefix+y is the clipboard-free half: prefix+[ copy mode can only
-          # yank into the system clipboard, so this opens the same scrollback
+          # yank into the system clipboard, so this opens the pane's history
           # in nvim and lets its registers hold the text. prefix+] prefers
           # what it wrote and falls back to the clipboard, which keeps the
           # native copy mode usable; prefix+shift+] forces the clipboard.
+          #
+          # On an agent pane that history is the agent's session log rather
+          # than the scrollback, which alternate-screen renderers leave empty;
+          # prefix+[ has no such escape hatch and stays blank there.
           {
             key = "prefix+y";
             type = "popup";
