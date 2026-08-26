@@ -308,7 +308,7 @@ esac
 
 # fzf runs reload() and --preview through `sh -c`, so re-entry has to be a
 # command line rather than an argv, and naming the interpreter is what keeps it
-# working when the script is started as `bash path/to/agent-resume.sh` out of a
+# working when the script is started as `bash path/to/agent-open.sh` out of a
 # checkout: there the file carries neither a shebang nor the execute bit, both
 # of which only the writeShellApplication build supplies.
 reenter="bash $(printf '%q' "$0")"

@@ -1,6 +1,7 @@
 # herdr-run — a command palette over the herdr actions that
 # shared/programs/herdr.nix otherwise only exposes as prefix+alt+... chords:
-# agent-resume, focus_agent, and the herdr-mirror plugin_action bindings.
+# agent-open (resuming and starting), focus_agent, and the herdr-mirror
+# plugin_action bindings.
 # alt+... chords depend on the terminal forwarding the alt modifier, which
 # some (Termux and other droid-profile terminals) never do, so those actions
 # have no way to fire there at all. Every row below reaches the same
@@ -29,7 +30,8 @@ session, focusing any live agent, and every herdr-mirror plugin action.
 category; give an explicit id to skip the palette and run it directly.
 
   herdr-run                       full palette                  (prefix+f)
-  herdr-run resume                 open the agent-resume picker  (prefix+alt+r)
+  herdr-run resume                 open the agent-open picker    (prefix+alt+r)
+  herdr-run new                    start a new agent session     (prefix+alt+a)
   herdr-run focus [pane-id]        focus an agent, or filter to  (prefix+alt+1..9)
                                     "Focus:" rows with no id
   herdr-run mirror [action-id]     invoke a mirror action, or    (prefix+shift+m/s/b,
@@ -42,7 +44,8 @@ EOF
 # palette and every other row source pick it up automatically.
 static_rows() {
   printf '%s\t%s\t%s\n' \
-    resume 'Resume an agent session' 'agent-resume'
+    resume 'Resume an agent session' 'agent-open' \
+    new 'Start a new agent session' 'agent-open --new'
 }
 
 agent_rows() {
@@ -81,7 +84,15 @@ palette() {
 }
 
 cmd_resume() {
-  exec agent-resume
+  exec agent-open
+}
+
+cmd_new() {
+  local agent="${1:-}"
+  if [ -z "$agent" ]; then
+    exec agent-open --new
+  fi
+  exec agent-open --new "$agent"
 }
 
 cmd_focus() {
@@ -105,6 +116,7 @@ cmd_mirror() {
 main() {
   case "${1:-}" in
     resume) shift; cmd_resume "$@" ;;
+    new)    shift; cmd_new "$@" ;;
     focus)  shift; cmd_focus "$@" ;;
     mirror) shift; cmd_mirror "$@" ;;
     "")     palette "" ;;
