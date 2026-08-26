@@ -256,6 +256,36 @@
         (name: profile: profile.mkHomeConfiguration)
         profiles;
 
+      # Activating against a throwaway home directory is how a change gets
+      # exercised end to end without putting the real one at risk. The target
+      # directory comes from $DOTFILES_SANDBOX_HOME rather than a fixed path so
+      # each sandbox can live wherever the caller is working; reading it means
+      # these outputs only evaluate under --impure.
+      sandboxHome =
+        let dir = builtins.getEnv "DOTFILES_SANDBOX_HOME";
+        in if dir == "" then
+          throw "DOTFILES_SANDBOX_HOME is unset. Set it to the sandbox home directory and pass --impure."
+        else dir;
+
+      # A home-manager activation writes under $HOME apart from what it hands to
+      # a service manager, which addresses units by name and so reaches the live
+      # session however HOME is set. Switching those subsystems off wholesale is
+      # what keeps this from becoming a list with an entry per module.
+      #
+      # launchd needs the agent set cleared rather than `launchd.enable = false`:
+      # that option only feeds an assertion, leaving the activation that runs
+      # `launchctl bootstrap` against gui/$UID wired to `launchd.agents`.
+      # `systemd.user.enable` does gate both its units and its reload step.
+      sandboxModule = { lib, ... }: {
+        home.homeDirectory = lib.mkForce sandboxHome;
+        launchd.agents = lib.mkForce { };
+        systemd.user.enable = lib.mkForce false;
+      };
+
+      sandboxConfigurations = builtins.mapAttrs
+        (_: configuration: configuration.extendModules { modules = [ sandboxModule ]; })
+        homeConfigurations;
+
       # Darwin (macOS system-level) configurations — only for profiles that opt in
       # r-shibuya uses nix-darwin for declarative brew cask management and system settings
       darwinConfigurations."r-shibuya" =
@@ -266,6 +296,6 @@
 
     in
     {
-      inherit homeConfigurations darwinConfigurations;
+      inherit homeConfigurations darwinConfigurations sandboxConfigurations;
     };
 }

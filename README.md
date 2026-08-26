@@ -26,6 +26,77 @@ task install
 task setup:nix
 ```
 
+## Sandbox activation
+
+`task nix:sandbox` activates the current checkout against a throwaway home
+directory instead of the real one, so a change can be exercised end to end
+before it is deployed.
+
+```bash
+task nix:sandbox                                    # /tmp/dotfiles-sandbox
+task nix:sandbox SANDBOX_HOME=/tmp/hm PROFILE=rose
+task nix:sandbox:shell                              # re-enter without re-activating
+task nix:sandbox:clean
+```
+
+It builds `sandboxConfigurations.<profile>` -- the profile's own module list
+with `home.homeDirectory` pointed at the sandbox -- runs the real activation
+script with `HOME` set to match, and drops you into a login shell there;
+leaving the shell returns you where you were, and `nix:sandbox:shell` opens
+another one later without redoing the activation. `$HOME/dotfiles` inside the
+sandbox is a symlink back to the checkout, so the scripts that configurations
+reference through that path are the ones being edited rather than the deployed
+copies.
+
+### Which paths follow the sandbox
+
+| How the path is written | In the sandbox |
+| --- | --- |
+| `${pkgs.foo}/bin/foo` | the same store path as production |
+| `${config.home.homeDirectory}/...` | rewritten to the sandbox home |
+| `~/...` or `$HOME/...` resolved at runtime | rewritten to the sandbox home |
+| `/etc/profiles/per-user/<user>/bin/...` | **not** rewritten |
+
+The last row is the one to watch. Naming a binary through the nix-darwin
+per-user profile keeps it pointing at whatever is already installed, so a
+sandbox run exercises the deployed copy of a script and not the new one.
+
+### What it leaves alone
+
+- Service manager registrations. launchd agents and systemd user units are
+  addressed by unit name against the live session, which no `HOME` override
+  redirects, so both subsystems are switched off for a sandbox.
+- The nix-darwin system layer (`/etc`, `/Library/LaunchDaemons`,
+  `/run/current-system`) is out of scope. Reach for
+  `nix build .#darwinConfigurations.<profile>.system` and
+  `nix store diff-closures` there instead.
+- Files that home-manager does not manage are simply absent. `~/.gitconfig`
+  carries the git identity by hand, for one, so git inside the sandbox has none.
+- The inherited environment, beyond the variables that would aim the sandbox at
+  live state. `PATH` still carries real-home entries, so a `command -v` probe
+  inside an activation script can find the deployed install and report a step as
+  already done.
+
+### herdr
+
+herdr runs inside the sandbox and reaches a server of its own: it derives its
+socket from `$HOME`, and `nix:sandbox` clears `HERDR_SOCKET_PATH` so an inherited
+value cannot point it back at the live one. `herdr status server` inside the
+sandbox reports the sandbox socket while the real server keeps running, and the
+two `session list` outputs share nothing.
+
+Prefer the default session for this. `herdr --session <name>` moves the socket
+down to `.config/herdr/sessions/<name>/herdr.sock`, spending another
+`/sessions/<name>` worth of the budget below.
+
+### Path length
+
+Keep `SANDBOX_HOME` short. Unix socket paths cap at 104 bytes on macOS and
+several configurations bind sockets under `$HOME/.config`; herdr alone spends 25
+of those bytes on `.config/herdr/herdr.sock`. Working out of a deeply nested
+directory does not mean giving that up -- leave the sandbox under `/tmp` and
+symlink to it from where you are working.
+
 ## Environment Variables
 
 ### Gitea MCP Configuration

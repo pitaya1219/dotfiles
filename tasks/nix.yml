@@ -1,5 +1,12 @@
 version: '3'
 
+vars:
+  SANDBOX_HOME: '/tmp/dotfiles-sandbox'
+  # HERDR_SOCKET_PATH and NIX_PROFILES hold absolute paths into the real home,
+  # so overriding HOME alone leaves a sandbox talking to the live herdr session
+  # and resolving the live profiles.
+  SANDBOX_ENV: 'env -u HERDR_SOCKET_PATH -u HERDR_ENV -u NIX_PROFILES'
+
 tasks:
   default:
     cmds:
@@ -67,6 +74,64 @@ tasks:
         # inconsistency this guards against is a missing file, not an altered
         # one.
         nix-store --verify
+  sandbox:
+    desc: Activate this checkout against a throwaway home directory and open a shell in it
+    silent: true
+    vars:
+      PROFILE: '{{.PROFILE | default .USER}}'
+    cmds:
+      - |
+        set -euo pipefail
+        sandbox="{{.SANDBOX_HOME}}"
+
+        # Unix socket paths cap at 104 bytes on macOS and configurations
+        # activated here bind sockets under $HOME/.config, herdr's
+        # .config/herdr/herdr.sock accounting for 25 of them. The ceiling below
+        # leaves room for a deeper socket than that one. Past it, activation
+        # fails with a sun_path error naming neither the sandbox nor the length.
+        max_length=48
+        if [ "${#sandbox}" -gt "$max_length" ]; then
+          echo "SANDBOX_HOME is ${#sandbox} characters; keep it to $max_length or sockets under it cannot bind." >&2
+          exit 1
+        fi
+
+        mkdir -p "$sandbox"
+
+        # Paths written as $HOME/dotfiles/scripts/... have to land on this
+        # checkout, so that what runs in the sandbox is the change under test
+        # and not whatever is already deployed.
+        ln -sfn "$PWD" "$sandbox/dotfiles"
+
+        DOTFILES_SANDBOX_HOME="$sandbox" nix build --impure \
+          ".#sandboxConfigurations.{{.PROFILE}}.activationPackage" \
+          --out-link "$sandbox/.activation-package"
+
+        {{.SANDBOX_ENV}} HOME="$sandbox" "$sandbox/.activation-package/activate"
+      - task: sandbox:shell
+
+  sandbox:shell:
+    desc: Open a login shell in an existing sandbox home without re-activating it
+    silent: true
+    preconditions:
+      - sh: '[ -x "{{.SANDBOX_HOME}}/.nix-profile/bin/bash" ]'
+        msg: "{{.SANDBOX_HOME}} has no activated profile. Run `task nix:sandbox` first."
+    cmds:
+      - |
+        echo "Sandbox home: {{.SANDBOX_HOME}}"
+        echo "Exit the shell to return."
+        {{.SANDBOX_ENV}} HOME="{{.SANDBOX_HOME}}" \
+          "{{.SANDBOX_HOME}}/.nix-profile/bin/bash" -l
+
+  sandbox:clean:
+    desc: Remove a sandbox home directory created by nix:sandbox
+    silent: true
+    preconditions:
+      - sh: '[ -e "{{.SANDBOX_HOME}}/.activation-package" ]'
+        msg: "{{.SANDBOX_HOME}} does not look like a sandbox home; refusing to remove it."
+    cmds:
+      - 'rm -rf "{{.SANDBOX_HOME}}"'
+      - 'echo "Removed {{.SANDBOX_HOME}}"'
+
   upgrade:
     desc: Update Nix flake inputs and rebuild
     cmds:
