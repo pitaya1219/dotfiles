@@ -93,9 +93,92 @@ instructions from `~/.agent/conventions.md`.
 - Maintain platform compatibility (macOS/Linux)
 
 ### Testing Changes
-1. Test changes locally with `nix run home-manager/master -- switch --flake .#<profile>`
-2. Verify no build errors before committing
-3. Check that profile-specific overrides work correctly
+
+Exercise a change with `task nix:sandbox`, which activates the checkout against
+a throwaway home directory instead of the real one. README's *Sandbox
+activation* covers running it and what it leaves alone; this section is about
+deciding whether a change you are making escapes it. Prefer the sandbox over
+switching the real profile: a broken change costs a `task nix:sandbox:clean`
+rather than a rollback.
+
+The sandbox works by moving `$HOME` and nothing else. So the question to ask of
+any module being added or changed is: **does it reach something that moving
+`$HOME` does not move?** Four kinds do.
+
+#### 1. Hands work to a service manager
+
+launchd agents and systemd user units are addressed by unit name against the
+live session, so a sandbox activation would take over the real ones.
+`sandboxModule` in `flake.nix` switches both subsystems off wholesale. Keep it
+that way: clearing a category is what stops it becoming a registry with an
+entry per module.
+
+Do not trust the option that reads like the off switch. `launchd.enable = false`
+looks like it disables agents and does not: it only feeds an assertion, while
+the activation that runs `launchctl bootstrap` against `gui/$UID` is wired to
+`launchd.agents`. `systemd.user.enable` does gate both its units and its reload
+step.
+
+#### 2. Absolute paths not derived from `config.home.homeDirectory`
+
+`/etc/profiles/per-user/<user>/bin/...`, `/run/current-system/...`,
+`/Library/...`. These keep pointing at what is already deployed, so the sandbox
+silently exercises the old copy.
+
+This is a limit to know rather than a bug to fix. `shared/programs/mtg-minutes.nix`
+names `voice-in` through the nix-darwin per-user profile deliberately, because a
+store path baked into `karabiner.json` dangles after the next switch. A change to
+a script reached that way cannot be verified in the sandbox at all: switch for
+real, or drive the script directly.
+
+Referencing repository scripts as
+`${config.home.homeDirectory}/dotfiles/scripts/...` is the opposite case, and
+the reason to prefer it: the sandbox rewrites that path onto the checkout under
+test, so edits take effect there with no rebuild.
+
+#### 3. Writes outside `$HOME` from an activation script
+
+`shared/activations/gapplin.nix` installs through `mas`,
+`shared/activations/proton-pass.nix` pipes a vendor installer into bash. No
+option clears these as a category, so if one starts doing something a sandbox
+must not repeat, force that block empty with
+`home.activation.<name> = lib.mkForce ""`.
+
+#### 4. Binds a unix socket under `$HOME`
+
+The sandbox home path plus the socket's own path has to fit `sun_path`, which is
+why `nix:sandbox` relocates a deep `SANDBOX_HOME` under `/tmp` rather than
+binding beneath it (README: *Path length*). Adding another socket-binding
+program eats into that budget, and the ceiling in `tasks/nix.yml` has to move
+with it.
+
+#### Confirming a neutralization took
+
+Build the sandbox activation package and read what survived, rather than
+trusting that setting the option was enough:
+
+```bash
+DOTFILES_SANDBOX_HOME=/tmp/sbx nix build --impure \
+  ".#sandboxConfigurations.<profile>.activationPackage" -o /tmp/sbx-result
+
+grep -n 'checkPathEq HOME' /tmp/sbx-result/activate   # must name the sandbox
+ls -A /tmp/sbx-result/LaunchAgents                    # must be empty
+grep -n '<token the module introduces>' /tmp/sbx-result/activate
+```
+
+Grep for the specific thing the module adds -- the plist `Label`, the `defaults`
+domain, the socket path. A generic sweep for absolute paths is not worth
+running: `activate` legitimately names `/bin/launchctl`, `/usr/bin/security`,
+`/opt/homebrew/bin` and more, and matches inside `"$HOME/Library/..."` come back
+looking like escapes, so the noise buries the signal.
+
+`setupLaunchAgents` keeps its `launchctl bootstrap` call in the generated script
+even when the agent set is empty; it iterates the `LaunchAgents` directory, so
+nothing runs. Emptiness of that directory is the check, not absence of the word
+`launchctl`.
+
+The `launchd.enable` trap above was found exactly this way: the option was set,
+and the plists were still sitting in `LaunchAgents`.
 
 ### File Management
 - NEVER edit generated files in `~/.config/`

@@ -192,6 +192,14 @@ nix run home-manager/master -- switch --flake .#<profile>
 - Unfree packages centrally managed with profile-specific additions
 - Interactive setup process with rich UI feedback
 
+## Testing Changes
+
+`task nix:sandbox` activates the checkout against a throwaway home directory, so
+a change can be exercised without switching the real profile. *Sandbox
+activation* in `README.md` covers running it. Before adding or changing a
+module, read *Testing Changes* in `AGENTS.md`: it carries the rule for deciding
+whether a change escapes the sandbox, and what to do about it.
+
 ## Git Commit Preferences
 
 Commit message rules are not repository-specific and live in
