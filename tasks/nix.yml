@@ -1,8 +1,12 @@
 version: '3'
 
 vars:
-  # Where you want to reach the sandbox from.
-  SANDBOX_HOME: '/tmp/dotfiles-sandbox'
+  # Where you want to reach the sandbox from. One per checkout by default, so
+  # that sessions working on different clones cannot activate into the same
+  # directory at once: a shared default would leave whichever ran last owning
+  # the $HOME/dotfiles symlink, and the other exercising its scripts.
+  SANDBOX_HOME:
+    sh: 'printf "/tmp/dotfiles-sandbox-%s\n" "$(printf "%s" "{{.ROOT_DIR}}" | cksum | cut -d" " -f1)"'
 
   # Where it actually lives. Unix socket paths cap at 104 bytes on macOS and
   # configurations activated here bind sockets under $HOME/.config -- herdr's

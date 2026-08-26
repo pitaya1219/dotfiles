@@ -33,7 +33,7 @@ directory instead of the real one, so a change can be exercised end to end
 before it is deployed.
 
 ```bash
-task nix:sandbox                                    # /tmp/dotfiles-sandbox
+task nix:sandbox                                    # /tmp/dotfiles-sandbox-<checkout>
 task nix:sandbox SANDBOX_HOME=$PWD/sandbox PROFILE=rose
 task nix:sandbox:shell                              # re-enter without re-activating
 task nix:sandbox:clean
@@ -76,6 +76,23 @@ sandbox run exercises the deployed copy of a script and not the new one.
   live state. `PATH` still carries real-home entries, so a `command -v` probe
   inside an activation script can find the deployed install and report a step as
   already done.
+
+### Running several at once
+
+Everything an activation touches is derived from `$HOME` -- the profile, its
+generation links and its gcroots all land under the sandbox -- and `nix build`
+is serialised by the daemon. A sandbox activation and a real `home-manager
+switch` therefore do not interfere, and neither do two sandboxes, as long as
+they are two different sandboxes.
+
+Which is why the default `SANDBOX_HOME` is named after the checkout rather than
+being one fixed path: sessions working on different clones would otherwise
+activate into the same directory, and whichever ran last would own the
+`$HOME/dotfiles` symlink while the other exercised its scripts.
+
+Two runs against the *same* sandbox are the exception, and no better supported
+than two concurrent `home-manager switch` runs would be. Pass distinct
+`SANDBOX_HOME` values to run two from one checkout.
 
 ### herdr
 
