@@ -83,13 +83,16 @@
         command = "${config.home.homeDirectory}/dotfiles/scripts/claude-statusline.sh";
       };
       model = config.dotfiles.claude-code.model;
-      # Claude Code's "fullscreen" renderer draws on the alternate screen and
-      # keeps its scrollback virtualized inside itself, so nothing reaches the
-      # host terminal: herdr reports an empty scrollback for every agent pane
-      # and prefix+[ / prefix+y come back with only the visible rows. The
-      # classic main-screen renderer flickers but leaves the transcript where
-      # herdr can scroll and copy it.
-      tui = "default";
+      # Pinned rather than left to Claude Code, which otherwise decides through
+      # a server-side gate and, after showing its upsell five times, persists
+      # the answer by writing to this file — a read-only symlink into the Nix
+      # store. Naming the renderer here settles it before the gate is consulted.
+      #
+      # "fullscreen" costs the host terminal its scrollback: the alternate
+      # screen keeps every line inside the process, so herdr has nothing to
+      # scroll, copy or read back. scripts/agent-transcript.py covers that by
+      # reading the session log instead — see scripts/herdr-copy.sh.
+      tui = "fullscreen";
       # Dedicated, passphrase-less herdr-mirror keys (see profiles/*/ssh/)
       # let an agent session ssh to dragonfruit/rose/aviateur with no human
       # in the loop. This is a hard deny, not "ask" — an agent can't
