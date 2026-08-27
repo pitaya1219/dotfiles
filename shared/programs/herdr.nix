@@ -113,7 +113,10 @@ in
           # Resuming a past agent session is the one thing herdr has no entry
           # point for: [[keys.command]] runs a fixed string with no argument
           # prompt, and neither the workspace picker nor `goto` accepts rows
-          # from outside herdr. agent-open supplies the picker itself.
+          # from outside herdr. agent-open supplies the picker itself, over the
+          # mirrored hosts below as well as this one — a remote row's tab is
+          # opened by that host's herdr, so it arrives back here through the
+          # same mirror rather than needing an entry point of its own.
           { key = "prefix+alt+r"; type = "popup"; command = "agent-open"; width = "90%"; height = "80%"; description = "Resume an agent session"; }
 
           # A chord per agent would be three chords to remember, so --new asks
