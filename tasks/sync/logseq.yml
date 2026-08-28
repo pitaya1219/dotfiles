@@ -44,9 +44,6 @@ tasks:
         
         echo "$(date '+%Y-%m-%d %H:%M:%S') - Starting bidirectional sync" >> "$LOG_FILE"
         EXCLUDE_ARGS="{{.EXCLUDE}}"
-        if [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
-            EXCLUDE_ARGS="${EXCLUDE_ARGS},logseq/bak/**"
-        fi
         set +e
         task sync:bisync:pcloud SOURCE_DIR="$LOGSEQ_LOCAL" ENCRYPT_SUBDIR="$LOGSEQ_REMOTE" PARENT_DIR="" EXCLUDE="$EXCLUDE_ARGS" -- $RESYNC {{.CLI_ARGS}}
         SYNC_RESULT=$?
@@ -117,9 +114,6 @@ tasks:
         export LOGSEQ_REMOTE="{{.LOGSEQ_REMOTE}}"
         echo "Starting download sync" >> "{{.LOG_FILE}}"
         EXCLUDE_ARGS="{{.EXCLUDE}}"
-        if [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
-            EXCLUDE_ARGS="${EXCLUDE_ARGS},logseq/bak/**"
-        fi
         set +e
         task sync:down:pcloud DIST_DIR="$LOGSEQ_LOCAL" ENCRYPT_SUBDIR="$LOGSEQ_REMOTE" PARENT_DIR="" EXCLUDE="$EXCLUDE_ARGS" -- {{.CLI_ARGS}}
         SYNC_RESULT=$?
@@ -743,14 +737,6 @@ tasks:
         fi
         if [[ "$(uname)" == "Darwin" ]]; then
             osascript -e "display notification \"$MESSAGE\" with title \"$TITLE\"" 2>/dev/null || true
-        elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
-            if command -v termux-notification &>/dev/null; then
-                case "$PRIORITY" in
-                    high) termux-notification --title "$TITLE" --content "$MESSAGE" --priority high 2>/dev/null || true ;;
-                    low) termux-notification --title "$TITLE" --content "$MESSAGE" --priority low 2>/dev/null || true ;;
-                    *) termux-notification --title "$TITLE" --content "$MESSAGE" 2>/dev/null || true ;;
-                esac
-            fi
         elif grep -qi microsoft /proc/version 2>/dev/null || [[ -f /etc/os-release ]]; then
             if command -v notify-send &>/dev/null; then
                 case "$PRIORITY" in
@@ -771,8 +757,6 @@ tasks:
         if [[ "$(uname)" == "Darwin" ]]; then
             echo "On macOS, logseq sync is managed via home-manager launchd.agents."
             echo "Run: home-manager switch --flake ~/dotfiles#r-shibuya"
-        elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
-            task sync:logseq:schedule-termux
         elif [[ -d /run/systemd/system ]]; then
             task sync:logseq:schedule-systemd
         else
@@ -789,8 +773,6 @@ tasks:
         if [[ "$(uname)" == "Darwin" ]]; then
             echo "On macOS, logseq sync is managed via home-manager launchd.agents."
             echo "To disable, set launchd.agents.logseq-sync.enable = false in profiles/r-shibuya.nix"
-        elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
-            task sync:logseq:schedule-termux-remove
         elif [[ -d /run/systemd/system ]]; then
             task sync:logseq:schedule-systemd-remove
         else
@@ -807,30 +789,11 @@ tasks:
         if [[ "$(uname)" == "Darwin" ]]; then
             echo "=== macOS launchd (managed by home-manager) ==="
             launchctl list | grep com.logseq.sync || echo "Not loaded"
-        elif [[ -n "${TERMUX_VERSION:-}" ]] || [[ -d /data/data/com.termux ]]; then
-            task sync:logseq:schedule-termux-status
         elif [[ -d /run/systemd/system ]]; then
             task sync:logseq:schedule-systemd-status
         else
             task sync:logseq:schedule-cron-status
         fi
-        INNEREOF
-
-  shortcut:
-    desc: Create Termux shortcut for logseq sync
-    cmds:
-      - |
-        bash <<'INNEREOF'
-        set -euo pipefail
-        mkdir -p "$HOME/.shortcuts"
-        DOTFILES_DIR="{{.DOTFILES_DIR | default (env "HOME") }}/dotfiles"
-        TEMPLATE="$DOTFILES_DIR/tasks/sync/logseq/templates/termux/logseq-sync-shortcut.sh"
-        OUTPUT="$HOME/.shortcuts/logseq-sync"
-        
-        # Generate shortcut from template with __VAR__ substitution
-        sed "s|__DOTFILES_DIR__|$DOTFILES_DIR|g" "$TEMPLATE" > "$OUTPUT"
-        chmod +x "$OUTPUT"
-        echo "Termux shortcut created at $OUTPUT"
         INNEREOF
 
   schedule-systemd:
@@ -934,69 +897,3 @@ tasks:
         echo "Cron job removed"
         INNEREOF
 
-  schedule-termux:
-    desc: Setup Termux service for logseq sync
-    vars:
-      LOGSEQ_SYNC_INTERVAL: '{{.LOGSEQ_SYNC_INTERVAL | default "1800"}}'
-    cmds:
-      - mkdir -p "$HOME/.termux/boot"
-      - |
-        bash <<'INNEREOF'
-        set -euo pipefail
-        DOTFILES_DIR="{{.DOTFILES_DIR | default (env "HOME") }}/dotfiles"
-        TEMPLATE="$DOTFILES_DIR/tasks/sync/logseq/templates/termux/logseq-sync.sh"
-        OUTPUT="$HOME/.termux/boot/logseq-sync"
-        LOG_FILE="{{.LOG_FILE}}"
-        LOG_FILE_ERROR="$(echo "$LOG_FILE" | sed 's/\.log$/-error.log/')"
-        
-        # Generate boot script from template with __VAR__ substitution
-        sed "s|__DOTFILES_DIR__|$DOTFILES_DIR|g" "$TEMPLATE" \
-          | sed "s|__HOME__|$HOME|g" \
-          | sed "s|__PATH__|$PATH|g" \
-          | sed "s|__LOGSEQ_LOCAL__|{{.LOGSEQ_LOCAL}}|g" \
-          | sed "s|__LOGSEQ_REMOTE__|{{.LOGSEQ_REMOTE}}|g" \
-          | sed "s|__LOG_FILE__|$LOG_FILE|g" \
-          | sed "s|__LOG_FILE_ERROR__|$LOG_FILE_ERROR|g" \
-          > "$OUTPUT"
-        
-        chmod +x "$OUTPUT"
-        
-        # For periodic execution in Termux, also set up cron
-        # Since Termux boot scripts only run at startup
-        if command -v crontab &>/dev/null; then
-            # Create a cron entry for periodic sync (every 30 minutes)
-            CRON_LINE="*/30 * * * * $OUTPUT >> $LOG_FILE 2>> $LOG_FILE_ERROR"
-            TEMP_CRONTAB=$(mktemp)
-            { crontab -l 2>/dev/null | grep -v "logseq-sync"; echo "$CRON_LINE"; } > "$TEMP_CRONTAB"
-            crontab "$TEMP_CRONTAB"
-            rm -f "$TEMP_CRONTAB"
-            echo "Cron job also installed for periodic sync"
-        fi
-        
-        echo "Termux boot script installed: $OUTPUT"
-        INNEREOF
-
-  schedule-termux-status:
-    desc: Show Termux service status
-    cmds:
-      - ls -la "$HOME/.termux/boot/logseq-sync" 2>/dev/null || echo "Boot script not found"
-
-  schedule-termux-remove:
-    desc: Remove Termux service
-    cmds:
-      - |
-        bash <<'INNEREOF'
-        set -euo pipefail
-        rm -f "$HOME/.termux/boot/logseq-sync"
-        
-        # Also remove cron entry if exists
-        if command -v crontab &>/dev/null; then
-            TEMP_CRONTAB=$(mktemp)
-            crontab -l 2>/dev/null | grep -v "logseq-sync" > "$TEMP_CRONTAB"
-            crontab "$TEMP_CRONTAB"
-            rm -f "$TEMP_CRONTAB"
-            echo "Cron entry removed"
-        fi
-        
-        echo "Termux boot script removed"
-        INNEREOF

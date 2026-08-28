@@ -68,7 +68,7 @@ This is a sophisticated multi-profile dotfiles configuration repository that use
 - **Neovim**: copilot-vim integration
 - **Unfree**: copilot.vim allowed
 
-### droid Profile (Linux/Android Termux)
+### droid Profile (Android native Linux Terminal)
 - **Platform**: aarch64-linux (ARM64)
 - **Home**: `/home/droid`
 - **Packages**: jq (additional)

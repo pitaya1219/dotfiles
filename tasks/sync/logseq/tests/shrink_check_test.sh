@@ -8,7 +8,7 @@
 # inspects the generated conflict-*.md page and log output.
 #
 # Notification suppression: sync:logseq:notify pops a real OS notification
-# (osascript on macOS, termux-notification, notify-send elsewhere). Every
+# (osascript on macOS, notify-send elsewhere). Every
 # task invocation below exports LOGSEQ_SYNC_NO_NOTIFY=1, which notify checks
 # first and exits on before touching the OS - see tasks/sync/logseq.yml.
 # This still exercises the "would have notified" code path in _shrink_check

@@ -4,7 +4,7 @@
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
     pkgs = import nixpkgs {
       system = "aarch64-linux";
-      overlays = [ overlays.mistral-vibe overlays.mistral-vibe-proot-unpack overlays.fix-neovim-lua-passthru overlays.pipx-no-check overlays.poetry-no-check overlays.pipx-proot-unpack overlays.logseq-view overlays.logseq-view-proot-unpack overlays.vim-plugin-proot-unpack overlays.nix-claude-code overlays.herdr ];
+      overlays = [ overlays.mistral-vibe overlays.fix-neovim-lua-passthru overlays.pipx-no-check overlays.poetry-no-check overlays.logseq-view overlays.nix-claude-code overlays.herdr ];
     };
     modules = [
       ({ config, pkgs, lib, ... }: {
@@ -41,7 +41,6 @@
           ../shared/programs/readline.nix
           ../shared/activations/huggingface_hub.nix
           ../shared/activations/proton-pass.nix
-          ./droid/activations/termux-font.nix
           ./droid/activations/linux-terminal-font.nix
           ./droid/activations/herdr_mirror.nix
           ./droid/packages/shellm.nix

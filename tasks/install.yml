@@ -7,8 +7,6 @@ tasks:
     cmds:
       - task: git
       - task: dropbear
-      - task: proot
-      - task: bare-termux
       - task: nix
   git:
     desc: Install Git
@@ -94,94 +92,6 @@ tasks:
             exit 1
             ;;
         esac
-  proot:
-    desc: Install proot (for Termux environments)
-    silent: true
-    cmds:
-      - |
-        echo "🔧 Installing proot..."
-        case "{{.UNAME_S}}" in
-          Darwin)
-            echo "⚠️  proot is not needed on macOS";
-            ;;
-          Linux)
-            if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
-              if ! command -v proot >/dev/null 2>&1; then
-                if command -v pkg >/dev/null 2>&1; then
-                  pkg update && pkg install -y proot;
-                elif command -v apt-get >/dev/null 2>&1; then
-                  apt-get update && apt-get install -y proot;
-                else
-                  echo "❌ No suitable package manager found for proot installation.";
-                  exit 1;
-                fi
-              else
-                echo "✅ proot is already installed";
-              fi
-            else
-              echo "⚠️  proot installation skipped (not in Termux environment)";
-            fi
-            ;;
-          *)
-            echo "❌ Unsupported operating system: {{.UNAME_S}}"
-            exit 1
-            ;;
-        esac
-  termux-packages:
-    desc: Install termux-api and termux-services (for Termux environments)
-    silent: true
-    cmds:
-      - |
-        echo "🔧 Installing termux-api and termux-services..."
-        case "{{.UNAME_S}}" in
-          Darwin)
-            echo "⚠️  termux-api and termux-services are not needed on macOS";
-            ;;
-          Linux)
-            if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
-              INSTALLED=0
-              if ! command -v termux-battery-status >/dev/null 2>&1; then
-                if command -v pkg >/dev/null 2>&1; then
-                  pkg update && pkg install -y termux-api;
-                  INSTALLED=1
-                elif command -v apt-get >/dev/null 2>&1; then
-                  apt-get update && apt-get install -y termux-api;
-                  INSTALLED=1
-                else
-                  echo "❌ No suitable package manager found for termux-api installation.";
-                  exit 1;
-                fi
-              else
-                echo "✅ termux-api is already installed";
-              fi
-              if ! command -v sv >/dev/null 2>&1 && ! [ -d "$PREFIX/var/service" ]; then
-                if command -v pkg >/dev/null 2>&1; then
-                  pkg update && pkg install -y termux-services;
-                  INSTALLED=1
-                elif command -v apt-get >/dev/null 2>&1; then
-                  apt-get update && apt-get install -y termux-services;
-                  INSTALLED=1
-                else
-                  echo "❌ No suitable package manager found for termux-services installation.";
-                  exit 1;
-                fi
-              else
-                echo "✅ termux-services is already installed";
-              fi
-              if [ $INSTALLED -eq 1 ]; then
-                echo "";
-                echo "⚠️  Please restart Termux to activate termux-services.";
-                echo "";
-              fi
-            else
-              echo "⚠️  termux-api and termux-services installation skipped (not in Termux environment)";
-            fi
-            ;;
-          *)
-            echo "❌ Unsupported operating system: {{.UNAME_S}}"
-            exit 1
-            ;;
-        esac
   claude:
     desc: Install Nix
     silent: true
@@ -198,35 +108,7 @@ tasks:
         echo "🔧 Installing Nix package manager..."
         if ! command -v nix >/dev/null 2>&1; then
           echo "📥 Downloading and installing Nix...";
-          if uname -r 2>/dev/null | grep -qi "proot"; then
-            echo "🐧 proot environment detected, applying cp compatibility workaround...";
-            # proot does not support fchmodat with AT_EMPTY_PATH, which causes
-            # the Nix installer's "cp -a" to fail. Wrap cp to use -r instead.
-            mkdir -p /tmp/_nix_cp_wrap
-            {
-              echo '#!/bin/bash'
-              echo 'args=()'
-              echo 'for arg in "$@"; do'
-              echo '  case "$arg" in'
-              echo '    -a|--archive) args+=("-r") ;;'
-              echo '    --preserve=*|-p|--preserve) ;;'
-              echo '    *) args+=("$arg") ;;'
-              echo '  esac'
-              echo 'done'
-              echo 'exec /bin/cp "${args[@]}"'
-            } > /tmp/_nix_cp_wrap/cp
-            chmod +x /tmp/_nix_cp_wrap/cp
-            # sandbox and filter-syscalls require user namespaces, which are
-            # disabled in Android kernels. Pre-create nix.conf so the installer
-            # and all future nix commands work correctly in proot.
-            mkdir -p /etc/nix
-            printf 'sandbox = false\nfilter-syscalls = false\n' > /etc/nix/nix.conf
-            curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | \
-              PATH="/tmp/_nix_cp_wrap:$PATH" sh
-            rm -rf /tmp/_nix_cp_wrap
-          else
-            curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | sh;
-          fi
+          curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | sh;
           echo "";
           echo "⚠️  Please restart your shell or run:";
           echo "    source ~/.nix-profile/etc/profile.d/nix.sh";
@@ -235,75 +117,6 @@ tasks:
           echo "✅ Nix is already installed";
           nix --version;
         fi
-  bare-termux:
-    desc: Install rclone and passage for bare Termux (without proot)
-    silent: true
-    cmds:
-      - task: rclone
-      - task: passage
-      - task: termux-packages
-  rclone:
-    desc: Install rclone (for bare Termux)
-    silent: true
-    cmds:
-      - |
-        echo "🔧 Installing rclone..."
-        case "{{.UNAME_S}}" in
-          Linux)
-            if ! command -v rclone >/dev/null 2>&1; then
-              if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
-                if command -v pkg >/dev/null 2>&1; then
-                  pkg update && pkg install -y rclone;
-                elif command -v apt-get >/dev/null 2>&1; then
-                  apt-get update && apt-get install -y rclone;
-                else
-                  echo "❌ No suitable package manager found.";
-                  exit 1;
-                fi
-              else
-                echo "❌ This task is for Termux environments only.";
-                exit 1;
-              fi
-            else
-              echo "✅ rclone is already installed";
-            fi
-            ;;
-          *)
-            echo "❌ Unsupported operating system: {{.UNAME_S}}"
-            exit 1
-            ;;
-        esac
-  passage:
-    desc: Install passage (for bare Termux)
-    silent: true
-    cmds:
-      - |
-        echo "🔧 Installing passage..."
-        case "{{.UNAME_S}}" in
-          Linux)
-            if ! command -v passage >/dev/null 2>&1; then
-              if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
-                if command -v pkg >/dev/null 2>&1; then
-                  pkg update && pkg install -y passage;
-                elif command -v apt-get >/dev/null 2>&1; then
-                  apt-get update && apt-get install -y passage;
-                else
-                  echo "❌ No suitable package manager found.";
-                  exit 1;
-                fi
-              else
-                echo "❌ This task is for Termux environments only.";
-                exit 1;
-              fi
-            else
-              echo "✅ passage is already installed";
-            fi
-            ;;
-          *)
-            echo "❌ Unsupported operating system: {{.UNAME_S}}"
-            exit 1
-            ;;
-        esac
   check-deps:
     desc: Check if all dependencies are installed
     silent: true
@@ -322,16 +135,6 @@ tasks:
         else
           echo "❌ Not installed";
         fi
-        echo -n "proot: "
-        if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
-          if command -v proot >/dev/null 2>&1; then
-            echo "✅ $(proot --version 2>&1 | head -n1)";
-          else
-            echo "❌ Not installed";
-          fi
-        else
-          echo "⚠️  Not needed (not in Termux)";
-        fi
         echo -n "Nix: "
         if command -v nix >/dev/null 2>&1; then
           echo "✅ $(nix --version)";
@@ -349,24 +152,4 @@ tasks:
           echo "✅ Installed";
         else
           echo "❌ Not installed";
-        fi
-        echo -n "termux-api: "
-        if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
-          if command -v termux-battery-status >/dev/null 2>&1; then
-            echo "✅ Installed";
-          else
-            echo "❌ Not installed";
-          fi
-        else
-          echo "⚠️  Not needed (not in Termux)";
-        fi
-        echo -n "termux-services: "
-        if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
-          if command -v sv >/dev/null 2>&1 || [ -d "$PREFIX/var/service" ]; then
-            echo "✅ Installed";
-          else
-            echo "❌ Not installed";
-          fi
-        else
-          echo "⚠️  Not needed (not in Termux)";
         fi
