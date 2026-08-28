@@ -20,34 +20,6 @@
 
         cargoHash = "sha256-xy0uOm2QMEQUSoposzsF6/Ar51XiaaP+oPO4QvjxRJQ=";
 
-        # WORKAROUND: coreutils 9.x cp uses fchmodat(AT_FDCWD,"",AT_EMPTY_PATH) which
-        # proot does not support. Override cargoSetupPostUnpackHook to use tar instead.
-        postUnpack = ''
-          cargoSetupPostUnpackHook() {
-            echo "Executing cargoSetupPostUnpackHook (proot-compat)"
-            eval "''${cargoDepsHook-}"
-            if [ -z "''${cargoVendorDir-}" ]; then
-              local dest
-              dest=$(stripHash "$cargoDeps")
-              mkdir -p "$dest"
-              tar cf - -C "$cargoDeps" . | tar xf - -C "$dest"
-              chmod -R +644 "$dest"
-              export cargoDepsCopy
-              cargoDepsCopy="$(realpath "$dest")"
-            else
-              cargoDepsCopy="$(realpath "$(pwd)/$sourceRoot/''${cargoRoot:+$cargoRoot/}''${cargoVendorDir}")"
-            fi
-            mkdir -p .cargo
-            local config="$cargoDepsCopy/.cargo/config.toml"
-            local tmp_config
-            tmp_config=$(mktemp)
-            sed "s|@vendor@|$cargoDepsCopy|g" "$config" > "$tmp_config"
-            cat "$tmp_config" >> .cargo/config.toml
-            rm "$tmp_config"
-            echo "Finished cargoSetupPostUnpackHook"
-          }
-        '';
-
         meta = with lib; {
           description = "LLM-powered shell completion tool";
           homepage = "https://git.pitaya.f5.si/pitaya1219/shellm";
