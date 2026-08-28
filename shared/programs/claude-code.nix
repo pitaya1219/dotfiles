@@ -23,6 +23,11 @@
   config = let
     nixClaudeJson = pkgs.writeText "claude-json-nix" (builtins.toJSON config.dotfiles.claudeJson);
   in {
+    # bubblewrap is Claude Code's OS-level sandbox backend on Linux
+    # (`sandbox.enabled` in settings.json); without it on PATH the feature
+    # fails or silently falls back depending on `sandbox.failIfUnavailable`.
+    home.packages = [ pkgs.bubblewrap ];
+
     # Remote HTTP MCP servers from the shared dotfiles.httpMcpServers option.
     # The url (e.g. Windmill's issued MCP URL) already carries its own auth
     # token as a query param; Claude Code expands the ${VAR} placeholder from
