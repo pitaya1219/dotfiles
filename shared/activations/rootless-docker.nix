@@ -35,11 +35,20 @@ EOF
 
   home.activation.configureIpv6 = lib.hm.dag.entryAfter ["installRootlessDocker"] ''
     mkdir -p ~/.config/systemd/user/docker.service.d
+    # pasta's implicit port driver relays published-port traffic arriving on
+    # the host's real loopback (bridged via its own --host-lo-to-ns-lo) but
+    # not traffic arriving on any other host interface -- on a multi-homed
+    # host, published ports complete the TCP handshake from the LAN but never
+    # relay data. slirp4netns's builtin port driver forwards correctly on
+    # every interface; the tradeoff is that "localhost" from inside a
+    # network_mode:host container no longer reaches the real host loopback --
+    # it must target slirp4netns's gateway address (10.0.2.2) instead.
     cat > ~/.config/systemd/user/docker.service.d/pasta.conf <<EOF
 [Service]
-Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_NET=pasta"
+Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns"
 Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_FLAGS=--ipv6"
-Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=implicit"
+Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=builtin"
+Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_DISABLE_HOST_LOOPBACK=false"
 EOF
     mkdir -p ~/.config/docker
     cat > ~/.config/docker/daemon.json <<EOF
