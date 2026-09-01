@@ -19,14 +19,14 @@ let
     if [ -f "''${AUTH_KEY_FILE}" ]; then
       exec ${pkgs.tailscale}/bin/tailscale --socket="$SOCKET" up \
         --login-server=https://dragonfruit.f5.si \
-        --advertise-routes=10.19.151.0/24 \
+        --advertise-routes=10.19.151.0/24,192.168.10.1/32,192.168.10.2/32 \
         --accept-routes \
         --hostname=gateway-lan \
         --auth-key="$(cat "''${AUTH_KEY_FILE}")"
     else
       exec ${pkgs.tailscale}/bin/tailscale --socket="$SOCKET" up \
         --login-server=https://dragonfruit.f5.si \
-        --advertise-routes=10.19.151.0/24 \
+        --advertise-routes=10.19.151.0/24,192.168.10.1/32,192.168.10.2/32 \
         --accept-routes \
         --hostname=gateway-lan
     fi
