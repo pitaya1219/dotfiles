@@ -76,6 +76,8 @@ button.ghost{color:var(--muted)}
 .node .fn{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; font-weight:600}
 .node .d{font-size:11.5px; color:var(--muted); margin-top:3px; line-height:1.5}
 .node.decision{border-style:dashed}
+/* 指摘・検討中。色は4種のままにしたいので、囲みで表して色クラスと併用する */
+.node.review{outline:2px dashed var(--ink); outline-offset:3px}
 .node.io{border-color:var(--hold-line); background:var(--hold-bg)}
 .node.io .fn{color:var(--hold)}
 .node.term{border-color:var(--warn-line); background:var(--warn-bg)}
@@ -128,6 +130,7 @@ ul{margin:0 0 14px; padding-left:21px} li{margin-bottom:6px}
 .legend i.term{background:var(--warn-bg); border-color:var(--warn-line)}
 .legend i.bad{background:var(--alert-bg); border-color:var(--alert-line)}
 .legend i.pl{background:var(--panel)}
+.legend i.rev{background:transparent; border-style:dashed; border-color:var(--ink)}
 footer{margin-top:54px; padding-top:16px; border-top:1px solid var(--line);
   color:var(--muted); font-size:12.5px}
 footer code{font-size:.82em}
@@ -139,11 +142,12 @@ footer code{font-size:.82em}
 <body>
 <div class="wrap">
 
-<!-- REPLACE: 対象とコミットを明記する。コミット表記は footer と一致させること -->
+<!-- REPLACE: 対象とコミットを明記する。コミット表記は footer と一致させること。
+     レビューや改修の検討で使うなら、対象の PR / チケットも併記する -->
 <header>
   <h1>Subject — 処理フロー</h1>
   <p class="sub">
-    repo <code>PLACEHOLDER_COMMIT</code> 時点 /
+    repo PR #000 <code>PLACEHOLDER_COMMIT</code> 時点 /
     <code>path/to/module.py</code>
   </p>
 </header>
@@ -232,7 +236,7 @@ footer code{font-size:.82em}
         <div class="fn">repo.write()</div>
         <div class="d">外部 I/O</div>
       </div>
-      <div class="node bad" id="n-raise">
+      <div class="node bad review" id="n-raise">
         <div class="fn">except → raise</div>
         <div class="d">異常系。伝播先と影響範囲を書く</div>
       </div>
@@ -246,6 +250,18 @@ footer code{font-size:.82em}
   <span><i class="io"></i>外部 I/O</span>
   <span><i class="term"></i>ここで終了</span>
   <span><i class="bad"></i>異常系</span>
+  <span><i class="rev"></i>指摘・検討中</span>
+</div>
+
+<!-- REPLACE: 指摘や未解決の疑問があれば書く。無ければ節ごと削除する。
+     「コードがこう動く」ではなく「だから何が問題か」を書く場所で、
+     レビュー用途ではここが成果物になる。読んでも分からなかったことも書く -->
+<div class="box alert">
+  <h4>図中で「指摘・検討中」としている箇所</h4>
+  <p>
+    どのノードのどの挙動か、なぜ問題だと考えるか、どこまで確認したか。
+    未確認の推測はそう明記する。
+  </p>
 </div>
 
 <!-- REPLACE: 対象コミットと再生成コマンドを必ず残す。
