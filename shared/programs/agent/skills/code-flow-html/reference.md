@@ -93,11 +93,17 @@ reader presses without thinking.
 
 Anything not animated uses the plain vocabulary already in the stylesheet:
 
-- `.svgwrap` + `.sm-*` for hand-drawn SVG — `.sm-box` (with `.open` / `.done` /
-  `.hist` fills), `.sm-t` title text, `.sm-s` subtitle, `.sm-e` edge,
-  `.sm-el` edge label. The arrowhead marker `#ah` is defined once in the first
-  SVG's `<defs>`; later SVGs in the same document reuse it, so keep that first
-  SVG or move the `<defs>` block.
+- `<figure class="svgwrap">` + `.sm-*` for hand-drawn SVG — `.sm-box` (with
+  `.open` / `.done` / `.hist` fills), `.sm-t` title text, `.sm-s` subtitle,
+  `.sm-e` edge, `.sm-el` edge label. Close it with a `<figcaption>` stating what
+  the picture claims, and give the `<svg>` `role="img"` and an `aria-label`
+  carrying the same claim. Every edge gets an `.sm-el` label: an unlabelled
+  arrow only says "related somehow". The arrowhead marker `#ah` is defined once
+  in the first SVG's `<defs>`; later SVGs in the same document reuse it, so keep
+  that first SVG or move the `<defs>` block.
+
+  These are `artifact-diagramming`'s rules, and the rest of them apply here too —
+  consult it before drawing rather than reinventing the judgment.
 - `.tablewrap` + `table` for lookup tables.
 - `.box` / `.box.alert` for callouts — open questions, review findings, caveats
   that do not belong to any single node.
