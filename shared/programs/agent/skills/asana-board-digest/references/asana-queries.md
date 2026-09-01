@@ -2,7 +2,7 @@
 
 ## Contents
 
-- Pass 1 — tasks changed since the cutoff
+- Pass 1 — tasks changed since the cutoff (and why it is not exhaustive)
 - Pass 2 — board inventory for staleness (and why `sections_any` is unusable)
 - Reading stories without drowning (two-phase walk, wait-reason comments)
 - `resource_subtype` values worth acting on
@@ -47,11 +47,26 @@ other way round.
 closures. Every other field costs tokens on all 100 rows without being printed —
 `due_on` and `created_at` in particular have no consumer here.
 
-If this query returns exactly 100 rows it truncated silently. Results come back
-newest-first (`sort_by` defaults to `modified_at`, descending), so the rows lost are
-the oldest: re-run with `modified_at_after` set to the last row's `modified_at` to
-collect the remainder. Splitting the window in half instead re-fetches up to 100 rows
-you already have.
+### This query is neither exhaustive nor sorted
+
+Two behaviours, both measured on Elec Hub on 2026-09-01 and both of which lose tasks
+without saying so:
+
+**It omits tasks that match.** `恒久対応③` (`1215644962268046`, modified
+`2026-09-01T01:43:30`) did not come back, while tasks modified at 00:56 and 02:25 the
+same day did — so this is neither the 100-row cap nor a window edge, and it reproduced
+on two consecutive runs. Pass 2 returned the task in `Doing`, where it belonged. So
+take the **union** of pass 1 and every pass-2 task whose `modified_at` is at or after
+the cutoff: the work and wait lanes are then covered twice, and only the ignored lanes
+are left resting on pass 1 alone.
+
+**The rows are not ordered by `modified_at`.** A task modified at 09:05 came back near
+the end of the list and one modified at 01:24 came back last, so "the last row is the
+oldest" is not true and neither is the API's documented default sort. If the query
+returns exactly 100 rows it truncated, and the way to collect the remainder is to
+re-run with `modified_at_after = min(modified_at)` across the rows already in hand —
+correct whatever the order turns out to be, at the price of re-fetching the ties.
+Splitting the window in half instead re-fetches up to 100 rows you already have.
 
 ## Pass 2 — board inventory for staleness
 
@@ -130,6 +145,11 @@ The defaults are not cheap — `include_subtasks` is on, `comment_limit` is 10, 
 description, custom fields, followers and dependencies come along unless `opt_fields`
 narrows them. This call returns no system stories, so it cannot answer "did this
 change lane".
+
+One `get_task` has been seen to hang for 400s and return nothing at all. Re-issuing
+the same call worked, and so did looking the task up through `search_tasks` instead.
+A stalled call is a transient, not a signal about the task — retry it once before
+giving up on the row, and do not abandon the run over it.
 
 ### resource_subtype values worth acting on
 

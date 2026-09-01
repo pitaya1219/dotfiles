@@ -81,14 +81,19 @@ depend on each other, and neither do the per-lane inventory calls — issue them
 together rather than one at a time.
 
 1. **Changed since cutoff** — one `search_tasks` over the project filtered by
-   `modified_at_after`. This is the input to the *更新あり* and *レーン移動あり*
-   sections.
+   `modified_at_after`.
 2. **Board inventory** — one `get_tasks` per work/wait lane. This is the input to
    the staleness buckets. It must be `get_tasks(section=…)`, **not**
    `search_tasks(sections_any=…)`, which returns tasks from other lanes; the
    reference file shows the case that proves it.
 
-For every task from pass 1, read its stories and keep only those at or after the
+The changed set is the **union** of the two: pass 1, plus every pass-2 task whose
+`modified_at` is at or after the cutoff. Pass 1 has been measured dropping tasks it
+matched, and pass 2 has already paid for the timestamps that catch them, so the union
+costs nothing. It only covers the work and wait lanes, though — a task that moved in
+an ignored lane still depends on pass 1 alone.
+
+For every task in the changed set, read its stories and keep only those at or after the
 cutoff. **Classify each task as substantive or not** — a bulk custom-field sweep is
 not an update, and reporting it as one is the main way this digest goes stale-blind.
 The reference has the rules, the cheap tells, and the way to spot a sweep from pass 1
@@ -150,6 +155,10 @@ move them.
 
 Fill in `assets/report-template.md`. Rules that keep it readable:
 
+- Group 更新あり by the task's **current** lane, in the board's own section order, and
+  note a move as `旧 → 現` on the task's own line rather than in a section of its own. The reader has the board in
+  front of them, so the useful question is what is sitting in each column now — not
+  what kind of event put it there.
 - Order the stale sections by tier (A → B → C), not by lane.
 - One line per task in the stale tables; the summary prose belongs in 更新あり. The
   stale tables carry the last-modified date, which pass 2 already returned — do not
@@ -161,8 +170,10 @@ Fill in `assets/report-template.md`. Rules that keep it readable:
 - 参考 gets **one line per cause, not per task**: a sweep that touched forty tasks is
   one line naming the field, the count, and an example.
 - Keep 更新あり and all three tier headings even at zero — their counts are how the
-  reader tells "nothing was stuck" from "the digest never looked". Drop the two
-  subheadings under 更新あり when they hold nothing, and 参考 when it holds nothing.
+  reader tells "nothing was stuck" from "the digest never looked". The lane groups
+  inside 更新あり are the opposite: list only the lanes that have something, since an
+  empty column is the board's normal state and not a finding. Drop 参考 when it holds
+  nothing.
 
 Print the report to the conversation, and save it to a file only if the user asks.
 
