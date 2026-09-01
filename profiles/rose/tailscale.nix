@@ -21,14 +21,14 @@ let
         --login-server=https://dragonfruit.f5.si \
         --advertise-routes=10.19.151.0/24 \
         --accept-routes \
-        --hostname=gateway-incus \
+        --hostname=gateway-lan \
         --auth-key="$(cat "''${AUTH_KEY_FILE}")"
     else
       exec ${pkgs.tailscale}/bin/tailscale --socket="$SOCKET" up \
         --login-server=https://dragonfruit.f5.si \
         --advertise-routes=10.19.151.0/24 \
         --accept-routes \
-        --hostname=gateway-incus
+        --hostname=gateway-lan
     fi
   '';
 in
