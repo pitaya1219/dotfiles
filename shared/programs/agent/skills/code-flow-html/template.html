@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- REPLACE: title -->
+<title>Subject — 処理フロー</title>
+<style>
+:root{
+  --bg:#fbfbfa; --panel:#ffffff; --ink:#24211d; --muted:#6b665e; --line:#e2ddd5;
+  --accent:#2f6f57; --accent-bg:#e8f1ec; --accent-line:#8dc4ac;
+  --warn:#8a5a12; --warn-bg:#fbf1de; --warn-line:#dfb977;
+  --hold:#4a5f7a; --hold-bg:#e8eef5; --hold-line:#9db7d2;
+  --alert:#96341f; --alert-bg:#fbe9e4; --alert-line:#dda294;
+  --code-bg:#f4f2ee; --dim:.24;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#16151a; --panel:#1d1c22; --ink:#e6e2dc; --muted:#a09a92; --line:#332f3a;
+    --accent:#7fc0a3; --accent-bg:#1c2f28; --accent-line:#3f7c65;
+    --warn:#e0b063; --warn-bg:#2e2617; --warn-line:#8a6c33;
+    --hold:#93b4d6; --hold-bg:#1b242f; --hold-line:#4a6a8c;
+    --alert:#e8927a; --alert-bg:#2f1d18; --alert-line:#8f503f;
+    --code-bg:#26242c; --dim:.2;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16151a; --panel:#1d1c22; --ink:#e6e2dc; --muted:#a09a92; --line:#332f3a;
+  --accent:#7fc0a3; --accent-bg:#1c2f28; --accent-line:#3f7c65;
+  --warn:#e0b063; --warn-bg:#2e2617; --warn-line:#8a6c33;
+  --hold:#93b4d6; --hold-bg:#1b242f; --hold-line:#4a6a8c;
+  --alert:#e8927a; --alert-bg:#2f1d18; --alert-line:#8f503f;
+  --code-bg:#26242c; --dim:.2;
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+  line-height:1.7; font-size:15px}
+.wrap{max-width:1080px; margin:0 auto; padding:44px 22px 100px}
+header{border-bottom:2px solid var(--line); padding-bottom:18px; margin-bottom:32px}
+h1{font-size:23px; margin:0 0 6px}
+.sub{color:var(--muted); font-size:13px; margin:0}
+h2{font-size:18px; margin:46px 0 6px; padding-bottom:7px; border-bottom:1px solid var(--line)}
+h2 .hint{font-size:12.5px; font-weight:400; color:var(--muted); margin-left:10px}
+p{margin:0 0 14px}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.86em;
+  background:var(--code-bg); padding:.1em .36em; border-radius:4px}
+.meta{color:var(--muted); font-size:12.5px}
+
+/* ---- scenario controls ---- */
+.controls{display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 6px}
+button{font:inherit; font-size:13px; cursor:pointer; padding:7px 13px; border-radius:7px;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink);
+  transition:background .15s, border-color .15s, color .15s}
+button:hover{border-color:var(--accent-line)}
+button.sel{background:var(--accent-bg); border-color:var(--accent-line); color:var(--accent); font-weight:600}
+button.ghost{color:var(--muted)}
+.scenario-note{background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent);
+  border-radius:8px; padding:12px 15px; margin:12px 0 22px; font-size:13.5px; min-height:64px}
+.scenario-note b{color:var(--accent)}
+.scenario-note .res{display:block; margin-top:6px; color:var(--muted); font-size:12.5px}
+
+/* ---- flow ---- */
+.flow{display:flex; flex-direction:column; align-items:stretch; gap:0}
+.stage{position:relative; padding-bottom:26px}
+.stage:last-child{padding-bottom:0}
+.stage::after{content:""; position:absolute; left:50%; bottom:6px; width:2px; height:14px;
+  background:var(--line); transform:translateX(-50%)}
+.stage:last-child::after{display:none}
+.stage-label{font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--muted); margin-bottom:7px; text-align:center}
+.row{display:flex; gap:10px; justify-content:center; flex-wrap:wrap}
+.node{background:var(--panel); border:1.5px solid var(--line); border-radius:9px;
+  padding:10px 14px; min-width:180px; max-width:290px; flex:0 1 auto;
+  transition:opacity .3s, border-color .3s, background .3s, transform .3s, box-shadow .3s}
+.node .fn{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; font-weight:600}
+.node .d{font-size:11.5px; color:var(--muted); margin-top:3px; line-height:1.5}
+.node.decision{border-style:dashed}
+.node.io{border-color:var(--hold-line); background:var(--hold-bg)}
+.node.io .fn{color:var(--hold)}
+.node.term{border-color:var(--warn-line); background:var(--warn-bg)}
+.node.term .fn{color:var(--warn)}
+.node.bad{border-color:var(--alert-line); background:var(--alert-bg)}
+.node.bad .fn{color:var(--alert)}
+.playing .node{opacity:var(--dim)}
+.playing .node.on{opacity:1; border-color:var(--accent-line);
+  box-shadow:0 0 0 3px var(--accent-bg); transform:translateY(-1px)}
+.playing .node.on.io{border-color:var(--hold-line); box-shadow:0 0 0 3px var(--hold-bg)}
+.playing .node.on.term{border-color:var(--warn-line); box-shadow:0 0 0 3px var(--warn-bg)}
+.playing .node.on.bad{border-color:var(--alert-line); box-shadow:0 0 0 3px var(--alert-bg)}
+.playing .stage::after{opacity:var(--dim)}
+.playing .stage.on::after{opacity:1; background:var(--accent-line)}
+
+/* ---- static diagrams: 状態遷移図・俯瞰図・凡例など一覧性が要るものはここで描く ---- */
+.svgwrap{overflow-x:auto; background:var(--panel); border:1px solid var(--line);
+  border-radius:10px; padding:18px; margin:0 0 16px}
+svg{display:block; margin:0 auto}
+.sm-box{fill:var(--panel); stroke:var(--line); stroke-width:1.5}
+.sm-box.open{fill:var(--warn-bg); stroke:var(--warn-line)}
+.sm-box.done{fill:var(--accent-bg); stroke:var(--accent-line)}
+.sm-box.hist{fill:var(--hold-bg); stroke:var(--hold-line)}
+.sm-t{fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:12px; font-weight:600; text-anchor:middle}
+.sm-s{fill:var(--muted); font-size:10.5px; text-anchor:middle;
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif}
+.sm-e{stroke:var(--muted); stroke-width:1.4; fill:none; marker-end:url(#ah)}
+.sm-el{fill:var(--muted); font-size:10px; text-anchor:middle;
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif}
+
+/* ---- tables / callouts ---- */
+.tablewrap{overflow-x:auto; margin:0 0 18px}
+table{border-collapse:collapse; width:100%; font-size:13px; min-width:600px}
+th,td{text-align:left; padding:8px 11px; border-bottom:1px solid var(--line); vertical-align:top}
+th{font-weight:600; color:var(--muted); font-size:11.5px; letter-spacing:.03em;
+  text-transform:uppercase; border-bottom:1.5px solid var(--line)}
+tr:last-child td{border-bottom:none}
+.box{background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--line);
+  border-radius:8px; padding:14px 17px; margin:0 0 16px; font-size:13.5px}
+.box.alert{border-left-color:var(--alert); background:var(--alert-bg)}
+.box h4{margin:0 0 7px; font-size:14px}
+.box p:last-child{margin-bottom:0}
+ul{margin:0 0 14px; padding-left:21px} li{margin-bottom:6px}
+.legend{display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin:10px 0 0}
+.legend i{display:inline-block; width:11px; height:11px; border-radius:3px;
+  border:1.5px solid var(--line); margin-right:5px; vertical-align:-1px}
+.legend i.io{background:var(--hold-bg); border-color:var(--hold-line)}
+.legend i.term{background:var(--warn-bg); border-color:var(--warn-line)}
+.legend i.bad{background:var(--alert-bg); border-color:var(--alert-line)}
+.legend i.pl{background:var(--panel)}
+footer{margin-top:54px; padding-top:16px; border-top:1px solid var(--line);
+  color:var(--muted); font-size:12.5px}
+footer code{font-size:.82em}
+@media (prefers-reduced-motion:reduce){
+  .node,.stage::after{transition:none !important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- REPLACE: 対象とコミットを明記する。コミット表記は footer と一致させること -->
+<header>
+  <h1>Subject — 処理フロー</h1>
+  <p class="sub">
+    repo <code>PLACEHOLDER_COMMIT</code> 時点 /
+    <code>path/to/module.py</code>
+  </p>
+</header>
+
+<!-- OPTIONAL: 俯瞰図・状態遷移図・対応表など「一覧性が要るもの」は静止のまま置く。
+     アニメーションを付けてよいのは下の分岐フローだけ。不要ならこの節ごと削除する -->
+<h2>1. 全体の位置づけ</h2>
+<div class="svgwrap">
+<svg viewBox="0 0 640 92" width="640" height="92" role="img" aria-label="呼び出し元から本図の対象までの流れ">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+  <rect class="sm-box" x="8" y="20" width="150" height="46" rx="8"/>
+  <text class="sm-t" x="83" y="40">caller</text><text class="sm-s" x="83" y="56">呼び出し元</text>
+  <path class="sm-e" d="M162,43 L206,43"/>
+  <rect class="sm-box" x="210" y="20" width="180" height="46" rx="8"/>
+  <text class="sm-t" x="300" y="40">entry_point()</text><text class="sm-s" x="300" y="56">入口</text>
+  <path class="sm-e" d="M394,43 L438,43"/>
+  <rect class="sm-box done" x="442" y="20" width="190" height="46" rx="8"/>
+  <text class="sm-t" x="537" y="40">target()</text><text class="sm-s" x="537" y="56">本図の主役</text>
+</svg>
+</div>
+
+<h2>2. 分岐フロー <span class="hint">シナリオを選ぶと経路が動きます</span></h2>
+<p>
+  <!-- REPLACE: 何の分岐で、帰結が何通りに収束するのかを1〜2文で -->
+  分岐の結果は <strong>A / B / C</strong> の3通りに収束します。
+</p>
+
+<div class="controls" id="ctrl"></div>
+<div class="scenario-note" id="note">シナリオを選んでください。</div>
+
+<!-- REPLACE: 以下の stage / node をドメインの実体に差し替える。
+     ・stage は上から下への時間順。data-s は SCENARIOS の stages と対応する
+     ・node の id は必ず n- 始まりで一意。SCENARIOS の path から参照する
+     ・node のクラスは4種のみ: (なし)=純処理 / io=外部I/O / term=ここで終了 / bad=異常系
+     ・decision は破線枠。色クラスと併用してよい -->
+<div class="flow" id="flow">
+
+  <div class="stage" data-s="s1">
+    <div class="stage-label">入口</div>
+    <div class="row">
+      <div class="node" id="n-entry">
+        <div class="fn">entry_point()</div>
+        <div class="d">受け取る引数や前提をここに書く</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage" data-s="s2">
+    <div class="stage-label">判定</div>
+    <div class="row">
+      <div class="node decision" id="n-guard">
+        <div class="fn">guard 条件を満たす ?</div>
+        <div class="d">判定の中身</div>
+      </div>
+      <div class="node term" id="n-early">
+        <div class="fn">return</div>
+        <div class="d">ここで終了。副作用なし</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage" data-s="s3">
+    <div class="stage-label">読み取り</div>
+    <div class="row">
+      <div class="node io" id="n-read">
+        <div class="fn">repo.read()</div>
+        <div class="d">外部 I/O。回数や整合性の条件を書く</div>
+      </div>
+      <div class="node" id="n-classify">
+        <div class="fn">classify()</div>
+        <div class="d">読んだ結果の解釈。I/O なし</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage" data-s="s4">
+    <div class="stage-label">書き込み</div>
+    <div class="row">
+      <div class="node io" id="n-write">
+        <div class="fn">repo.write()</div>
+        <div class="d">外部 I/O</div>
+      </div>
+      <div class="node bad" id="n-raise">
+        <div class="fn">except → raise</div>
+        <div class="d">異常系。伝播先と影響範囲を書く</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="legend">
+  <span><i class="pl"></i>純粋な処理・判定</span>
+  <span><i class="io"></i>外部 I/O</span>
+  <span><i class="term"></i>ここで終了</span>
+  <span><i class="bad"></i>異常系</span>
+</div>
+
+<!-- REPLACE: 対象コミットと再生成コマンドを必ず残す。
+     コマンドが無いと、次に更新する人がゼロから読み直すことになる -->
+<footer>
+  出典: <code>path/to/repo</code> @ <code>PLACEHOLDER_COMMIT</code><br>
+  再生成: <code>grep -n "def \|self\._repo\.\|self\._logger\." path/to/module.py</code>
+</footer>
+
+</div>
+
+<script>
+// REPLACE: シナリオ定義。1シナリオ = 1本の経路。図の中で枝分かれさせない。
+//   key    : ボタンの識別子。一意
+//   label  : ボタン表示。短く
+//   desc   : 何が起きるか。HTML 可。<b> で結論を立てる
+//   res    : 結果の1行要約
+//   path   : 点灯させる node id を通過順に。ここに書いた id は必ず HTML 側に存在させる
+//   stages : path が通る stage の data-s を順に。経路が到達しない stage は書かない
+const SCENARIOS = [
+  {
+    key:"happy", label:"正常系",
+    desc:"<b>guard を通過して書き込みまで到達する</b>。もっとも普通の経路。",
+    res:"結果: repo.write() が1回",
+    path:["n-entry","n-guard","n-read","n-classify","n-write"],
+    stages:["s1","s2","s3","s4"]
+  },
+  {
+    key:"early", label:"入口で終了",
+    desc:"<b>guard に弾かれて即 return</b>。読み取りも書き込みも発生しない。",
+    res:"結果: 副作用なし",
+    path:["n-entry","n-guard","n-early"],
+    stages:["s1","s2"]
+  },
+  {
+    key:"fail", label:"書き込み失敗",
+    desc:"<b>書き込みで例外</b>。呼び出し元まで伝播する。",
+    res:"結果: 例外が呼び出し元へ",
+    path:["n-entry","n-guard","n-read","n-classify","n-write","n-raise"],
+    stages:["s1","s2","s3","s4"]
+  }
+];
+
+// ---- 以下は器。ドメインに依らないのでそのまま使う ----
+const flow = document.getElementById("flow");
+const note = document.getElementById("note");
+const ctrl = document.getElementById("ctrl");
+const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let timers = [];
+let current = null;
+
+function clearRun(){
+  timers.forEach(clearTimeout); timers = [];
+  flow.querySelectorAll(".node.on").forEach(n => n.classList.remove("on"));
+  flow.querySelectorAll(".stage.on").forEach(n => n.classList.remove("on"));
+}
+
+function play(sc){
+  clearRun();
+  current = sc;
+  flow.classList.add("playing");
+  note.innerHTML = sc.desc + '<span class="res">' + sc.res + "</span>";
+  ctrl.querySelectorAll("button[data-k]").forEach(b =>
+    b.classList.toggle("sel", b.dataset.k === sc.key));
+
+  const step = reduce ? 0 : 190;
+  sc.path.forEach((id, i) => {
+    timers.push(setTimeout(() => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add("on");
+    }, i * step));
+  });
+  sc.stages.forEach((s, i) => {
+    timers.push(setTimeout(() => {
+      const el = flow.querySelector('.stage[data-s="' + s + '"]');
+      if (el) el.classList.add("on");
+    }, i * step * 1.4));
+  });
+}
+
+SCENARIOS.forEach(sc => {
+  const b = document.createElement("button");
+  b.textContent = sc.label; b.dataset.k = sc.key;
+  b.addEventListener("click", () => play(sc));
+  ctrl.appendChild(b);
+});
+const rb = document.createElement("button");
+rb.textContent = "もう一度"; rb.className = "ghost";
+rb.addEventListener("click", () => { if (current) play(current); });
+ctrl.appendChild(rb);
+const cb = document.createElement("button");
+cb.textContent = "全体表示に戻す"; cb.className = "ghost";
+cb.addEventListener("click", () => {
+  clearRun(); current = null;
+  flow.classList.remove("playing");
+  ctrl.querySelectorAll("button[data-k]").forEach(b => b.classList.remove("sel"));
+  note.textContent = "シナリオを選んでください。";
+});
+ctrl.appendChild(cb);
+</script>
+
+</body>
+</html>
