@@ -301,7 +301,14 @@ function play(sc){
   clearRun();
   current = sc;
   flow.classList.add("playing");
-  note.innerHTML = sc.desc + '<span class="res">' + sc.res + "</span>";
+  // desc は書き手が組む HTML として描画する。res は要約テキストなので、
+  // "<account_number> ごとに1行" のような山括弧がタグとして食われないよう
+  // textContent で入れる
+  note.innerHTML = sc.desc;
+  const resEl = document.createElement("span");
+  resEl.className = "res";
+  resEl.textContent = sc.res;
+  note.appendChild(resEl);
   ctrl.querySelectorAll("button[data-k]").forEach(b =>
     b.classList.toggle("sel", b.dataset.k === sc.key));
 
