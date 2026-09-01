@@ -47,6 +47,10 @@ let
         token = { command = "passage show logseq/http-api/claude-code/token"; };
       };
 
+      # This is the only profile signed in to the work Asana and Gitea, so it is
+      # the only one that takes the skills excluded by default in agent.nix.
+      dotfiles.agent.skills.exclude = [];
+
       dotfiles.agent.asana = {
         projectGid = "1208405292637994";
         todoSectionGid = "1209218441201478";

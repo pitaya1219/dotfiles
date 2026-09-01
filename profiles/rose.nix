@@ -8,8 +8,6 @@
     };
     modules = extraModules ++ [
       ({ config, pkgs, lib, ... }: {
-        dotfiles.agent.skills.exclude = [ "asana-create-task" "my-review" ];
-
         dotfiles.agent.logseq = {
           url = { command = "passage show logseq/http-api/host"; };
           token = { command = "passage show logseq/http-api/claude-code/token"; };

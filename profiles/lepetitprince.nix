@@ -8,8 +8,6 @@
     };
     modules = extraModules ++ [
       ({ config, pkgs, lib, ... }: {
-        dotfiles.agent.skills.exclude = [ "asana-create-task" "my-review" ];
-
         # koi's endpoint only. This host runs no model of its own, and it
         # reaches ai.pitaya.f5.si over the mesh either way.
         programs.hermes = {

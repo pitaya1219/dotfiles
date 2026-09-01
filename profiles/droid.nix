@@ -8,8 +8,6 @@
     };
     modules = extraModules ++ [
       ({ config, pkgs, lib, ... }: {
-        dotfiles.agent.skills.exclude = [ "asana-create-task" "my-review" ];
-
         # This Debian base doesn't ship en_US.UTF-8 pre-generated (only
         # C/C.UTF-8/POSIX), so LANG=en_US.UTF-8 (shared/programs/bash/env.nix)
         # fails setlocale() without this — home-manager builds the archive
