@@ -23,20 +23,35 @@ static is the actual work, and it comes from reading the code. Templating that
 part would make this skill indistinguishable from asking for "a diagram in
 HTML".
 
-## Not `artifact-diagramming`
+## Relationship to `artifact-diagramming`
 
-`artifact-diagramming` (Anthropic-provided) overlaps in subject matter. Pick by
-where the output goes:
+`artifact-diagramming` (Anthropic-provided) is guidance and ships no template.
+This skill ships the shell and adds the rules specific to animated control flow.
+The two are complementary, not alternatives — read that one first.
+
+- **Deciding what goes in the drawing is its subject, and it applies here too**:
+  depict the mechanism rather than its name, label every arrow with the actual
+  relationship, match the complexity to what the question turns on.
+- **The static sections of this template are squarely its territory.** The
+  overview and state-transition SVGs are hand-authored inline SVG and follow its
+  mechanics.
+- **What this skill adds** is the shell, the four-colour node vocabulary, and
+  the discipline a diagram *of code* needs: one path per scenario, the commit
+  stamp, the regeneration command.
+
+Where they diverge is the output, and the divergence is a hard one:
 
 | | this skill | `artifact-diagramming` |
 |---|---|---|
 | Output | local HTML file, opened with `open` | Artifact published on claude.ai |
 | Reader | you, while reading the code | someone else, later |
-| Shape | scenario-driven animation | static SVG inside a page |
+| Interaction | scenario switching drives the page | none — it forbids `<script>` in the figure |
 
-Needs to be shared → `artifact-diagramming`. Needs to be understood at hand →
-this one. Do not publish the output of this skill as an Artifact; it is a
-working tool with a commit hash stamped on it, not a document.
+A published Artifact has to be self-contained and static, which the scenario
+animation cannot be. So do not publish the output of this skill as an Artifact;
+it is a working tool with a commit hash stamped on it, not a document. The pages
+also quote source code and internal identifiers, so they stay on the machine that
+made them.
 
 ## Design rules
 
