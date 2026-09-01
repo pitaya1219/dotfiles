@@ -61,9 +61,12 @@ Positional names (`n-step3`) go stale the moment a stage is inserted.
 
 - **`desc`** — lead with the conclusion in `<b>`, then the reason it takes that
   route. This is where a reader looks first, so it carries the argument; the
-  nodes only carry the names.
+  nodes only carry the names. Rendered as HTML, so a `<` that is followed by a
+  letter — `<account_number>`, `a<b` — has to be written `&lt;` or it is parsed
+  as a tag and swallowed.
 - **`res`** — what the outside world observes afterwards: rows written, calls
-  made, nothing at all. Keep it to one line.
+  made, nothing at all. Keep it to one line. Rendered as text, so
+  `結果: <account_number> ごとに1行` is written as-is with no escaping.
 - **`path`** — traversal order, which drives the lighting order. Include the
   decision nodes the path evaluates, not just the ones it "chooses": a scenario
   that stops early still passes through the guard that stopped it.
