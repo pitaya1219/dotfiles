@@ -178,7 +178,7 @@ footer code{font-size:.82em}
 </p>
 
 <div class="controls" id="ctrl"></div>
-<div class="scenario-note" id="note">シナリオを選んでください。</div>
+<div class="scenario-note" id="note" aria-live="polite">シナリオを選んでください。</div>
 
 <!-- REPLACE: 以下の stage / node をドメインの実体に差し替える。
      ・stage は上から下への時間順。data-s は SCENARIOS の stages と対応する
@@ -315,8 +315,11 @@ function play(sc){
   resEl.className = "res";
   resEl.textContent = sc.res;
   note.appendChild(resEl);
-  ctrl.querySelectorAll("button[data-k]").forEach(b =>
-    b.classList.toggle("sel", b.dataset.k === sc.key));
+  ctrl.querySelectorAll("button[data-k]").forEach(b => {
+    const on = b.dataset.k === sc.key;
+    b.classList.toggle("sel", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
 
   const step = reduce ? 0 : 190;
   sc.path.forEach((id, i) => {
@@ -336,6 +339,7 @@ function play(sc){
 SCENARIOS.forEach(sc => {
   const b = document.createElement("button");
   b.textContent = sc.label; b.dataset.k = sc.key;
+  b.setAttribute("aria-pressed", "false");
   b.addEventListener("click", () => play(sc));
   ctrl.appendChild(b);
 });
@@ -348,7 +352,10 @@ cb.textContent = "全体表示に戻す"; cb.className = "ghost";
 cb.addEventListener("click", () => {
   clearRun(); current = null;
   flow.classList.remove("playing");
-  ctrl.querySelectorAll("button[data-k]").forEach(b => b.classList.remove("sel"));
+  ctrl.querySelectorAll("button[data-k]").forEach(b => {
+    b.classList.remove("sel");
+    b.setAttribute("aria-pressed", "false");
+  });
   note.textContent = "シナリオを選んでください。";
 });
 ctrl.appendChild(cb);
