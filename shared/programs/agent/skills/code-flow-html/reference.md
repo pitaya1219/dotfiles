@@ -31,10 +31,16 @@ direct children of `.flow`. Nesting a stage inside another breaks the line.
 | `io` | crosses a process boundary | DB query, HTTP call, queue put |
 | `term` | the path ends here, having written nothing | `warn → return` |
 | `bad` | the abnormal path | `except → raise`, forced degradation |
+| `review` | you are questioning this, or it is the change under discussion | the node a review comment is about |
 
-`decision` is a shape, not a color, so it combines with the others
-(`class="node decision term"` is valid). The four colors are the whole
-vocabulary — see the rule in `SKILL.md`.
+`decision` (dashed border) and `review` (dashed outline) are shapes, not colors,
+so they combine with the others — `class="node bad review"` is a node that is
+both the error path and the thing you are objecting to. The four colors are the
+whole color vocabulary; see the rule in `SKILL.md`.
+
+`review` exists so that reviewing does not consume a colour. Reaching for `bad`
+instead collapses two different claims — "the code treats this as failure" and
+"I think this is wrong" — and the reader cannot tell which one a red node means.
 
 ### ID convention
 
@@ -88,6 +94,25 @@ scenario, and both are worth knowing.
 
 Order them from most ordinary to most exceptional. The first button is the one a
 reader presses without thinking.
+
+`check.py` reports any `term` or `bad` node that no scenario reaches, so this
+does not have to be checked by reading. A hit is a finding either way: the code
+is unreachable, or the reading of it is incomplete.
+
+### Showing a proposed change
+
+`SKILL.md` rules out a before/after mode in the drawing. When the node set is
+unchanged, express it in the scenario list instead:
+
+```js
+{ key:"now-dup",      label:"現状: 重複配信",   … },
+{ key:"proposed-dup", label:"提案: 重複配信",   … },
+```
+
+Pair them adjacently, keep the same suffix so the pairing is visible in the
+button row, and put `review` on the nodes the change touches. When the graph
+itself changes shape, two files — a page whose nodes mean different things
+depending on which button is pressed is not readable.
 
 ## Static sections
 

@@ -65,7 +65,18 @@ them to fit an awkward flow — reshape the flow instead.
 - **Node colors are fixed at four kinds**: plain (pure computation or a
   decision), `io` (external I/O), `term` (path ends here), `bad` (error path).
   A fifth color makes the page unreadable. If a node does not fit, the node is
-  doing too much — split it.
+  doing too much — split it. Marking a node as *under discussion* is not a fifth
+  colour: `review` draws an outline and combines with whichever of the four the
+  node already is. Never overload `bad` for it — the code's error path and the
+  part you are questioning are different claims.
+- **Name nodes after real symbols.** A node's `.fn` is a function, method, or
+  condition that exists in the source; anything paraphrased belongs in `.d`.
+  This is what makes `check.py --src` able to catch a misreading before the
+  reader inherits it.
+- **Write down what you could not determine.** A page produced while reading
+  unfamiliar code is worth more with its open questions attached than without.
+  The `.box.alert` section is for that and for review findings — say how far you
+  actually verified something, and mark the rest as inference.
 - **One scenario = one path.** Never fork inside the drawing. A branch is
   expressed by switching scenarios, not by drawing both legs. Drawing every leg
   produces crossing lines and nothing is legible.
@@ -81,12 +92,25 @@ them to fit an awkward flow — reshape the flow instead.
   the step delay to 0 so the whole path resolves instantly rather than
   animating. Keep it.
 
+## What this deliberately does not do
+
+**It does not draw a before/after comparison.** Showing a proposed change
+alongside the current code needs a second visual channel, and every candidate
+collides with the four-colour rule. Two conventions cover it instead:
+
+- the node set is unchanged → keep one graph and prefix the scenario labels
+  `現状:` / `提案:`, with `review` on the nodes the change touches
+- the graph itself changes shape → two files, and say in the header which is
+  which
+
+A comparison mode that half works is worse than a stated limit.
+
 ## Procedure
 
 1. **Fix the target.** Resolve the commit (`git rev-parse --short HEAD`) and the
    files in scope. Everything below describes that commit and nothing else.
 2. **Extract the call relationships.** Read the entry function, then follow it.
-   A `grep -n` over definitions and the collaborators the class holds is usually
+   A `grep -n` over `def` lines and the collaborators the class holds is usually
    enough to get the skeleton; keep whatever command worked, it goes in the
    footer.
 3. **Decide what does *not* animate.** Lifecycles, state transitions, and
@@ -98,13 +122,20 @@ them to fit an awkward flow — reshape the flow instead.
    showing. See `reference.md` for the field-by-field conventions and the
    `path` / `stages` correspondence.
 6. **Fill the header and footer** with the commit, the paths, and the
-   regeneration command.
+   regeneration command. Reviewing a change rather than reading the code as it
+   stands? Put the PR or ticket in the header too.
 7. **Verify** (below), then `open` it.
+8. **Move the findings out.** The page is where you worked something out, not
+   where it ends: what the `.box.alert` section says belongs in the review or
+   the ticket, in the reviewer's own words. The page stays local — link it by
+   commit, do not attach it.
 
-Copy the template into the working directory rather than editing it in place:
+Copy the template out rather than editing it in place, and write the result
+outside the repo (or to a path git ignores) so a working diagram never lands in
+a commit by accident:
 
 ```bash
-cp ~/.agent/skills/code-flow-html/template.html ./<subject>-flow.html
+cp ~/.agent/skills/code-flow-html/template.html /tmp/<subject>-flow.html
 ```
 
 Every spot needing domain content is marked `REPLACE` (or `OPTIONAL`) in an HTML
@@ -112,15 +143,26 @@ comment. Remove those comments once filled.
 
 ## Verification
 
-Before handing the file over:
+Run the checker, always with `--src` — the source correspondence is the check
+that matters and it is the one that is silently skipped without it:
 
 ```bash
-# Every id referenced from SCENARIOS.path must exist in the markup.
-python3 -c "import re; h=open('<subject>-flow.html').read(); ids=set(re.findall(r'id=\"(n-[a-z-]+)\"',h)); used=set(re.findall(r'\"(n-[a-z-]+)\"',h))-ids; print(sorted(used-ids))"
+python3 ~/.agent/skills/code-flow-html/check.py /tmp/<subject>-flow.html \
+  --src src/pkg/module.py src/pkg/other.py
 ```
 
-An empty list is the pass condition — anything printed is a `path` entry with no
-node behind it, which silently fails to light up.
+No output and exit 0 is the pass condition. It reports four things:
+
+| Finding | Why it matters |
+|---|---|
+| a `path` entry with no node behind it | that step silently fails to light up |
+| a node no scenario reaches | dead code, or a scenario is missing — both worth knowing |
+| `stages` that disagree with the path | connector lines light for steps that never run |
+| a `.fn` absent from `--src` | the label was paraphrased, or the code was misread |
+
+The last one is the point of the whole check when the page describes code you
+did not write: a reader who cannot verify the diagram has no defence against a
+confidently wrong one. Treat a hit as wrong until shown otherwise.
 
 Then `open` the file and confirm by eye:
 
@@ -133,5 +175,6 @@ Then `open` the file and confirm by eye:
 ## Files
 
 - `template.html` — the shell. Runs as-is with three dummy scenarios.
+- `check.py` — the four checks above. Run it before handing the page over.
 - `reference.md` — `SCENARIOS` field conventions, `path` / `stages`
   correspondence, and the node-class decision table.
