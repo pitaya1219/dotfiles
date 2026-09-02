@@ -213,6 +213,27 @@ and the plists were still sitting in `LaunchAgents`.
 
 ## Troubleshooting
 
+### pasta vs slirp4netns rootless Docker published ports
+
+pasta is documented upstream as only relaying published-port traffic that
+arrives via the host's real loopback (bridged in via `--host-lo-to-ns-lo`);
+traffic arriving on any other host interface is believed to complete the
+TCP handshake but never get its data relayed. This is a real upstream
+caveat, but a leftover docker network with an overly broad subnet can
+produce the exact same symptom (LAN clients failing to reach a published
+port) under both pasta and slirp4netns alike, since it's a routing
+collision, not a driver limitation.
+
+**Before suspecting pasta itself:** check `docker network ls` for a
+stopped/leftover network with a suspiciously broad subnet, and `ip route
+get <dest>` from inside the rootless sandbox netns to see what's actually
+being selected.
+
+**When testing published-port reachability:** a host curling its own LAN
+IP doesn't exercise this at all -- the kernel routes that internally as
+loopback regardless of driver. Test from a genuinely separate network
+namespace (another container on its own bridge, another physical host).
+
 ### Common Issues
 - Build failures: Check flake.lock is up to date
 - Profile not found: Verify profile file exists in `profiles/`

@@ -35,30 +35,19 @@ EOF
 
   home.activation.configureIpv6 = lib.hm.dag.entryAfter ["installRootlessDocker"] ''
     mkdir -p ~/.config/systemd/user/docker.service.d
-    # Back to pasta (eb0f9cb switched to slirp4netns instead, citing a
-    # suspected pasta published-port relay bug for LAN/WAN-arriving
-    # connections). pasta reflects the host's own routing table into the
-    # container instead of NATing behind a synthetic subnet, so a rootless
-    # container can reach *other* real LAN devices directly (e.g. gateway's
-    # nginx proxying to koi's llama.cpp at 192.168.10.3). slirp4netns's
-    # synthetic 10.0.2.0/24 NAT has no equivalent -- it special-cases
-    # exactly one address (10.0.2.2, "the host itself") and cannot reach
-    # any other LAN peer at all. RootlessKit also hard-rejects `--net=pasta`
-    # paired with `--port-driver=builtin` ("requires port driver 'none' or
-    # 'implicit'"), so there is no combination that gets both properties at
-    # once.
+    # pasta reflects the host's own routing table into the container
+    # instead of NATing behind a synthetic subnet, so a rootless container
+    # can reach *other* real LAN devices directly (e.g. gateway's nginx
+    # proxying to koi's llama.cpp at 192.168.10.3). slirp4netns's synthetic
+    # 10.0.2.0/24 NAT has no equivalent -- it special-cases exactly one
+    # address (10.0.2.2, "the host itself") and cannot reach any other LAN
+    # peer at all. RootlessKit also hard-rejects `--net=pasta` paired with
+    # `--port-driver=builtin` ("requires port driver 'none' or 'implicit'"),
+    # so there is no combination that gets both properties at once.
     #
-    # The suspected published-port bug that motivated eb0f9cb was re-tested
-    # cleanly on 2026-09-02 (after removing an unrelated leftover docker
-    # network, pomerium-spike_default, whose 192.168.0.0/20 subnet had been
-    # silently black-holing outbound LAN routing during the original test)
-    # and did not reproduce: a genuine non-loopback-arriving LAN client
-    # (an Incus container on its own bridge) received full response bodies
-    # from both nginx's published port and RustDesk's hbbs, confirmed via
-    # hbbs's own connection log. See homelab memory
-    # project_pomerium_spike_subnet_collision.md for the full writeup.
-    # If published ports break for LAN/WAN clients again, suspect leftover
-    # docker networks or stale synthetic-address config before pasta itself.
+    # See AGENTS.md's "pasta vs slirp4netns rootless Docker published
+    # ports" entry before switching this back over a published-port
+    # complaint.
     cat > ~/.config/systemd/user/docker.service.d/pasta.conf <<EOF
 [Service]
 Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_NET=pasta"
