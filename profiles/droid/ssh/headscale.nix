@@ -10,7 +10,7 @@ let
   # rose/aviateur are reached as "localhost" from dragonfruit's end of the
   # ProxyJump, which is a host identity droid has never seen before — but
   # it's the exact same sshd/host key as "dragonfruit"/"dragonfruit-herdr-mirror"
-  # (100.64.0.13:1771), just under a different apparent name. Pin that known
+  # (100.64.0.2:1771), just under a different apparent name. Pin that known
   # key explicitly (scoped to just these two aliases) instead of either
   # trusting on first use or leaving BatchMode to reject it outright.
   dragonfruitLoopbackKnownHosts = "${config.home.homeDirectory}/.ssh/known_hosts.d/dragonfruit-loopback";
@@ -20,7 +20,7 @@ let
   # ssh has to be routed through it explicitly instead of relying on OS routing.
   sshConfig = ''
     Host dragonfruit
-      HostName 100.64.0.13
+      HostName 100.64.0.2
       Port 1771
       ProxyCommand ${pkgs.socat}/bin/socat - SOCKS5:localhost:%h:%p,socksport=1055
 
@@ -29,7 +29,7 @@ let
     # "dragonfruit" above, so this dedicated key is never what an
     # interactive "ssh dragonfruit" picks up.
     Host dragonfruit-herdr-mirror
-      HostName 100.64.0.13
+      HostName 100.64.0.2
       Port 1771
       ProxyCommand ${pkgs.socat}/bin/socat - SOCKS5:localhost:%h:%p,socksport=1055
       User lepetitprince
