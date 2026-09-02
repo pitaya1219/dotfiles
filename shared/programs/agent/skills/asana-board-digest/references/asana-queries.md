@@ -201,9 +201,10 @@ Everything else scales, and two terms dominate:
 - `get_task_stories` over the changed set — priced in **pages**, not tasks, since an
   old ticket takes several. The two-phase walk and the sweep-cluster shortcut above
   are what keep this from running away.
-- `get_task` for wait-reason relief — one per wait-lane task at 5+ business days.
-  Tier C tasks are explicitly excluded from this, and that exclusion is most of the
-  saving, since a healthy board keeps the bulk of its wait lanes under five days.
+- `get_task` for wait-reason relief — one per wait-lane task at 5–19 business days.
+  Tier C tasks and 長期滞留 tasks are both excluded, and those exclusions are most of
+  the saving, since a healthy board keeps the bulk of its wait lanes under five days
+  and an unhealthy one keeps its worst tickets past twenty.
 
 On a quiet day the whole run is a handful of calls; after a long weekend, or the day
 after a housekeeping sweep, the changed set can be dozens of tasks. Say so up front

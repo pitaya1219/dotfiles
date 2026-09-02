@@ -132,18 +132,29 @@ them to find out, and say in the header that pre-cutoff timestamps are unverifie
 | 0 (更新あり)   | —         | —         |
 | 1–2            | Tier C    | Tier C    |
 | 3–4            | Tier B    | Tier C    |
-| 5+             | Tier A    | Tier B    |
+| 5–19           | Tier A    | Tier B    |
+| 20+            | 長期滞留  | 長期滞留  |
 
 - **Tier A — 要対応**: nobody is moving it and nobody is waiting on anyone
 - **Tier B — 要確認**: worth raising at the next standup
 - **Tier C — 様子見**: consistent with how the lane normally behaves
+- **長期滞留**: not a tier at all — see below
 
 The wait column is the same ladder one step gentler, because five quiet days in
 `Waiting for Production Deploy` mean something very different from five quiet days in
 `Doing`.
 
+**長期滞留** leaves the ladder above it, in both lane classes. Past about a month a
+task has stopped being something anyone forgot about and become part of the board's
+furniture, and a board that keeps a dozen of them fills Tier A with items nobody was
+ever going to act on this morning — which is how the one genuinely stuck ticket gets
+buried. These belong to a periodic clear-out, not to a standup, so the report gives
+them a section that carries counts and the worst offender per lane rather than a row
+each. They are also exempt from the comment reads below: nothing a month-old comment
+says will change where they land.
+
 **Wait-reason relief** applies to the one cell where it can change anything — a wait
-lane at 5+ days, i.e. Tier B. Read that task's newest comments and look for an
+lane at 5–19 days, i.e. Tier B. Read that task's newest comments and look for an
 explicit reason the wait is legitimate: a named blocker, another ticket, a scheduled
 test or release date, a 回答待ち addressed to someone. If one is there, drop the task
 to Tier C and quote the reason. If the lane says "waiting" but no comment says what
@@ -169,7 +180,10 @@ Fill in `assets/report-template.md`. Rules that keep it readable:
   it. Where a comment thread has a conclusion, report the conclusion, not the thread.
 - 参考 gets **one line per cause, not per task**: a sweep that touched forty tasks is
   one line naming the field, the count, and an example.
-- Keep 更新あり and all three tier headings even at zero — their counts are how the
+- 長期滞留 gets **one line per lane**: the count, the assignees behind it, and the
+  longest-running example. Never a row per task — the point of the section is that
+  these are not read individually.
+- Keep 更新あり, the three tier headings, and 長期滞留 even at zero — their counts are how the
   reader tells "nothing was stuck" from "the digest never looked". The lane groups
   inside 更新あり are the opposite: list only the lanes that have something, since an
   empty column is the board's normal state and not a finding. Drop 参考 when it holds
