@@ -81,7 +81,7 @@ them to fit an awkward flow — reshape the flow instead.
   expressed by switching scenarios, not by drawing both legs. Drawing every leg
   produces crossing lines and nothing is legible.
 - **Always name the target commit, in both the header and the footer.** A
-  diagram of code goes stale silently. A short hash (e.g. `856d88d`) plus the
+  diagram of code goes stale silently. A short hash (e.g. `abc1234`) plus the
   file paths lets the next reader tell at once whether it still describes
   reality.
 - **Record how to regenerate it.** Put the commands used to extract the call
