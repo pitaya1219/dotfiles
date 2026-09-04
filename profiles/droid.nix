@@ -21,10 +21,10 @@
 
         # Both endpoints, switched with `/model local` and `/model pitaya`.
         # Local is the default: this machine leaves the network often enough
-        # that the endpoint that keeps working offline is the better one to
-        # land on, and llama-cpp is already in home.packages below to serve
-        # it. Nothing here starts that server — home-manager's systemd user
-        # units do not run under proot, so it is started by hand.
+        # that the endpoint which keeps working offline is the better one to
+        # land on. Nothing here starts that server, deliberately — on this
+        # profile it comes from a separate app rather than from nix, so
+        # `local` answers only while that app is running.
         programs.hermes = {
           enable = true;
           default = "local";
