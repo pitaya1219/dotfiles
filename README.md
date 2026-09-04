@@ -237,12 +237,12 @@ status from, and one of them was wrong. There is now a single copy, embedded in
 the binary that prints it.
 
 `endpoint` picks one of the two below, unlike Hermes, which keeps both reachable
-in a session. Every profile is on `pitaya` today:
+in a session:
 
-| `endpoint` | Where | Model |
-|------------|-------|-------|
-| `pitaya` | `ai.pitaya.f5.si` | `Qwen3.5-0.8B-UD-Q4_K_XL` |
-| `local` | an OpenAI-compatible server on the machine | per profile |
+| Profile | `endpoint` | Model |
+|---------|------------|-------|
+| r-shibuya, droid | `local` — llama-server on `localhost:11434` | `gemma-4-e2b` |
+| lepetitprince, aviateur, rose | `pitaya` — `ai.pitaya.f5.si` | `Qwen3.5-0.8B-UD-Q4_K_XL` |
 
 The endpoint's origin, model and auth live under its own namespace in the
 module, so a profile names the endpoint and nothing else. `pitaya` implies
@@ -256,6 +256,10 @@ passage insert shellm/client/secret
 Those are read on the first `shellm` call rather than at shell startup — two
 `passage show` invocations cost more than the rest of bash startup put
 together, and a shell that never presses a keybinding should not pay them.
+
+Nothing in nix starts droid's local server — on that profile it comes from a
+separate app — so shellm's keybindings there answer only while that app is
+running.
 
 Set `reasoningEffort = "none"` against a model that reasons by default, or
 every completion comes back empty; the option's description explains why.

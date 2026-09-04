@@ -37,10 +37,14 @@
           };
         };
 
-        # koi's endpoint, as before.
+        # The same local server hermes defaults to above, which nix does not
+        # start here — shellm's keybindings answer only while that app is
+        # running, and fall back to nothing rather than to koi.
         programs.shellm = {
           enable = true;
-          endpoint = "pitaya";
+          local.model = "gemma-4-e2b";
+          reasoningEffort = "none";
+          timeout = 30;
 
           # Android OOM workaround: single-threaded Rust build to prevent
           # SIGKILL from Android's LMK during parallel cargo compilation.

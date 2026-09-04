@@ -85,12 +85,13 @@ let
         };
       };
 
-      # koi's endpoint, as before. The llama-server this profile starts is
-      # right there, but shellm cannot use it until it can be told to stop
-      # the model thinking.
+      # The same llama-server hermes uses above, started by
+      # ./r-shibuya/llama-server.nix.
       programs.shellm = {
         enable = true;
-        endpoint = "pitaya";
+        local.model = "gemma-4-e2b";
+        reasoningEffort = "none";
+        timeout = 30;
       };
 
       programs.obs-noise-cancel = {
