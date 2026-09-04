@@ -2,9 +2,6 @@
 # Guard: only source this file in bash
 [[ -z "$BASH_VERSION" ]] && return
 
-# shellm - LLM-powered shell completion
-${builtins.readFile ./shellm.sh}
-
 # pass-cli-passage-sync.sh completion
 ${builtins.readFile ./pass-cli-passage-sync-completion.sh}
 

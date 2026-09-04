@@ -11,7 +11,7 @@ client_secret=$(passage show "$HERMES_PITAYA_PASSAGE_PREFIX/secret")
 
 # scope=openid and nothing more: the endpoint's JWT is validated by the llm
 # proxy against the same issuer's JWKS, which needs no audience or resource
-# scope. shellm's client (shared/programs/bash/shellm.sh) asks for exactly this
+# scope. shellm's client (shared/programs/shellm.nix) asks for exactly this
 # against the same issuer.
 curl --silent --show-error --fail \
   --data-urlencode "grant_type=client_credentials" \

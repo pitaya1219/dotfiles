@@ -20,6 +20,12 @@
           };
         };
 
+        # koi's endpoint, the same one hermes is on above.
+        programs.shellm = {
+          enable = true;
+          endpoint = "pitaya";
+        };
+
         dotfiles.agent.logseq = {
           url = { command = "passage show logseq/http-api/host"; };
           token = { command = "passage show logseq/http-api/claude-code/token"; };
@@ -38,6 +44,7 @@
           ../shared/programs/opencode.nix
           ../shared/programs/vibe.nix
           ../shared/programs/hermes.nix
+          ../shared/programs/shellm.nix
           ../shared/programs/direnv.nix
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix

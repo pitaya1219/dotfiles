@@ -216,3 +216,49 @@ passage insert hermes/client/<profile>/secret
 `home-manager switch` does not create these, and Hermes only reads them when it
 first calls the endpoint — so a missing entry shows up as a failed turn, not a
 failed activation.
+
+### shellm
+
+`programs.shellm` (`shared/programs/shellm.nix`) owns the package and the
+`SHELLM_*` variables, because shellm takes its whole configuration from the
+environment and splitting the two apart put its settings in three files at
+once.
+
+The keybindings are not held here. shellm prints them itself, and the module
+only adds the one line that asks for them:
+
+```bash
+eval "$(shellm init bash)"
+```
+
+This repo used to carry its own copy of that snippet, which had drifted from
+the one in shellm's README — the two disagreed about where `:e` reads the exit
+status from, and one of them was wrong. There is now a single copy, embedded in
+the binary that prints it.
+
+`endpoint` picks one of the two below, unlike Hermes, which keeps both reachable
+in a session. Every profile is on `pitaya` today:
+
+| `endpoint` | Where | Model |
+|------------|-------|-------|
+| `pitaya` | `ai.pitaya.f5.si` | `Qwen3.5-0.8B-UD-Q4_K_XL` |
+| `local` | an OpenAI-compatible server on the machine | per profile |
+
+The endpoint's origin, model and auth live under its own namespace in the
+module, so a profile names the endpoint and nothing else. `pitaya` implies
+OAuth, and every profile on it shares one client:
+
+```bash
+passage insert shellm/client/id
+passage insert shellm/client/secret
+```
+
+Those are read on the first `shellm` call rather than at shell startup — two
+`passage show` invocations cost more than the rest of bash startup put
+together, and a shell that never presses a keybinding should not pay them.
+
+Set `reasoningEffort = "none"` against a model that reasons by default, or
+every completion comes back empty; the option's description explains why.
+`shellm status` prints the setting and `shellm -d complete` shows the empty
+response when it is wrong. `logPath` is where the keybindings send stderr,
+since readline owns the line while they run and they cannot print it.

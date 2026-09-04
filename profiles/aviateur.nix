@@ -8,6 +8,12 @@
     };
     modules = [
       ({ config, pkgs, lib, ... }: {
+        # koi's endpoint. This host runs no model of its own.
+        programs.shellm = {
+          enable = true;
+          endpoint = "pitaya";
+        };
+
         dotfiles.agent.logseq = {
           url = { command = "passage show logseq/http-api/host"; };
           token = { command = "passage show logseq/http-api/claude-code/token"; };
@@ -19,6 +25,7 @@
           ((import ../lib/taskfile-overrides.nix { inherit lib pkgs; }).forProfile "aviateur")
           ../shared/programs/bash.nix
           ../shared/programs/bare.nix
+          ../shared/programs/shellm.nix
           ../shared/programs/logseq-view.nix
           ../shared/programs/claude-code.nix
           ../shared/programs/opencode.nix

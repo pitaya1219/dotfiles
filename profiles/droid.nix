@@ -37,6 +37,21 @@
           };
         };
 
+        # koi's endpoint, as before.
+        programs.shellm = {
+          enable = true;
+          endpoint = "pitaya";
+
+          # Android OOM workaround: single-threaded Rust build to prevent
+          # SIGKILL from Android's LMK during parallel cargo compilation.
+          # Independent of proot -- Android's memory pressure applies to the
+          # native VM too.
+          extraBuildAttrs.env = {
+            CARGO_BUILD_JOBS = "1";
+            RUSTFLAGS = "-C codegen-units=1";
+          };
+        };
+
         dotfiles.agent.logseq = {
           url = { command = "passage show logseq/http-api/host"; };
           token = { command = "passage show logseq/http-api/claude-code/token"; };
@@ -51,6 +66,7 @@
           ../shared/programs/opencode.nix
           ../shared/programs/vibe.nix
           ../shared/programs/hermes.nix
+          ../shared/programs/shellm.nix
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix
           ../shared/programs/herdr.nix
@@ -62,7 +78,6 @@
           ../shared/activations/proton-pass.nix
           ./droid/activations/linux-terminal-font.nix
           ./droid/activations/herdr_mirror.nix
-          ./droid/packages/shellm.nix
           ./droid/ssh/config.nix
           ./droid/ssh/headscale.nix
           ./droid/tailscale.nix

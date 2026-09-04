@@ -1,4 +1,4 @@
-{ lib, ... }:
+{ ... }:
 
 let
   baseAliases = import ./bash/aliases.nix;
@@ -15,10 +15,7 @@ in
     historyFileSize = 20000;
     historyControl = [ "ignoredups" ];
     
-    # Basic environment with default value for SHELLM_MODEL
-    sessionVariables = baseEnv // {
-      SHELLM_MODEL = lib.mkDefault "Qwen3.5-0.8B-UD-Q4_K_XL";
-    };
+    sessionVariables = baseEnv;
     
     # Common shell options
     shellOptions = baseShellOpt;

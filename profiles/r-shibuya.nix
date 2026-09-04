@@ -85,6 +85,14 @@ let
         };
       };
 
+      # koi's endpoint, as before. The llama-server this profile starts is
+      # right there, but shellm cannot use it until it can be told to stop
+      # the model thinking.
+      programs.shellm = {
+        enable = true;
+        endpoint = "pitaya";
+      };
+
       programs.obs-noise-cancel = {
         enable = true;
         configSourceDir = ./r-shibuya/obs;
@@ -118,6 +126,7 @@ let
         ../shared/programs/opencode.nix
         ../shared/programs/vibe.nix
         ../shared/programs/hermes.nix
+        ../shared/programs/shellm.nix
         ../shared/programs/git.nix
         ../shared/programs/neovim.nix
         ../shared/programs/herdr.nix
