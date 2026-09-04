@@ -4,7 +4,7 @@
 
 - Pass 1 — tasks changed since the cutoff (and why it is not exhaustive)
 - Pass 2 — board inventory for staleness (and why `sections_any` is unusable)
-- Reading stories without drowning (two-phase walk, wait-reason comments)
+- Reading stories without drowning (`get_task` triage, wait-reason comments)
 - `resource_subtype` values worth acting on
 - Telling a real update from a bulk sweep
 - `modified_at` moved but there are no stories
@@ -105,46 +105,47 @@ whose `memberships` puts it squarely in `Checking with W/S or Kraken（カンバ
 ## Reading stories without drowning
 
 `get_task_stories` returns **oldest first** and paginates forward only. For a ticket
-opened a year ago, the recent activity is on the last page, and there is no way to
-seek to it. Walking it in the obvious way — every page, every field — is what makes a
-single old ticket cost 20k tokens, and discarding the text afterwards saves nothing,
-because the tokens were spent when the response arrived.
+opened a year ago the recent activity is on the last page, there is no way to seek to
+it, and every page costs full comment text — a single busy ticket runs to two pages of
+thousand-line SQL dumps.
 
-Walk it in two phases instead. First find the boundary with the text left out:
+**`opt_fields` cannot make it cheaper.** Asking for `created_at,resource_subtype` still
+returns `text` on every story: the MCP server appends its own field list (visible in the
+`next_page.path` it echoes back) and the narrower request is ignored. Any plan that
+depends on a cheap metadata-only scan of the history does not work here.
 
-```
-mcp__claude_ai_Asana__get_task_stories
-  task_id    = <gid>
-  limit      = 100
-  offset     = <next_page.offset, when present>
-  opt_fields = created_at,resource_subtype
-```
-
-A story reduced to those two fields costs a few dozen tokens, so a year of history is
-a few thousand rather than twenty thousand. Note the offset of the page where
-`created_at` first reaches the cutoff, then re-request that page and any after it with
-`opt_fields=created_at,created_by.name,resource_subtype,text`.
-
-Process tasks in batches and append the per-task summary to a scratch file as you go.
-A run over a busy board exceeds what fits in one context, and the notes file is what
-survives a mid-run summarisation.
-
-For the wait-reason check in Step 4 of the skill, comments alone are enough and
-`get_task` returns the **newest** ones directly. Ask for only those:
+So triage before walking. `get_task` returns the **newest** comments directly and
+cheaply, which answers the only question most tasks need:
 
 ```
 mcp__claude_ai_Asana__get_task
   task_id          = <gid>
   include_comments = true
-  comment_limit    = 2
+  comment_limit    = 3
   include_subtasks = false
-  opt_fields       = name
+  opt_fields       = name,memberships.project.gid,memberships.section.name
 ```
+
+If the newest comment **predates the cutoff**, nobody said anything in the window, so
+whatever moved `modified_at` was a field edit, a reordering, or a subtask — none of
+which belong in 更新あり. That settles the task without touching its history. Measured on
+Elec Hub for 2026-09-03: 8 of 21 changed tasks resolved this way.
+
+Walk the full history only for the remainder, and only when you need the system stories
+— a lane move is the usual reason, and pass 2 already tells you the current lane, so the
+walk is really answering "did it arrive here inside the window". Newly-created tasks are
+one page and cheap; it is the year-old tickets that hurt.
+
+Process tasks in batches and append the per-task summary to a scratch file as you go.
+A run over a busy board exceeds what fits in one context, and the notes file is what
+survives a mid-run summarisation.
+
+The same `get_task` call serves the wait-reason check in Step 4 of the skill:
 
 The defaults are not cheap — `include_subtasks` is on, `comment_limit` is 10, and the
 description, custom fields, followers and dependencies come along unless `opt_fields`
-narrows them. This call returns no system stories, so it cannot answer "did this
-change lane".
+narrows them. Unlike `get_task_stories`, this call does respect `opt_fields`. It returns
+no system stories, so it cannot answer "did this change lane".
 
 One `get_task` has been seen to hang for 400s and return nothing at all. Re-issuing
 the same call worked, and so did looking the task up through `search_tasks` instead.
@@ -198,9 +199,10 @@ Fixed per run: `get_project` ×1, `search_tasks` ×1, `get_tasks` ×(classified 
 
 Everything else scales, and two terms dominate:
 
-- `get_task_stories` over the changed set — priced in **pages**, not tasks, since an
-  old ticket takes several. The two-phase walk and the sweep-cluster shortcut above
-  are what keep this from running away.
+- `get_task_stories` over the changed set — priced in **pages of full comment text**,
+  not tasks, and `opt_fields` cannot trim it. The `get_task` triage and the
+  sweep-cluster shortcut above are what keep this from running away, by cutting how
+  many tasks reach the walk at all.
 - `get_task` for wait-reason relief — one per wait-lane task at 5–19 business days.
   Tier C tasks and 長期滞留 tasks are both excluded, and those exclusions are most of
   the saving, since a healthy board keeps the bulk of its wait lanes under five days
