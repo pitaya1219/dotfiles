@@ -1,0 +1,105 @@
+<title>{{PROJECT_NAME}} ボードダイジェスト</title>
+<style>
+:root{--bg:#fbfbfa;--fg:#1c1b19;--muted:#6b6a66;--line:#e3e1dd;--card:#fff;--accent:#b4441f;
+--a:#c2410c;--b:#a16207;--c:#4d7c0f;--long:#57534e;--chip:#f0eeea}
+:root:not([data-theme="light"]){}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#191817;--fg:#eceae6;--muted:#a5a29c;
+--line:#33312e;--card:#211f1e;--accent:#e07a52;--a:#f97316;--b:#eab308;--c:#84cc16;--long:#a8a29e;--chip:#2b2927}}
+:root[data-theme="dark"]{--bg:#191817;--fg:#eceae6;--muted:#a5a29c;--line:#33312e;--card:#211f1e;
+--accent:#e07a52;--a:#f97316;--b:#eab308;--c:#84cc16;--long:#a8a29e;--chip:#2b2927}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);margin:0;padding:2.5rem 1.25rem 5rem;
+font:16px/1.75 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+-webkit-font-smoothing:antialiased}
+.wrap{max-width:860px;margin:0 auto}
+h1{font-size:1.6rem;line-height:1.35;margin:0 0 .5rem;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:3rem 0 .25rem;padding-bottom:.4rem;border-bottom:2px solid var(--line)}
+h3{font-size:.95rem;margin:2rem 0 .75rem;color:var(--muted);font-weight:600;letter-spacing:.02em}
+.meta{color:var(--muted);font-size:.82rem;line-height:1.7;margin:0 0 .35rem}
+.meta code{background:var(--chip);padding:.1rem .35rem;border-radius:4px}
+.count{color:var(--muted);font-weight:400;font-size:.85em}
+.card{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--line);
+border-radius:8px;padding:.9rem 1.1rem;margin:.6rem 0}
+.card.move{border-left-color:var(--accent)}
+.card h4{margin:0 0 .15rem;font-size:.98rem;line-height:1.5;font-weight:600}
+.card h4 a{color:inherit;text-decoration:none;border-bottom:1px solid var(--line)}
+.card h4 a:hover{color:var(--accent);border-bottom-color:var(--accent)}
+.who{color:var(--muted);font-size:.8rem;margin-bottom:.5rem}
+.mv{display:inline-block;background:var(--chip);color:var(--accent);border-radius:4px;
+padding:.05rem .4rem;font-size:.72rem;margin-left:.4rem;vertical-align:1px}
+.card ul{margin:.4rem 0 0;padding-left:1.1rem}
+.card li{margin:.3rem 0;font-size:.9rem;line-height:1.7}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:.5rem 0 0}
+table{border-collapse:collapse;width:100%;min-width:600px;font-size:.86rem}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:.76rem;letter-spacing:.03em;
+padding:.45rem .6rem;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:.55rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}
+td a{color:inherit;text-decoration:none;border-bottom:1px solid var(--line)}
+td a:hover{color:var(--accent)}
+.d{font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+.nw{white-space:nowrap;color:var(--muted);font-size:.8rem}
+.tier{display:inline-block;width:.5rem;height:.5rem;border-radius:50%;margin-right:.45rem;vertical-align:1px}
+.ta{background:var(--a)}.tb{background:var(--b)}.tc{background:var(--c)}.tl{background:var(--long)}
+.note{color:var(--muted);font-size:.84rem;margin:.35rem 0 0}
+footer{margin-top:4rem;padding-top:1.25rem;border-top:1px solid var(--line);color:var(--muted);font-size:.78rem}
+</style>
+<!-- Placeholders match assets/report-template.md; the two carry the same report.
+     Every task name is a link: use the task's permalink_url from pass 1 or pass 2.
+     Add class="move" to a card when the task changed lane inside the window. -->
+<div class="wrap">
+<h1>{{PROJECT_NAME}} ボードダイジェスト</h1>
+<p class="meta">{{RUN_DATE}} 実行 ／ 対象期間: <code>{{CUTOFF}}</code> 以降</p>
+<p class="meta">停滞判定の対象レーン: {{WORK_LANES}}（work） / {{WAIT_LANES}}（wait）</p>
+<p class="meta">判定対象外のセクション: {{UNCLASSIFIED_SECTIONS}}</p>
+{{CALENDAR_NOTE}}
+
+<h2>更新あり <span class="count">{{N}}件</span></h2>
+
+<h3>{{現在のレーン}} <span class="count">{{N}}件</span></h3>
+<div class="card move">
+  <h4><a href="{{permalink_url}}">{{タスク名}}</a><span class="mv">{{旧レーン}} → {{現在のレーン}}</span></h4>
+  <div class="who">{{担当}}</div>
+  <ul><li>{{何が起きたか。結論を書く。PR番号・アカウント番号・日付など識別子は残す}}</li></ul>
+</div>
+<div class="card">
+  <h4><a href="{{permalink_url}}">{{タスク名}}</a></h4>
+  <div class="who">{{担当}}</div>
+  <ul><li>{{何が起きたか}}</li></ul>
+</div>
+
+<h2>停滞</h2>
+
+<h3>Tier A — 要対応 <span class="count">{{N}}件</span></h3>
+<div class="scroll"><table>
+<thead><tr><th>タスク</th><th>レーン</th><th>停滞</th><th>担当</th><th>最終更新</th></tr></thead>
+<tbody><tr>
+  <td><span class="tier ta"></span><a href="{{permalink_url}}">{{タスク名}}</a></td>
+  <td class="nw">{{レーン}}</td><td class="d">{{N}}営業日</td>
+  <td class="nw">{{担当}}</td><td class="nw">{{YYYY-MM-DD}}</td>
+</tr></tbody></table></div>
+
+<h3>Tier B — 要確認 <span class="count">{{N}}件</span></h3>
+<!-- same table, class="tier tb" -->
+
+<h3>Tier C — 様子見 <span class="count">{{N}}件</span></h3>
+<!-- same table, class="tier tc"; add a 待ち理由 column for tasks demoted from Tier B -->
+
+<h3>長期滞留（20営業日以上） <span class="count">{{N}}件</span></h3>
+<p class="note">棚卸しの対象であって朝会の議題ではないため、レーンごとに件数と最長のものだけ。</p>
+<div class="scroll"><table>
+<thead><tr><th>レーン</th><th>内訳</th><th>最長</th><th>該当タスク</th></tr></thead>
+<tbody><tr>
+  <td class="nw"><span class="tier tl"></span>{{レーン}}</td><td>{{担当ごとの件数}}</td>
+  <td class="d">{{N}}営業日</td><td><a href="{{permalink_url}}">{{タスク名}}</a></td>
+</tr></tbody></table></div>
+
+<h2>参考 <span class="count">更新に見えて更新でなかったもの {{N}}件</span></h2>
+<div class="card">
+  <h4>{{原因}} <span class="count">{{N}}件</span></h4>
+  <div class="who">{{何が起きたか}}</div>
+  <p class="note">{{該当タスクへのリンクを、、で連結}}</p>
+</div>
+
+<footer>{{どう作られた数字かの一行。パス1/パス2の件数と、和集合で拾った件数}}</footer>
+</div>

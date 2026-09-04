@@ -23,7 +23,7 @@ mcp__claude_ai_Asana__search_tasks
   projects_any     = <projectGid>
   modified_at_after= <cutoff from scripts/bizdays.py>
   limit            = 100
-  opt_fields       = name,completed,assignee.name,modified_at,
+  opt_fields       = name,completed,assignee.name,modified_at,permalink_url,
                      memberships.project.gid,memberships.section.name
 ```
 
@@ -44,8 +44,9 @@ filter behave this way), which is why pass 2 outranks this field rather than the
 other way round.
 
 `completed` marks tasks closed inside the window, which belong in the digest as
-closures. Every other field costs tokens on all 100 rows without being printed —
-`due_on` and `created_at` in particular have no consumer here.
+closures. `permalink_url` is what `--html` links each row to; ask for it in both passes
+so a task found by only one of them still gets a link. Every other field costs tokens on
+all 100 rows without being printed — `due_on` and `created_at` have no consumer here.
 
 ### This query is neither exhaustive nor sorted
 
@@ -80,7 +81,7 @@ mcp__claude_ai_Asana__get_tasks
   completed_since = <today 00:00Z>
   limit           = 100
   offset          = <next_page.offset, when present>
-  opt_fields      = name,completed,assignee.name,modified_at
+  opt_fields      = name,completed,assignee.name,modified_at,permalink_url
 ```
 
 One call per classified lane. Section GIDs come from

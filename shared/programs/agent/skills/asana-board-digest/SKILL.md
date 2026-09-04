@@ -2,7 +2,7 @@
 name: asana-board-digest
 description: Summarises an Asana kanban board into what actually moved since a cutoff, which tasks changed lane, and which active tasks have gone quiet, bucketed by business days and tiered by lane. Use when asked what has been happening on the Asana board, which tickets are stuck or stalled, or for a standup or weekly board review.
 when_to_use: Trigger phrases include "Asanaの動き", "ボードの棚卸し", "止まっているタスク", "動きがないもの", "朝会用にまとめて", "what moved on the board", "what is stalled". Not for creating or editing a task — that is asana-create-task.
-argument-hint: "[YYYY-MM-DD | Nd]"
+argument-hint: "[YYYY-MM-DD | Nd] [--html]"
 user-invocable: true
 version: 1.0.0
 ---
@@ -37,6 +37,10 @@ converts to the UTC that Asana's filters expect:
 ```bash
 scripts/bizdays.py cutoff "$ARGUMENTS"   # e.g. 3d -> 2026-08-26T15:00:00Z
 ```
+
+`--html` additionally writes the report as a standalone page for circulating to
+people who do not have this conversation. Strip it from `$ARGUMENTS` before passing
+the rest to the script.
 
 ## Step 1: Config
 
@@ -104,8 +108,9 @@ pass-1 `memberships` entry for the configured project, then レーン未設定. 
 authoritative because `memberships` comes back empty for some tasks; the fallback
 exists because pass 2 only covers work and wait lanes.
 
-Record per task: gid, name, lane, assignee, `modified_at`, whether it closed, whether
-it moved lane (and from → to), and a one-to-three line summary of what happened.
+Record per task: gid, name, `permalink_url`, lane, assignee, `modified_at`, whether it
+closed, whether it moved lane (and from → to), and a one-to-three line summary of what
+happened.
 
 ## Step 4: Bucket and tier
 
@@ -190,6 +195,15 @@ Fill in `assets/report-template.md`. Rules that keep it readable:
   nothing.
 
 Print the report to the conversation, and save it to a file only if the user asks.
+
+With `--html`, also fill in `assets/report-template.html` and write it to
+`board-digest-<RUN_DATE>.html` in the working directory, then say where it landed. It
+carries the same report as the markdown one and the same placeholder names; what it
+adds is that **every task name links to its `permalink_url`**, because the audience for
+a circulated page is people who will want to open the ticket rather than ask you to.
+The template ships its own stylesheet — fill it in rather than restyling per run, so a
+reader who sees this page weekly recognises it. Keep the page self-contained: no CDN,
+no external fonts.
 
 The story reads in Step 3 dominate the cost of a run; `references/asana-queries.md`
 has the budget and how to keep it bounded.
