@@ -45,6 +45,7 @@
           ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "rose")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
           ./rose/tailscale.nix
+          ./rose/internal-relay.nix
           ./rose/logseq-sync.nix
           ./rose/disk-cleanup-check.nix
         ];
