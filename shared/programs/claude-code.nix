@@ -88,6 +88,12 @@
         command = "${config.home.homeDirectory}/dotfiles/scripts/claude-statusline.sh";
       };
       model = config.dotfiles.claude-code.model;
+      # OS-level (bubblewrap) isolation for Bash, on top of the PreToolUse
+      # hooks each repo already carries. Left at the default
+      # allowUnsandboxedCommands=true, so a sandbox violation surfaces as an
+      # "unsandboxed retry?" prompt rather than a hard failure — tighten to
+      # false later if prompts turn out to be too easy to rubber-stamp.
+      sandbox.enabled = true;
       # Pinned rather than left to Claude Code, which otherwise decides through
       # a server-side gate and, after showing its upsell five times, persists
       # the answer by writing to this file — a read-only symlink into the Nix
