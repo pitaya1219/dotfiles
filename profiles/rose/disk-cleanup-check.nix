@@ -1,7 +1,7 @@
 { config, pkgs, ... }:
 
 let
-  rocketchatNotify = "${config.home.homeDirectory}/dotfiles/scripts/rocketchat-notify.sh";
+  matrixNotify = "${config.home.homeDirectory}/dotfiles/scripts/matrix-notify.sh";
   dockerBin = "${config.home.homeDirectory}/.local/bin/docker";
 
   # Root FS and Docker's data root can be different physical disks (they
@@ -40,7 +40,7 @@ let
       IFS=' | '
       message="''${alerts[*]}"
       unset IFS
-      "${rocketchatNotify}" --agent-type disk-cleanup --type warning --priority medium --confirmation "$message"
+      "${matrixNotify}" --agent-type disk-cleanup --type warning --priority medium --confirmation "$message"
     fi
   '';
 in

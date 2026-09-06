@@ -1,6 +1,6 @@
 textual_theme = "catppuccin-mocha"
 
-# Enable experimental hooks for RocketChat notifications
+# Enable experimental hooks for Matrix notifications
 enable_experimental_hooks = true
 
 # Verify outbound HTTPS against the OS trust store instead of the bundled

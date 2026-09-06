@@ -95,7 +95,7 @@ SCRIPTS_DIR="$HOME/dotfiles/scripts"
   --level "$NVIM_LEVEL" \
   >/dev/null 2>&1 &
 
-"$SCRIPTS_DIR/rocketchat-notify.sh" \
+"$SCRIPTS_DIR/matrix-notify.sh" \
   --agent-type mistral-vibe \
   --session-id "$SESSION_ID" \
   --summary "$SESSION_SUMMARY" \

@@ -85,7 +85,7 @@ in
 
         # In-app toasts rather than the OS notification service: they render
         # the same wherever the TUI is attached, including over SSH. Being away
-        # from the terminal is already covered by scripts/rocketchat-notify.sh.
+        # from the terminal is already covered by scripts/matrix-notify.sh.
         toast.delivery = "herdr";
 
         # $session is not a built-in token. It carries the agent's own session

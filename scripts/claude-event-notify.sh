@@ -90,7 +90,7 @@ SCRIPTS_DIR="$HOME/dotfiles/scripts"
   --level "$NVIM_LEVEL" \
   2>/dev/null &
 
-"$SCRIPTS_DIR/rocketchat-notify.sh" \
+"$SCRIPTS_DIR/matrix-notify.sh" \
   --agent-type claude-code \
   --session-id "$SESSION_ID" \
   --summary "$SUMMARY" \
