@@ -26,7 +26,10 @@
     # bubblewrap is Claude Code's OS-level sandbox backend on Linux
     # (`sandbox.enabled` in settings.json); without it on PATH the feature
     # fails or silently falls back depending on `sandbox.failIfUnavailable`.
-    home.packages = [ pkgs.bubblewrap ];
+    # macOS has no bubblewrap -- the package is Linux-only in nixpkgs, so
+    # naming it unconditionally breaks evaluation there -- and needs none:
+    # the sandbox runs on seatbelt, which ships with the system.
+    home.packages = lib.optional pkgs.stdenv.hostPlatform.isLinux pkgs.bubblewrap;
 
     # Remote HTTP MCP servers from the shared dotfiles.httpMcpServers option.
     # The url (e.g. Windmill's issued MCP URL) already carries its own auth
