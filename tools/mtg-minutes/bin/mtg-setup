@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""
+mtg-setup — 会議の前提(音声経路と OBS)を点検し、直せるものは直す。
+
+mtg が起動時に同じ点検を回すので、普段このコマンドを直接叩く必要はない。
+会議の前に単体で確かめたいときと、mtg を使わずに OBS だけ落としたいとき用。
+
+見ているのは、過去に「録音は完走したのに中身が無い」を起こした3点:
+
+    1. BlackHole 2ch / 16ch がデバイス一覧に居ること
+       helper プロセスがメモリ逼迫で刈られると消える。coreaudiod の再起動で戻る
+    2. 複数出力装置「会議用」に BlackHole 16ch が入っていること
+       デバイス不在の間に構成から外され、その状態が保存される。戻すのは GUI
+    3. OBS が起動し、BlackHole 2ch へモニタリングしていること
+       自分の声はこの経路にしか乗らない
+
+OBS を会議のあいだだけ起動するのがこのコマンドの主目的。常駐させておくと
+メモリを食い、その圧力でアイドルな 16ch の helper が刈られる(1に戻る)。
+
+使い方:
+    mtg-setup              # 点検して直す(OBS を起動する)
+    mtg-setup --check      # 点検だけ。sudo も OBS の起動もしない
+    mtg-setup --teardown   # OBS を終了する(会議後)
+"""
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from mtgcommon import MEETING_OUTPUT_DEVICE, SIDES, info, warn  # noqa: E402
+import preflight  # noqa: E402
+
+
+def build_parser():
+    ap = argparse.ArgumentParser(
+        prog="mtg-setup", description="会議の前提(音声経路と OBS)を点検して整える")
+    ap.add_argument("--check", action="store_true",
+                    help="点検のみ。coreaudiod の再起動も OBS の起動もしない")
+    ap.add_argument("--teardown", action="store_true",
+                    help="OBS を終了する(点検はしない)")
+    ap.add_argument("--no-obs", action="store_true",
+                    help="OBS には触れず、音声デバイスと出力経路だけ見る")
+    ap.add_argument("--self-device", default=SIDES["self"]["device"],
+                    help=f"自分の音声デバイス名 (既定: {SIDES['self']['device']})")
+    ap.add_argument("--other-device", default=SIDES["other"]["device"],
+                    help=f"相手の音声デバイス名 (既定: {SIDES['other']['device']})")
+    ap.add_argument("--output-device", default=MEETING_OUTPUT_DEVICE,
+                    help=f"会議中に使う複数出力装置名 (既定: {MEETING_OUTPUT_DEVICE})")
+    return ap
+
+
+def main():
+    args = build_parser().parse_args()
+
+    # --teardown は「mtg-setup が起動した OBS」を覚えていないので無条件に落とす。
+    # 別プロセスの判断を引き継げない以上、明示的に叩かれたことを意図と見なす。
+    if args.teardown:
+        return 0 if preflight.quit_obs() else 1
+
+    checks = preflight.Preflight(
+        self_device=args.self_device,
+        other_device=args.other_device,
+        output_device=args.output_device,
+        manage_obs=not args.no_obs,
+        fix=not args.check,
+    )
+    ok = checks.run()
+    checks.report()
+    if not ok:
+        warn("このまま録っても、相手側か自分側が無音になります。")
+        return 1
+    if checks.notes:
+        info("直せていない点はありますが、録音は開始できます。")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

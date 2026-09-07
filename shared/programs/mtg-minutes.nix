@@ -16,7 +16,7 @@ let
   pythonForScripts = pkgs.python3.withPackages (ps: [ ps.pyobjc-framework-Quartz ]);
 
   programs = [
-    "mtg" "mtg-live" "mtg-minutes" "mtg-rec" "mtg-self"
+    "mtg" "mtg-live" "mtg-minutes" "mtg-rec" "mtg-self" "mtg-setup"
     "voice-in" "voice-in-indicator"
   ];
 

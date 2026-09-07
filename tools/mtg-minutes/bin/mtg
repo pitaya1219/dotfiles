@@ -47,6 +47,7 @@ from mtgcommon import (  # noqa: E402
     print_capture_devices, print_minutes_hint, resolve_model, resolve_or_report,
     sibling, stamp, stop_all, warn,
 )
+import preflight  # noqa: E402
 
 # 録音停止後、mtg-rec が finalize と無音チェックを終えるのを待つ上限
 REC_SHUTDOWN_TIMEOUT_SEC = 300
@@ -94,6 +95,12 @@ def build_parser():
                         f"(既定: {MEETING_OUTPUT_DEVICE})")
     g.add_argument("--no-switch-output", action="store_true",
                    help="システム出力デバイスの自動切り替えをスキップ")
+
+    g = ap.add_argument_group("前提の点検")
+    g.add_argument("--no-preflight", action="store_true",
+                   help="開始前の点検(音声デバイス / 複数出力装置 / OBS)をしない")
+    g.add_argument("--keep-obs", action="store_true",
+                   help="終了時に OBS を終了しない(点検で起動した場合も残す)")
 
     g = ap.add_argument_group("録音")
     g.add_argument("--live-silence-sec", type=int, default=LIVE_SILENCE_ALERT_SEC_DEFAULT,
@@ -238,6 +245,17 @@ def main():
             OUT_DIR.mkdir(parents=True, exist_ok=True)
             out = OUT_DIR / f"mtg_{stamp()}.mkv"
 
+    # 点検は出力デバイスの切り替えより先。OBS の起動も coreaudiod の再起動も
+    # デバイスの顔ぶれを変えるので、切り替え先が固まる前に済ませておく。
+    checks = preflight.Preflight(
+        self_device=args.self_device,
+        other_device=args.other_device,
+        output_device=args.output_device,
+    )
+    if not args.no_preflight and not checks.run():
+        die("前提が整っていません。上の指摘を直すか、"
+            "承知のうえで進めるなら --no-preflight を付けてください。")
+
     # 出力デバイスの切り替えは録音と字幕の両方より先に済ませる。相手の声は
     # 「システム出力 → 複数出力装置 → BlackHole 16ch」で届くので、ここが
     # 向いていないと録音も字幕も無音になる。
@@ -298,6 +316,9 @@ def main():
                  "mtg-rec は単独で finalize を続けるので、"
                  "しばらく後に ~/Movies の .mkv を確認してください。")
         meeting_output.__exit__()
+        # OBS を落とすのは録音の finalize を待ってから。自分側の音は OBS 経由で
+        # しか来ないので、先に落とすと最後の数秒が無音になる。
+        checks.teardown(keep_obs=args.keep_obs)
 
     print()
     if rec_proc is not None and rec_proc.returncode not in (0, None):
