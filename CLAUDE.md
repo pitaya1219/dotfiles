@@ -65,8 +65,7 @@ This is a sophisticated multi-profile dotfiles configuration repository that use
 - **Platform**: aarch64-darwin (Apple Silicon)
 - **Home**: `/Users/r-shibuya`
 - **Packages**: jq (additional)
-- **Neovim**: copilot-vim integration
-- **Unfree**: copilot.vim allowed
+- **Neovim**: llama.vim against the local llama-servers in `profiles/r-shibuya/llama.nix`
 
 ### droid Profile (Android native Linux Terminal)
 - **Platform**: aarch64-linux (ARM64)
@@ -91,7 +90,7 @@ This is a sophisticated multi-profile dotfiles configuration repository that use
 ### Unfree Package Management
 - Centralized allowlist system (`shared/programs/unfree.nix`)
 - Profile-specific additions supported
-- Currently allows: claude-code, copilot.vim
+- Currently allows: claude-code, specs.nvim
 
 ## Automation System
 

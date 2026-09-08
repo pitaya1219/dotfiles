@@ -9,7 +9,6 @@ let
     allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [
       "claude-code"
       "specs.nvim"
-      "copilot.vim"
     ];
     packageOverrides = pkgs: {
       neovim-unwrapped = pkgs.neovim-unwrapped.overrideAttrs (_: {
@@ -94,7 +93,7 @@ let
       };
 
       # The same llama-server hermes uses above, started by
-      # ./r-shibuya/llama-server.nix.
+      # ./r-shibuya/llama.nix.
       programs.shellm = {
         enable = true;
         local.model = "gemma-4-e2b";
@@ -125,7 +124,7 @@ let
         ../shared/programs/bare.nix
         ../shared/programs/logseq-view.nix
         ./r-shibuya/logseq-sync.nix
-        ./r-shibuya/llama-server.nix
+        ./r-shibuya/llama.nix
         ../shared/programs/mtg-minutes.nix
         ../shared/programs/browse.nix
         ../shared/programs/obs.nix

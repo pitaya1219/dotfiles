@@ -3,7 +3,7 @@
 {
   # Profile-specific plugins for r-shibuya
   plugins = with pkgs.vimPlugins; [
-    copilot-vim
+    llama-vim
     vim-elixir
   ];
 
