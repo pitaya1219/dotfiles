@@ -65,6 +65,28 @@ OBS_LOG_HEALTHY = """\
 16:19:35.283: [Loaded global audio device]: 'NoiseC'
 """
 
+# マイクが繋がっていない回(2026-09-08 の実ログ)。OBS は2秒おきに再試行し続け、
+# 初期化されるのは監視先の BlackHole 2ch だけ。待っても状況は変わらない。
+OBS_LOG_NO_MIC = """\
+21:54:42.370: Audio monitoring device:
+21:54:42.370: \tname: BlackHole 2ch
+21:54:42.835: coreaudio: failed to find device uid: AppleUSBAudioEngine:Sony Corporation:UAB-80:1110000:2,1, waiting for connection
+21:54:42.866: [Loaded global audio device]: 'NoiseC'
+21:55:00.857: coreaudio: Device 'BlackHole 2ch' [48000 Hz] initialized
+"""
+
+# OBS のソースを別のマイクに差し替えた回(2026-09-08 の実ログ)。UAB-80 を待つ行は
+# ログに残り続けるが、そのあと YYK-526 が開いているので探し物は解消している。
+# OBS は待つときは uid、開いたときは表示名で書くので、キーの上書きでは消えない。
+OBS_LOG_SWITCHED_MIC = """\
+22:42:42.132: Audio monitoring device:
+22:42:42.132: \tname: BlackHole 2ch
+22:42:43.305: coreaudio: failed to find device uid: AppleUSBAudioEngine:Sony Corporation:UAB-80:1110000:2,1, waiting for connection
+22:42:43.355: [Loaded global audio device]: 'NoiseC'
+22:42:52.239: coreaudio: Device 'BlackHole 2ch' [48000 Hz] initialized
+22:44:55.880: coreaudio: Device 'YYK-526' [16000 Hz] initialized
+"""
+
 # 監視先も音声も、まだ何も出ていない起動直後。
 OBS_LOG_STARTING = """\
 16:19:34.185: [macOS] Permission for audio device access granted.
@@ -146,6 +168,28 @@ def main():
         "16:19:35.250: coreaudio: Device 'UAB-80' [48000 Hz] initialized\n", ""))
     ok &= check(half["audio_up"] and not preflight.obs_audio_ready(half),
                 "マイクが開くまでは準備完了にしない")
+
+    no_mic = log_state(OBS_LOG_NO_MIC)
+    ok &= check(no_mic["devices"].get(
+        "AppleUSBAudioEngine:Sony Corporation:UAB-80:1110000:2,1") == "waiting",
+                "見つからないデバイスを waiting として拾う")
+    # 監視先(BlackHole 2ch)は入力ではないので、これが開いただけでは
+    # 準備完了にならない。打ち切るのは waiting を見たからで、60秒待たない。
+    ok &= check(no_mic["devices"].get("BlackHole 2ch") == "initialized"
+                and preflight.obs_audio_ready(no_mic),
+                "マイクが来ないと分かった時点で待ちを打ち切る")
+
+    switched = log_state(OBS_LOG_SWITCHED_MIC)
+    ok &= check(not any(s == "waiting" for s in switched["devices"].values()),
+                "別のマイクが開いたら古い waiting は解消する")
+    ok &= check(switched["devices"].get("YYK-526") == "initialized"
+                and preflight.obs_audio_ready(switched),
+                "差し替えたマイクで準備完了になる")
+    # 監視先(BlackHole 2ch)は waiting のあとに開いているが、これで解消しては
+    # いけない。マイク不在のときに開くのは監視先だけなので不在を見逃す。
+    ok &= check(no_mic["devices"].get(
+        "AppleUSBAudioEngine:Sony Corporation:UAB-80:1110000:2,1") == "waiting",
+                "監視先が開いただけでは waiting を解消しない")
 
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1

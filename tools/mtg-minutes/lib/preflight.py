@@ -51,6 +51,10 @@ OBS_MONITOR_HEAD_RE = re.compile(r"Audio monitoring device:\s*$")
 OBS_MONITOR_NAME_RE = re.compile(r"^\s*name:\s*(.+?)\s*$")
 OBS_DEVICE_INIT_RE = re.compile(r"coreaudio: Device '(.+?)' \[.*\] initialized")
 OBS_DEVICE_LOST_RE = re.compile(r"coreaudio: device '(.+?)' disconnected or changed")
+# 設定されたデバイスが居ないとき。OBS は2秒おきに再試行し続けるので、
+# この行が出た時点で「待っても来ない」と判断してよい。
+OBS_DEVICE_WAIT_RE = re.compile(
+    r"coreaudio: failed to find device uid: (.+?), waiting for connection")
 # 起動時に音声サブシステムが立ち上がった合図
 OBS_AUDIO_UP_RE = re.compile(r"\[Loaded global audio device\]")
 
@@ -196,6 +200,7 @@ def obs_log_state(log):
         lines = log.read_text(errors="replace").splitlines()
     except OSError:
         return state
+    events = []
     expect_name = False
     for line in lines:
         if expect_name:
@@ -212,28 +217,55 @@ def obs_log_state(log):
             continue
         m = OBS_DEVICE_INIT_RE.search(line)
         if m:
-            state["devices"][m.group(1)] = "initialized"
+            events.append(("initialized", m.group(1)))
             continue
         m = OBS_DEVICE_LOST_RE.search(line)
         if m:
-            state["devices"][m.group(1)] = "disconnected"
+            events.append(("disconnected", m.group(1)))
+            continue
+        m = OBS_DEVICE_WAIT_RE.search(line)
+        if m:
+            events.append(("waiting", m.group(1)))
+
+    # 状態はイベント順に畳む。デバイスごとの上書きだけでは「探している」が
+    # 解消できない: OBS は待つときは uid で、開いたときは表示名で書くので、
+    # 同じデバイスでもキーが違って上書きにならない。入力が1つでも開いたら、
+    # それ以前の「探している」は解消したと見なす(OBS のソースを別のマイクに
+    # 差し替えた場合がこれで、古い uid を待つ行がログに残り続ける)。
+    # 監視先の初期化では解消しない。マイク不在のときに開くのは監視先だけなので、
+    # これを数えると不在を見逃す。
+    for status, name in events:
+        if status == "initialized" and not _matches(name, state["monitoring_device"]):
+            for waiting in [n for n, s in state["devices"].items() if s == "waiting"]:
+                del state["devices"][waiting]
+        state["devices"][name] = status
     return state
 
 
 def obs_audio_ready(state):
-    """OBS の音声が使える状態か(ログから読んだ state で判断)。
+    """OBS が入力について結論を出したか(ログから読んだ state で判断)。
 
     音声サブシステムが上がっただけでは足りない。マイクが開くのはその前後で、
-    実機では起動から 0.7 秒のこともあれば 16 秒かかることもあった(遅い側は
-    USB マイクが寝ていたとき)。開く前に録音を始めると自分側の頭が落ちるので、
-    入力デバイスが1つ以上開いたことまで見る。監視先(BlackHole 2ch)は
-    coreaudio の初期化行に出てこないので、除外して数える。
+    実機では起動から1秒かからないこともあれば 16 秒かかることもあった
+    (遅い側は USB マイクが寝ていたとき)。開く前に録音を始めると自分側の頭が
+    落ちるので、入力デバイスが開くところまで待つ。
+
+    監視先(BlackHole 2ch)を数から外すのは、それが入力ではなくモニタリングの
+    出力先だから。マイクが不在のときは監視先だけが初期化されるので、これを
+    数に入れると「マイクが無いのに準備完了」になる。
+
+    待ちを打ち切る条件が2つあるのは、マイクが来ない場合があるため。
+    設定されたデバイスが居ないと OBS は "waiting for connection" を出して
+    2秒おきに再試行し続ける。この行が出たら待っても状況は変わらないので、
+    準備完了として扱い、理由は _check_obs が警告する。
     """
     if not state["audio_up"]:
         return False
     monitoring = state["monitoring_device"]
-    return any(status == "initialized" and not _matches(name, monitoring)
-               for name, status in state["devices"].items())
+    return any(
+        (status == "initialized" and not _matches(name, monitoring))
+        or status == "waiting"
+        for name, status in state["devices"].items())
 
 
 def obs_confirm_on_exit():
@@ -425,6 +457,12 @@ class Preflight:
             self._note(f"OBS の監視先が '{monitoring}' です。"
                        f"自分側は {self.self_device} から録るので、"
                        "OBS の設定 → 音声 → モニタリングデバイスを直してください。")
+
+        waiting = [name for name, status in state["devices"].items()
+                   if status == "waiting"]
+        if waiting:
+            self._note(f"OBS が {', '.join(waiting)} を探し続けています。"
+                       "マイクが接続されていません。このまま録ると自分側は無音になります。")
 
         lost = [name for name, status in state["devices"].items()
                 if status == "disconnected"]
