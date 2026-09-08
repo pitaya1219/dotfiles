@@ -14,16 +14,24 @@
         then import profilePluginsPath { inherit pkgs lib config; }
         else { plugins = []; extraPackages = []; };
       
-      # Get profile-specific after/plugin files
-      profileAfterPluginPath = ../profiles/${profileName}/neovim/after/plugin;
-      profileAfterPluginFiles = if builtins.pathExists profileAfterPluginPath
+      # Get profile-specific plugin and after/plugin files. Both directories
+      # matter: neovim sources ~/.config/nvim/plugin before a package's own
+      # plugin/, and after/plugin after it, so a plugin that reads a g:
+      # variable as it loads can only be configured from the former.
+      luaFilesUnder = dir: subdir:
+        if builtins.pathExists dir
         then lib.mapAttrs' (name: _: {
-          name = "after/plugin/${name}";
-          value = profileAfterPluginPath + "/${name}";
-        }) (lib.filterAttrs (name: type: 
+          name = "${subdir}/${name}";
+          value = dir + "/${name}";
+        }) (lib.filterAttrs (name: type:
           type == "regular" && lib.hasSuffix ".lua" name
-        ) (builtins.readDir profileAfterPluginPath))
+        ) (builtins.readDir dir))
         else {};
+
+      profileNeovim = ../profiles/${profileName}/neovim;
+      profilePluginFiles =
+        luaFilesUnder (profileNeovim + "/plugin") "plugin"
+        // luaFilesUnder (profileNeovim + "/after/plugin") "after/plugin";
       
       # Profile-specific coc-settings.json
       profileCocSettingsPath = ../profiles/${profileName}/neovim/coc-settings.json;
@@ -56,7 +64,7 @@
       home.file = lib.mapAttrs' (name: path: {
         name = ".config/nvim/${name}";
         value.source = path;
-      }) profileAfterPluginFiles;
+      }) profilePluginFiles;
 
       # Deploy merged coc-settings.json as regular file via activation (overriding base)
       # Use lib.mkForce to ensure this takes precedence over the base config
