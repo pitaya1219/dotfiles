@@ -1,0 +1,36 @@
+--- a/autoload/llama.vim
++++ b/autoload/llama.vim
+@@ -25,6 +25,7 @@
+ "   n_predict:        max number of tokens to predict
+ "   stop_strings_fim  return the result immediately as soon as any of these strings are encountered in the generated text for FIM completions
+ "   stop_strings_inst return the result immediately as soon as any of these strings are encountered in the generated text for instruction completions
++"   params_inst:      extra fields merged into every instruction request body (e.g. {'reasoning_effort': 'none'})
+ "   n_cmpl:           number of completions to cache per position (ring buffer, default: 1)
+ "   t_max_prompt_ms:  max allowed time for the prompt processing (TODO: not yet supported)
+ "   t_max_predict_ms: max allowed time for the prediction
+@@ -78,6 +79,7 @@
+     \ 'n_predict':              128,
+     \ 'stop_strings_fim':       [],
+     \ 'stop_strings_inst':      [],
++    \ 'params_inst':            {},
+     \ 'n_cmpl':                 1,
+     \ 't_max_prompt_ms':        500,
+     \ 't_max_predict_ms':       1000,
+@@ -1688,6 +1690,8 @@
+         \ 'cache_prompt': v:true,
+         \ 'response_fields':  [""],
+         \ }
++
++    call extend(l:request, g:llama_config.params_inst)
+ 
+     let l:curl_command = [
+         \ "curl",
+@@ -1784,6 +1788,8 @@
+         \ 'stream':       v:true,
+         \ 'cache_prompt': v:true,
+         \ }
++
++    call extend(l:request, g:llama_config.params_inst)
+ 
+     let l:curl_command = [
+         \ "curl",

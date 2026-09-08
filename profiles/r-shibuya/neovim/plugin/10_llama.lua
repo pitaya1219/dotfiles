@@ -25,6 +25,10 @@ vim.g.llama_config = {
   endpoint_inst = "http://127.0.0.1:11434/v1/chat/completions",
   model_inst = "gemma-4-e2b",
 
+  -- Gemma 4 reasons unless the request says otherwise. params_inst is the
+  -- patch in ../plugins.nix.
+  params_inst = { reasoning_effort = "none" },
+
   -- These two default to <Tab> and <Esc>, mapped globally in normal mode for
   -- as long as the plugin is enabled, which costs the jumplist its <C-I> and
   -- makes <Esc> run a command.
