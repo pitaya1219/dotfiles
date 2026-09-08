@@ -17,8 +17,9 @@ vim.g.coc_global_extensions = {
 -- Coc configuration
 vim.g.coc_snippet_next = '<tab>'
 
-if vim.fn.executable('command') == 1 then
-  vim.g.coc_node_path = vim.fn.substitute(vim.fn.system('command -v node'), "\n", "", "")
+local node_path = vim.fn.exepath('node')
+if node_path ~= '' then
+  vim.g.coc_node_path = node_path
 end
 
 -- Helper function for coc
