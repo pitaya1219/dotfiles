@@ -309,18 +309,33 @@ def start_obs(timeout=OBS_READY_TIMEOUT_SEC):
     return obs_pid() is not None, False
 
 
+def signal_quit_obs():
+    """OBS に終了を指示するだけで、終わるのを待たない。
+
+    待つ意味があるのは終了そのものが目的のときだけ。会議のあとは議事録の生成が
+    続くので、OBS が閉じるまでの数秒をそこに足す理由がない。指示さえ出せば
+    OBS は自力で終了する。
+
+    出力を捨てるのは、osascript が終了に成功しても -128 を返すため。
+    そのエラーが議事録の出力に混ざる。
+    """
+    if obs_pid() is None:
+        return False
+    info("OBS を終了します")
+    subprocess.Popen(["osascript", "-e", f'quit app "{OBS_APP_NAME}"'],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return True
+
+
 def quit_obs(timeout=OBS_QUIT_TIMEOUT_SEC):
-    """OBS を終了する。終了できたら True。
+    """OBS を終了し、終わるまで待つ。終了できたら True。
 
     osascript の戻り値は見ない。実機では終了できているのに
     -128 (ユーザによってキャンセルされました) を返すため、
     成否はプロセスが消えたかどうかだけで判定する。
     """
-    if obs_pid() is None:
+    if not signal_quit_obs():
         return True
-    info("OBS を終了します")
-    subprocess.run(["osascript", "-e", f'quit app "{OBS_APP_NAME}"'],
-                   capture_output=True, text=True)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if obs_pid() is None:
@@ -475,9 +490,13 @@ class Preflight:
 
         自分で開いていた OBS を落とされると困る(配信や録画に使っている)ので、
         点検の時点で動いていなかった場合しか終了させない。
+
+        終了は指示するだけで待たない。呼び出し側はこの直後に議事録の生成へ進む
+        (`mtg` は mtg-minutes に execvp する)ので、待っても結果を見る先が無い。
+        引き換えに、ダイアログ等で終了できなかった場合は誰も気づけない。
         """
         if self.started_obs and not keep_obs:
-            quit_obs()
+            signal_quit_obs()
         self.started_obs = False
 
     def report(self):

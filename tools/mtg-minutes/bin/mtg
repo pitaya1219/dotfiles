@@ -317,7 +317,8 @@ def main():
                  "しばらく後に ~/Movies の .mkv を確認してください。")
         meeting_output.__exit__()
         # OBS を落とすのは録音の finalize を待ってから。自分側の音は OBS 経由で
-        # しか来ないので、先に落とすと最後の数秒が無音になる。
+        # しか来ないので、先に落とすと最後の数秒が無音になる。指示だけ出して
+        # 待たないので、この後の議事録生成が OBS の終了を待たされることはない。
         checks.teardown(keep_obs=args.keep_obs)
 
     print()
