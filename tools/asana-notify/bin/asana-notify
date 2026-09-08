@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""
+asana-notify — Asana を定期的に見て、変化を herdr のトーストで知らせる。
+
+ブラウザで Asana のタブを開きっぱなしにしておく理由は通知だけなので、その通知
+だけを取り出したもの。タブ1枚が数百MB使うのに対し、こちらは launchd が数秒だけ
+プロセスを起こして終わる。
+
+見ているのは2系統:
+
+    1. 自分に割り当てられたタスク(ワークスペース全体)
+       新しい割り当てと、本日期限 / 期限切れ
+    2. 設定した projectGid のイベント(Asana Events API)
+       他人が付けたコメントと、ボードに増えたタスク
+
+初回は何も鳴らさず現状を基準として記録する(全部の未完了タスクが一斉に鳴るのを
+避けるため)。herdr が起きていないあいだの通知は state に溜めて次回に持ち越す。
+
+フラグは --help を見ること。
+"""
+import argparse
+import os
+import subprocess
+import sys
+import time
+from datetime import date
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from asananotify import (  # noqa: E402
+    CONFIG_PATH, MAX_PENDING, STATE_PATH, Asana, ApiError, ConfigError,
+    body_lines, classify_event, due_notes, herdr_argv, load_config, load_state,
+    new_assignment_notes, note, save_state, summarize,
+)
+
+DEFAULT_INTERVAL_SEC = 300
+
+
+def build_parser():
+    ap = argparse.ArgumentParser(
+        prog="asana-notify",
+        description="Asana の変化を herdr のトーストで知らせる")
+    ap.add_argument("--check", action="store_true",
+                    help="設定とトークンを確認して終了する")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="通知せず標準出力に出す。state も更新しない")
+    ap.add_argument("--watch", action="store_true",
+                    help="1回で終わらず --interval ごとに繰り返す")
+    ap.add_argument("--interval", type=int, default=DEFAULT_INTERVAL_SEC,
+                    help=f"--watch の間隔(秒、既定 {DEFAULT_INTERVAL_SEC})")
+    ap.add_argument("--reset", action="store_true",
+                    help="state を捨てる。次回の実行が基準を取り直す")
+    ap.add_argument("--config", default=CONFIG_PATH,
+                    help=f"設定ファイル(既定 {CONFIG_PATH})")
+    return ap
+
+
+def deliver(notes):
+    """Hand notifications to herdr, oldest first. Returns the ones that did not
+    make it, for the caller to keep in state and retry — herdr not running is
+    the expected reason and it comes back.
+    """
+    undelivered = []
+    for i, n in enumerate(notes):
+        try:
+            subprocess.run(herdr_argv(n), check=True, capture_output=True, timeout=10)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
+            reason = getattr(e, "stderr", b"") or str(e)
+            if isinstance(reason, bytes):
+                reason = reason.decode("utf-8", "replace")
+            print(f"herdr への通知に失敗、次回に持ち越します: {reason.strip()[:200]}",
+                  file=sys.stderr)
+            undelivered = notes[i:]
+            break
+    return undelivered
+
+
+def collect_my_tasks(api, state, workspace_gid, today):
+    tasks = api.my_tasks(workspace_gid)
+    notes = new_assignment_notes(state.get("my_task_gids"), tasks)
+    overdue, due_notified = due_notes(tasks, state.get("due_notified"), today)
+    state["my_task_gids"] = [t["gid"] for t in tasks]
+    state["due_notified"] = due_notified
+    return notes + overdue
+
+
+def collect_project_events(api, state, project_gid, me_gid, announced=()):
+    """`announced` are tasks the My Tasks stream already has a toast for, so a
+    task appearing on the board is skipped before it costs a request. Comments
+    are not folded that way: "田中 commented" says something the assignment
+    toast does not.
+    """
+    events, state["sync"] = api.events(project_gid, state.get("sync"))
+    notes = []
+    for event in events:
+        hit = classify_event(event, me_gid)
+        if not hit:
+            continue
+        if hit["kind"] == "task_added" and hit["gid"] in announced:
+            continue
+        try:
+            if hit["kind"] == "story":
+                story = api.story(hit["gid"])
+                # System stories are the board's own audit trail (moved, marked
+                # complete, ...). Only what a person typed is worth a toast.
+                if story.get("type") != "comment":
+                    continue
+                target = story.get("target") or {}
+                author = (story.get("created_by") or {}).get("name", "誰か")
+                notes.append(note(
+                    f"Asana: {author} のコメント",
+                    body_lines(target.get("name"), summarize(story.get("text")),
+                               target.get("permalink_url")),
+                    gid=(target.get("gid") or hit["gid"]),
+                ))
+            elif hit["kind"] == "task_added":
+                task = api.task(hit["gid"])
+                notes.append(note(
+                    "Asana: ボードに新しいタスク",
+                    body_lines(task.get("name"), task.get("permalink_url")),
+                    sound="done", gid=hit["gid"],
+                ))
+        except ApiError as e:
+            # The story or task can be gone by the time we ask; one missed
+            # toast is not worth failing the whole poll over.
+            print(f"イベント {hit['gid']} の取得に失敗、読み飛ばします: {e}", file=sys.stderr)
+    return notes
+
+
+def poll(api, state, me_gid, workspace_gid, project_gid, dry_run):
+    notes = collect_my_tasks(api, state, workspace_gid, date.today().isoformat())
+    if project_gid:
+        # Someone creating a task on the board and assigning it to you is one
+        # thing to a reader and two events to the poller. Which tasks are
+        # already spoken for is decided here, where the streams meet, and
+        # handed down — the other stream does not get to know why.
+        announced = {n["gid"] for n in notes if n.get("gid")}
+        notes += collect_project_events(api, state, project_gid, me_gid, announced)
+
+    if dry_run:
+        for n in notes:
+            print(f"[{n['title']}] {n['body']}")
+        return len(notes)
+
+    state["pending"] = deliver((state.get("pending") or []) + notes)[-MAX_PENDING:]
+    save_state(state)
+    return len(notes)
+
+
+def main():
+    args = build_parser().parse_args()
+
+    if args.reset:
+        try:
+            os.remove(STATE_PATH)
+            print("state を削除しました。次回の実行が基準を取り直します。")
+        except FileNotFoundError:
+            print("state はありません。次回の実行が基準を取ります。")
+        return 0
+
+    try:
+        token, project_gid, workspace_gid = load_config(args.config)
+    except ConfigError as e:
+        print(e, file=sys.stderr)
+        return 2
+
+    api = Asana(token)
+    state = load_state()
+
+    # Both of these are fixed for the life of the token, so a steady-state poll
+    # should not spend a request rediscovering them. --reset is the way out if
+    # the token is ever swapped for a different user.
+    me = None
+    me_gid = state.get("me_gid")
+    workspace_gid = workspace_gid or state.get("workspace_gid")
+    try:
+        if args.check or not me_gid or not workspace_gid:
+            me = api.me()
+            me_gid = me["gid"]
+            if not workspace_gid:
+                workspaces = me.get("workspaces") or []
+                if not workspaces:
+                    raise ConfigError("この Asana アカウントにワークスペースがありません。")
+                workspace_gid = workspaces[0]["gid"]
+            state["me_gid"] = me_gid
+            state["workspace_gid"] = workspace_gid
+    except (ApiError, ConfigError) as e:
+        print(e, file=sys.stderr)
+        return 1
+
+    if args.check:
+        print(f"user      : {me['name']} ({me['gid']})")
+        print(f"workspace : {workspace_gid}")
+        print(f"project   : {project_gid or '(未設定 — コメント通知は無効)'}")
+        print(f"state     : {'あり' if state.get('my_task_gids') is not None else 'なし(次回が基準)'}")
+        print(f"pending   : {len(state.get('pending') or [])} 件")
+        return 0
+
+    if not args.watch:
+        try:
+            poll(api, state, me_gid, workspace_gid, project_gid, args.dry_run)
+        except ApiError as e:
+            print(e, file=sys.stderr)
+            return 1
+        return 0
+
+    # A transient API failure must not end a session the user is watching, so
+    # the loop reports and carries on where the one-shot exits non-zero.
+    while True:
+        try:
+            n = poll(api, state, me_gid, workspace_gid, project_gid, args.dry_run)
+            print(f"{time.strftime('%H:%M:%S')} 通知 {n} 件", file=sys.stderr)
+        except ApiError as e:
+            print(e, file=sys.stderr)
+        time.sleep(args.interval)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

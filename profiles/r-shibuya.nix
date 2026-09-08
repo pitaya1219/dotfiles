@@ -54,6 +54,14 @@ let
       dotfiles.agent.asana = {
         projectGid = "1208405292637994";
         todoSectionGid = "1209218441201478";
+        token = { command = "passage show asana/pat"; };
+      };
+
+      # Replaces an always-open Asana browser tab, whose only job was
+      # notifications, with a launchd one-shot that exits between polls.
+      programs.asana-notify = {
+        enable = true;
+        agent.enable = true;
       };
 
       programs.mtg-minutes = {
@@ -131,6 +139,7 @@ let
         ../shared/programs/git.nix
         ../shared/programs/neovim.nix
         ../shared/programs/herdr.nix
+        ../shared/programs/asana-notify.nix
         ../shared/programs/agent-open.nix
         ../shared/programs/herdr-run.nix
         ../shared/programs/starship.nix

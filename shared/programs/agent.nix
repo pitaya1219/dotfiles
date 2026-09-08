@@ -57,7 +57,7 @@ in
   options.dotfiles.agent.asana = lib.mkOption {
     type = lib.types.attrsOf lib.types.anything;
     default = {};
-    description = "Asana target config written to ~/.agent/asana.json ({ projectGid, todoSectionGid }). Consumed by the asana-create-task skill; when unset the skill runs an interactive setup wizard.";
+    description = "Asana config written to ~/.agent/asana.json ({ projectGid, todoSectionGid, token }). Consumed by the asana-create-task skill (which runs an interactive setup wizard when unset) and by asana-notify, which additionally needs token — a string, { file } or { command }, same as logseq.";
   };
 
   config = {
