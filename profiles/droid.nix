@@ -49,10 +49,20 @@
 
         # The same local server hermes defaults to above, which nix does not
         # start here — shellm's keybindings answer only while that app is
-        # running, and fall back to nothing rather than to koi.
+        # running, and fall back to nothing rather than to koi. Same phone,
+        # same reachability problem as hermes' local endpoint above: routed
+        # through tailscaled's userspace SOCKS proxy via `local.proxy`, since
+        # shellm has no ALL_PROXY support of its own to hang a base URL off.
         programs.shellm = {
           enable = true;
-          local.model = "gemma-4-e2b";
+          local = {
+            model = "gemma-4-e2b";
+            proxy = {
+              listenPort = 18434;
+              remoteHost = "100.64.0.1";
+              remotePort = 11434;
+            };
+          };
           reasoningEffort = "none";
           timeout = 30;
 

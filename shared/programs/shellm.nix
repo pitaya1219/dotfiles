@@ -25,7 +25,15 @@ let
     };
   } // cfg.extraBuildAttrs);
 
-  selected = if cfg.endpoint == "pitaya" then cfg.pitaya else cfg.local;
+  # Ignores `local.url` and points at the forwarded origin instead, when
+  # `local.proxy` is set -- see that option.
+  effectiveLocalUrl =
+    if cfg.local.proxy == null then cfg.local.url
+    else "http://127.0.0.1:${toString cfg.local.proxy.listenPort}";
+
+  selected =
+    if cfg.endpoint == "pitaya" then cfg.pitaya
+    else cfg.local // { url = effectiveLocalUrl; };
 
   # The client is read on the first call rather than at shell startup. passage
   # forks age once per entry, and shellm caches the token it mints against its
@@ -79,6 +87,65 @@ in
           The model id the endpoint reports on /v1/models. For llama-server
           that is its `--alias`, and the GGUF's own name when it was started
           without one.
+        '';
+      };
+
+      proxy = lib.mkOption {
+        type = lib.types.nullOr (lib.types.submodule {
+          options = {
+            listenPort = lib.mkOption {
+              type = lib.types.port;
+              description = ''
+                Local port the `shellm-local-proxy` systemd user unit listens
+                on. `local.url` is overridden to this origin whenever `proxy`
+                is set, so nothing else needs to reference the port.
+              '';
+            };
+
+            proxyHost = lib.mkOption {
+              type = lib.types.str;
+              default = "localhost";
+              description = "SOCKS5 proxy host socat dials through.";
+            };
+
+            proxyPort = lib.mkOption {
+              type = lib.types.port;
+              default = 1055;
+              description = ''
+                SOCKS5 proxy port. Defaults to tailscaled's
+                --socks5-server port (see ./droid/tailscale.nix), the only
+                proxy this option currently has occasion to point at.
+              '';
+            };
+
+            remoteHost = lib.mkOption {
+              type = lib.types.str;
+              example = "100.64.0.1";
+              description = "The real endpoint's host, reached through the proxy.";
+            };
+
+            remotePort = lib.mkOption {
+              type = lib.types.port;
+              example = 11434;
+              description = "The real endpoint's port.";
+            };
+          };
+        });
+        default = null;
+        description = ''
+          For a `url` origin not reachable directly -- e.g. a phone-hosted
+          server reached over Tailscale's userspace SOCKS proxy from a
+          container whose kernel has no `tun` interface, as on droid.
+
+          shellm has no HTTP_PROXY/ALL_PROXY support of its own: setting one
+          changes nothing (confirmed empirically against a real request),
+          unlike hermes' httpx-based client. So this bridges it at the TCP
+          layer instead of the environment -- a `shellm-local-proxy` systemd
+          user unit runs `socat`, forwarding `127.0.0.1:listenPort` to
+          `remoteHost:remotePort` through the SOCKS5 proxy at
+          `proxyHost:proxyPort` -- and `local.url` is ignored in favor of that
+          forwarded origin, which shellm can reach without knowing a proxy is
+          involved at all.
         '';
       };
     };
@@ -184,6 +251,23 @@ in
 
   config = lib.mkIf cfg.enable {
     home.packages = [ shellm ];
+
+    systemd.user.services.shellm-local-proxy = lib.mkIf (cfg.local.proxy != null) {
+      Unit = {
+        Description = "socat TCP forward for shellm's local endpoint";
+        After = [ "network-online.target" "tailscaled.service" ];
+      };
+      Service =
+        let p = cfg.local.proxy;
+        in {
+          ExecStart = "${pkgs.socat}/bin/socat"
+            + " TCP-LISTEN:${toString p.listenPort},bind=127.0.0.1,fork,reuseaddr"
+            + " SOCKS5:${p.proxyHost}:${p.remoteHost}:${toString p.remotePort},socksport=${toString p.proxyPort}";
+          Restart = "on-failure";
+          RestartSec = "3s";
+        };
+      Install.WantedBy = [ "default.target" ];
+    };
 
     programs.bash.sessionVariables = lib.filterAttrs (_: v: v != null) {
       SHELLM_URL = selected.url;
