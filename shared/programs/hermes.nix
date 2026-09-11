@@ -93,6 +93,26 @@ in
         default = "http://localhost:11434/v1";
         description = "The endpoint's OpenAI-compatible base URL.";
       };
+
+      proxy = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "socks5h://localhost:1055";
+        description = ''
+          ALL_PROXY hermes runs under when talking to `local`, for a base URL
+          that is not reachable directly from this machine's normal route —
+          e.g. a phone-hosted server reached over Tailscale from a container
+          whose kernel has no `tun` module, where tailscaled exposes the
+          tailnet as a userspace SOCKS5/HTTP proxy instead of a real
+          interface.
+
+          Wired as a shell function around the `hermes` binary rather than a
+          per-request setting, since httpx (which hermes' provider clients sit
+          on) already reads ALL_PROXY/HTTP_PROXY/HTTPS_PROXY from the
+          environment on its own. null leaves the environment alone, for a
+          `local` that really is on this machine.
+        '';
+      };
     };
 
     pitaya = {
@@ -187,5 +207,16 @@ in
         }) endpoints;
       };
     };
+
+    # initExtra rather than bashrcExtra, matching shellm.nix: home-manager
+    # emits the latter above its `[[ $- == *i* ]] || return`, so it would also
+    # wrap `ssh host hermes ...`, where there is no interactive shell to shadow
+    # the command in.
+    programs.bash.initExtra =
+      lib.optionalString (cfg.local.enable && cfg.local.proxy != null) ''
+        hermes() {
+            ALL_PROXY=${lib.escapeShellArg cfg.local.proxy} command hermes "$@"
+        }
+      '';
   };
 }

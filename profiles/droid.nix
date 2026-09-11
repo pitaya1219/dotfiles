@@ -23,12 +23,22 @@
         # land on. Nothing here starts that server, deliberately — on this
         # profile it comes from a separate app rather than from nix, so
         # `local` answers only while that app is running.
+        #
+        # That app is the phone's own aidroid, not something inside this
+        # container — so `local` is the phone's Tailscale IP, not localhost.
+        # This container's kernel ships without the tun module (see
+        # ./droid/tailscale.nix), so tailscaled here runs
+        # --tun=userspace-networking and hands out the tailnet as a SOCKS5
+        # proxy on localhost:1055 instead of a real interface; `proxy` routes
+        # hermes through it.
         programs.hermes = {
           enable = true;
           default = "local";
           local = {
             enable = true;
             model = "gemma-4-e2b";
+            baseUrl = "http://100.64.0.1:11434/v1";
+            proxy = "socks5h://localhost:1055";
           };
           pitaya = {
             enable = true;
