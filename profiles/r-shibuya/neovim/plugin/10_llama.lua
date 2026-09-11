@@ -17,6 +17,14 @@ local modes = {
   fim = { auto_fim = true, n_prefix = 256, n_suffix = 64 },
 }
 
+-- Gemma 4 reasons unless the request says otherwise, and its thinking is on or
+-- off -- low, medium and the default all spent 700-1000 words and 50-60s on
+-- one edit. Off, a rewrite of a 24-line method takes ~10s but often comes back
+-- unchanged or with the code around it; on, it takes 30-60s and lands 3 times
+-- in 4. So <leader>lli stays fast and <leader>llI asks for the thinking.
+-- params_inst is the patch in ../plugins.nix.
+local fast_params = { reasoning_effort = "none" }
+
 vim.g.llama_config = vim.tbl_extend("force", {
   -- <c-i> and <Tab> are the same keycode in a terminal, so accept_word keeps
   -- the key that used to accept a copilot word. These maps are buffer-local
@@ -36,9 +44,7 @@ vim.g.llama_config = vim.tbl_extend("force", {
   endpoint_inst = "http://127.0.0.1:11434/v1/chat/completions",
   model_inst = "gemma-4-e2b",
 
-  -- Gemma 4 reasons unless the request says otherwise. params_inst is the
-  -- patch in ../plugins.nix.
-  params_inst = { reasoning_effort = "none" },
+  params_inst = fast_params,
 
   -- These two default to <Tab> and <Esc>, mapped globally in normal mode for
   -- as long as the plugin is enabled, which costs the jumplist its <C-I> and
@@ -83,6 +89,27 @@ vim.keymap.set("n", "<leader>llf", function() use("fim") end,
 vim.keymap.set("n", "<leader>llg", function() use("chat") end,
   { desc = "llama: load gemma for the instruction feature and turn ghost text off" })
 
+-- The same as :LlamaInstruct, which is `-range=% call llama#inst(<line1>,
+-- <line2>)`, with the thinking asked for. llama#inst reads params_inst while it
+-- builds both of its requests -- the warm-up, then the real one once input()
+-- returns -- and sends both before it returns, so putting the fast fields back
+-- straight afterwards races neither. A rerun or a follow-up goes out with
+-- whatever is set by then, which is fast.
+vim.api.nvim_create_user_command("LlamaInstructThinking", function(opts)
+  vim.cmd("let g:llama_config.params_inst = {}")
+  local ok, err = pcall(vim.fn["llama#inst"], opts.line1, opts.line2)
+  vim.cmd("let g:llama_config.params_inst = " .. vim.fn.string(fast_params))
+  if not ok then
+    error(err, 0)
+  end
+end, { range = "%", desc = "llama: :LlamaInstruct with gemma thinking (30-60s)" })
+
+-- Mapped like llama.vim maps <leader>lli: the `:` leaves visual mode and fills
+-- in the '<,'> range, without touching whatever has been typed ahead, which
+-- is where the instruction for input() is waiting.
+vim.keymap.set("x", "<leader>llI", ":LlamaInstructThinking<CR>",
+  { silent = true, desc = "llama: apply an instruction to the selection with gemma thinking (30-60s)" })
+
 -- The keys are read back out of g:llama_config rather than listed a second
 -- time here, so this cannot describe a mapping that is not the one in force.
 local function show_keymaps()
@@ -95,6 +122,7 @@ local function show_keymaps()
     } },
     { "instruction, needs gemma", {
       { cfg.keymap_inst_trigger, "apply an instruction to the selection" },
+      { "<leader>llI", "the same with gemma thinking, 30-60s" },
       { cfg.keymap_inst_rerun, "run the last instruction again" },
       { cfg.keymap_inst_continue, "follow the last instruction with another" },
       { cfg.keymap_inst_accept, "keep the result" },
