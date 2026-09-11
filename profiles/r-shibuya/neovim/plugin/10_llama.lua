@@ -72,3 +72,97 @@ vim.keymap.set("n", "<leader>llf", function() use("fim", true) end,
 
 vim.keymap.set("n", "<leader>llg", function() use("chat", false) end,
   { desc = "llama: load gemma for the instruction feature and turn ghost text off" })
+
+-- The keys are read back out of g:llama_config rather than listed a second
+-- time here, so this cannot describe a mapping that is not the one in force.
+local function show_keymaps()
+  local cfg = vim.g.llama_config or {}
+  local groups = {
+    { "switch", {
+      { "<leader>llf", "load the completion model, ghost text on" },
+      { "<leader>llg", "load gemma, ghost text off" },
+      { "<leader>ll?", "this list" },
+    } },
+    { "instruction, needs gemma", {
+      { cfg.keymap_inst_trigger, "apply an instruction to the selection" },
+      { cfg.keymap_inst_rerun, "run the last instruction again" },
+      { cfg.keymap_inst_continue, "follow the last instruction with another" },
+      { cfg.keymap_inst_accept, "keep the result" },
+      { cfg.keymap_inst_cancel, "discard the result" },
+    } },
+    { "completion, while a suggestion is on screen", {
+      { cfg.keymap_fim_trigger, "ask for one by hand, in insert mode" },
+      { cfg.keymap_fim_accept_word, "accept a word" },
+      { cfg.keymap_fim_accept_line, "accept a line" },
+      { cfg.keymap_fim_accept_full, "accept all of it" },
+      { cfg.keymap_fim_next, "next suggestion" },
+      { cfg.keymap_fim_prev, "previous suggestion" },
+    } },
+    { "other", {
+      { cfg.keymap_debug_toggle, "debug pane" },
+      { ":LlamaStatus", "which server is answering" },
+    } },
+  }
+
+  local lines, marks, width = {}, {}, 0
+  local function add(text)
+    lines[#lines + 1] = text
+    width = math.max(width, vim.fn.strdisplaywidth(text))
+    return #lines - 1
+  end
+  local function mark(row, col, len, hl)
+    marks[#marks + 1] = { row, col, len, hl }
+  end
+
+  mark(add(cfg.auto_fim and "ghost text is on" or "ghost text is off"), 0, -1, "Comment")
+
+  for _, group in ipairs(groups) do
+    local rows = vim.tbl_filter(function(entry)
+      return entry[1] and entry[1] ~= ""
+    end, group[2])
+
+    if #rows > 0 then
+      add("")
+      mark(add(group[1]), 0, -1, "Title")
+      for _, entry in ipairs(rows) do
+        mark(add(string.format("  %-14s %s", entry[1], entry[2])), 2, #entry[1], "Special")
+      end
+    end
+  end
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
+  local namespace = vim.api.nvim_create_namespace("llama_keymaps")
+  for _, m in ipairs(marks) do
+    local row, col, len, hl = m[1], m[2], m[3], m[4]
+    vim.api.nvim_buf_set_extmark(buf, namespace, row, col, {
+      end_col = len < 0 and #lines[row + 1] or col + len,
+      hl_group = hl,
+    })
+  end
+
+  vim.bo[buf].modifiable = false
+  vim.bo[buf].bufhidden = "wipe"
+
+  local height = math.min(#lines, vim.o.lines - 4)
+  width = math.min(width + 2, vim.o.columns - 4)
+  vim.api.nvim_open_win(buf, true, {
+    relative = "editor",
+    width = width,
+    height = height,
+    row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1),
+    col = math.max(0, math.floor((vim.o.columns - width) / 2)),
+    style = "minimal",
+    border = "rounded",
+    title = " llama ",
+    title_pos = "center",
+  })
+
+  for _, key in ipairs({ "q", "<Esc>" }) do
+    vim.keymap.set("n", key, "<Cmd>close<CR>", { buffer = buf, nowait = true })
+  end
+end
+
+vim.keymap.set("n", "<leader>ll?", show_keymaps,
+  { desc = "llama: list the <leader>ll keymaps" })
