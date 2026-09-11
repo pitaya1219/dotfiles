@@ -6,7 +6,18 @@
 --
 --   gemma-4-e2b        on 11434  the instruction feature, and the login default
 --   Qwen2.5-Coder-3B   on  8012  FIM ghost-text completion
-vim.g.llama_config = {
+--
+-- What changes with the loaded model. n_prefix and n_suffix are how many lines
+-- around the cursor or selection go into a request, and both features read
+-- them: handed llama.vim's 256/64, gemma rewrote the whole surrounding file in
+-- place of the selection on 3 of 6 instructions against a 76-line file, and
+-- at 3/3 kept to the selection on 6 of 6. FIM keeps llama.vim's own values.
+local modes = {
+  chat = { auto_fim = false, n_prefix = 3, n_suffix = 3 },
+  fim = { auto_fim = true, n_prefix = 256, n_suffix = 64 },
+}
+
+vim.g.llama_config = vim.tbl_extend("force", {
   -- <c-i> and <Tab> are the same keycode in a terminal, so accept_word keeps
   -- the key that used to accept a copilot word. These maps are buffer-local
   -- and live only while a suggestion is on screen, which leaves the <TAB> coc
@@ -34,26 +45,25 @@ vim.g.llama_config = {
   -- makes <Esc> run a command.
   keymap_inst_accept = "<leader>lla",
   keymap_inst_cancel = "<leader>llx",
-
-  -- Ghost text waits until <leader>llf has loaded the completion model, so
-  -- auto_fim does not fire a request at a port nothing is listening on after
-  -- every keystroke.
-  auto_fim = false,
-}
+}, modes.chat)
 
 -- Assigning a table back to vim.g would turn the empty stop_strings lists into
--- dictionaries, so the one field that changes at runtime is edited in place.
+-- dictionaries, so the fields that change at runtime are edited in place.
 -- setup_autocmds is what reads auto_fim, so it has to run again to take.
-local function set_auto_fim(on)
-  vim.cmd("let g:llama_config.auto_fim = " .. (on and "v:true" or "v:false"))
+local function apply(mode)
+  for key, value in pairs(mode) do
+    vim.cmd(("let g:llama_config.%s = %s"):format(key, vim.fn.string(value)))
+  end
   vim.fn["llama#setup_autocmds"]()
 end
 
--- llama-use returns once the server it loaded answers /health, so turning
--- ghost text on waits for that and turning it off does not.
-local function use(target, auto_fim)
-  if not auto_fim then
-    set_auto_fim(false)
+-- llama-use returns once the server it loaded answers /health. Ghost text is
+-- switched off before the completion model goes, so auto_fim does not fire at
+-- a port nothing is listening on, and switched on only once it can be served.
+local function use(target)
+  local mode = modes[target]
+  if not mode.auto_fim then
+    apply(mode)
   end
 
   vim.system({ "llama-use", target }, {}, vim.schedule_wrap(function(out)
@@ -61,16 +71,16 @@ local function use(target, auto_fim)
       vim.notify("llama-use " .. target .. ": " .. (out.stderr or "failed"), vim.log.levels.WARN)
       return
     end
-    if auto_fim then
-      set_auto_fim(true)
+    if mode.auto_fim then
+      apply(mode)
     end
   end))
 end
 
-vim.keymap.set("n", "<leader>llf", function() use("fim", true) end,
+vim.keymap.set("n", "<leader>llf", function() use("fim") end,
   { desc = "llama: load the completion model and turn ghost text on" })
 
-vim.keymap.set("n", "<leader>llg", function() use("chat", false) end,
+vim.keymap.set("n", "<leader>llg", function() use("chat") end,
   { desc = "llama: load gemma for the instruction feature and turn ghost text off" })
 
 -- The keys are read back out of g:llama_config rather than listed a second
