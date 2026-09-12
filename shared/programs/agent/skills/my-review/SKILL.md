@@ -2,7 +2,7 @@
 name: my-review
 description: Perform code review in pitaya1219's personal review style
 user-invocable: true
-version: 1.2.0
+version: 1.3.0
 ---
 
 # My Review Skill
@@ -10,7 +10,7 @@ version: 1.2.0
 ## What This Skill Does
 
 Performs a code review using pitaya1219's established review style.
-The review is done in four phases: diff analysis, context gathering (when needed), review output, and optional post-processing.
+The review is done in five phases: diff analysis, context gathering (when needed), review output, export to the nvim overlay, and optional post-processing.
 
 ## Usage
 
@@ -20,6 +20,7 @@ The review is done in four phases: diff analysis, context gathering (when needed
 /my-review --deep       # Multi-agent review: parallel perspective reviewers + adversarial verification
 /my-review --fix        # Apply auto-fixable suggestions to files after review
 /my-review --comment    # Post findings as inline PR comments
+/my-review --fb         # Take the edits and feedback left in nvim back into the drafts
 ```
 
 ## Phase 1: Get the Diff
@@ -280,7 +281,82 @@ If the user confirms, proceed to Phase 4 (`--comment` mode). If not, end here.
 
 ---
 
+## Phase 3.5: Export for the nvim overlay
+
+Whenever the reviewed code is in a local worktree — the default `/my-review`, or `--pr <N>` against a branch that is checked out — write the findings to the review file as well as to the chat:
+
+```bash
+REVIEW="$(git rev-parse --git-common-dir)/my-review/review.json"
+mkdir -p "$(dirname "$REVIEW")"
+```
+
+nvim reads that file and hangs each comment off the lines it is about (`~/.config/nvim/plugin/30_my_review.lua`; buffers that are already open pick a new review up on the next `BufEnter` or `FocusGained`, and `:ReviewLoad` forces it). The reviewer edits the drafts they want reworded, drops the ones they do not want posted, and leaves feedback on the ones that need another pass — `--fb` takes all of that back.
+
+Say the path in the report. Skip the export when the PR is not checked out locally: there is nothing for the overlay to hang the comments on.
+
+### Schema
+
+```json
+{
+  "version": 1,
+  "repo": "org/example",
+  "pr": 500,
+  "base": "main",
+  "head": "feat/add-billing-export",
+  "generated_at": "2026-09-12T10:00:00+09:00",
+  "decision": "request-changes",
+  "summary": "いくつか要件との差異があるため、Changes Requestedとします。",
+  "comments": [
+    {
+      "id": "c1",
+      "file": "src/billing/export.py",
+      "line": 42,
+      "end_line": 45,
+      "severity": "must-fix",
+      "status": "open",
+      "body": "この条件、中止のケースだけでなく契約変更のケースも考慮が必要です。",
+      "suggestion": "    ) -> tuple[set[int], int, int, int, int]:"
+    }
+  ]
+}
+```
+
+| Field | Written by | Meaning |
+|-------|-----------|---------|
+| `decision` | skill | `approve` / `comment` / `request-changes`, the Phase 3 decision |
+| `summary` | skill | The decision paragraph as it would be posted |
+| `severity` | skill | `must-fix` / `suggestion` / `want` / `任意` — the Notation Guide, spelled as it renders |
+| `body` | skill, then the reviewer | The comment as it would be posted, in Japanese |
+| `suggestion` | skill | The contents of the `suggestion` block, no fences |
+| `status` | skill, then the reviewer | `open`, or `dropped` for one the reviewer does not want posted |
+| `feedback` | reviewer | What to change about the draft — for the agent, never posted |
+| `edited_at` | nvim | Stamped when the reviewer changes `body`; absent while the draft is the skill's own wording |
+
+- `line` and `end_line` are line numbers in the file as it stands in the worktree, not positions in the diff, and `file` is relative to the worktree root. A comment on a single line leaves `end_line` out.
+- `id` identifies the comment across regenerations: keep a revised draft on the id it already had, so the feedback and the edits stay attached to it.
+- Re-read the file before writing over it. It is the reviewer's copy as much as yours, and anything in it that Phase 3.5 did not write — an edited `body`, a `status`, a `feedback` — was put there by hand.
+
+---
+
 ## Phase 4: Post-Processing (optional flags)
+
+### `--fb`: Take the reviewer's feedback back
+
+Read the review file written in Phase 3.5 and work through what came back from nvim. Run this before `--fix` or `--comment` in the same invocation, since it decides what those two act on.
+
+1. Read `$(git rev-parse --git-common-dir)/my-review/review.json`.
+2. For each comment, act on what the reviewer left:
+
+   | What came back | What to do |
+   |---|---|
+   | `feedback` is set | Rewrite `body` as the feedback asks, keeping the same `id`. Ask only if the feedback cannot be acted on without an answer. |
+   | `edited_at` is set, no `feedback` | The reviewer settled the wording themselves — leave `body` exactly as it stands. |
+   | `status` is `dropped` | Do not post it, do not revive it, do not argue it. |
+
+3. Write the revised comments back with Phase 3.5, clearing the `feedback` of every comment whose `body` you rewrote — feedback left in place is applied a second time on the next `--fb`.
+4. Report what changed, one line per comment, then go on to `--fix` / `--comment` if those were asked for.
+
+Feedback that asks for something outside the comment — a finding the reviewer wants added, a perspective re-run against another file — is a normal request: do it, and say so in the report.
 
 ### `--fix`: Apply suggestions to files
 
@@ -294,6 +370,8 @@ Only apply suggestions that are unambiguous. Skip and flag any suggestion that r
 
 ### `--comment`: Post as inline PR comments
 
-Post the findings from Phase 3 as inline review comments on the PR. Check the remote URL (`git remote get-url origin`) to determine the platform, then use the most appropriate available method (CLI tool, MCP tool, API, etc.) to post the comments.
+Post the findings as inline review comments on the PR. Check the remote URL (`git remote get-url origin`) to determine the platform, then use the most appropriate available method (CLI tool, MCP tool, API, etc.) to post the comments.
+
+Where a review file from Phase 3.5 exists, that file is what gets posted rather than the chat output: the current `body` of every comment whose `status` is not `dropped`, with `suggestion` put back inside a `suggestion` block.
 
 Post each finding as a separate inline comment on the relevant line/hunk. Conclude with an overall review comment summarizing the Approval / Request Changes decision.
