@@ -39,6 +39,10 @@
             model = "gemma-4-e2b";
             baseUrl = "http://100.64.0.1:11434/v1";
             proxy = "socks5h://localhost:1055";
+            # Gemma 4 reasons by default; without this, some replies spend
+            # their whole budget on reasoning_content and surface as empty
+            # (see shared/programs/hermes.nix's local.reasoningEffort).
+            reasoningEffort = "none";
           };
           pitaya = {
             enable = true;

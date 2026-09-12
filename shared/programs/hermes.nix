@@ -113,6 +113,25 @@ in
           `local` that really is on this machine.
         '';
       };
+
+      reasoningEffort = lib.mkOption {
+        type = lib.types.nullOr (lib.types.enum [ "none" "low" "medium" "high" ]);
+        default = null;
+        description = ''
+          Written to config.yaml's top-level `reasoning_overrides.<model>`,
+          overriding `agent.reasoning_effort` whenever this model is active.
+
+          Set this to "none" against a model that reasons by default, such as
+          Gemma 4: hermes' provider client only forwards `message.content` to
+          the UI, so a reply that spends its whole output budget on
+          `message.reasoning_content` surfaces as empty (`Model returned no
+          content after all retries`) -- shellm.nix's own `reasoningEffort`
+          documents the same failure against the same model family.
+
+          Leave it null against a model that does not reason, so that an
+          endpoint rejecting the unknown key is never sent it.
+        '';
+      };
     };
 
     pitaya = {
@@ -205,6 +224,8 @@ in
           inherit (endpoint) model;
           provider = name;
         }) endpoints;
+      } // lib.optionalAttrs (cfg.local.enable && cfg.local.reasoningEffort != null) {
+        reasoning_overrides.${cfg.local.model} = cfg.local.reasoningEffort;
       };
     };
 
