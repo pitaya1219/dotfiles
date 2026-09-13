@@ -55,11 +55,26 @@ Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_FLAGS=--ipv6"
 Environment="DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=implicit"
 EOF
     mkdir -p ~/.config/docker
+    # Docker's built-in predefined address pool is 172.17.0.0/16 through
+    # 172.31.0.0/16 (15 networks) and then falls back to 192.168.0.0/20
+    # through 192.168.240.0/20 once those 15 are exhausted -- which this
+    # host reached (a Compose project per app adds up fast). Every network
+    # auto-assigned from that fallback range collides with this LAN
+    # (192.168.10.0/24), silently black-holing rootless containers' outbound
+    # routing to every real LAN peer (see homelab
+    # project_pomerium_spike_subnet_collision.md and the budget-book-dev
+    # repeat of it). default-address-pools replaces Docker's built-in list
+    # entirely, so pin it to a /16 that doesn't overlap this LAN, incusbr0
+    # (10.19.151.0/24), or Tailscale's CGNAT range (100.64.0.0/10), sliced
+    # into /24s for 256 networks of headroom instead of 15.
     cat > ~/.config/docker/daemon.json <<EOF
 {
   "ipv6": true,
   "fixed-cidr-v6": "fd00::/64",
-  "ip6tables": true
+  "ip6tables": true,
+  "default-address-pools": [
+    { "base": "10.244.0.0/16", "size": 24 }
+  ]
 }
 EOF
 
