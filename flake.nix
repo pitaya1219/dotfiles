@@ -136,6 +136,7 @@
         rose = [
           homelab.homeManagerModules.dns-updater
           homelab.homeManagerModules.nextcloud-backup
+          homelab.homeManagerModules.budget-book-backup
         ];
         r-shibuya = hermesModules;
         droid = hermesModules;
