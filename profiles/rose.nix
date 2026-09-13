@@ -96,6 +96,20 @@
           };
         };
 
+        services.budget-book-backup = {
+          main = {
+            enable = true;
+            homelabRoot = "/home/rose/homelab";
+            dumpDir = "/media/backup/budget-book";
+            keep = 5;
+            encrypted = true;
+            parentDir = "backup";
+            encryptSubdir = "budget-book";
+            interval = "3d";
+            onBootDelay = "9h";
+          };
+        };
+
         home = {
           username = "rose";
           homeDirectory = "/home/rose";
