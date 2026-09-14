@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Collect today's agent session pages from Logseq.
-# Exits silently if Logseq is unavailable or no sessions found today.
+# Collect the report date's agent session pages from Logseq.
+# Exits silently if Logseq is unavailable or no sessions match that day.
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$DIR/lib.sh"
@@ -31,7 +31,7 @@ curl -sf --max-time 3 \
   -d '{"method":"logseq.App.getUserConfigs","args":[]}' \
   "$URL/api" > /dev/null 2>&1 || exit 0
 
-TODAY=$(today)
+DATE=$(report_date) || exit 1
 
 # Pull every session page together with its properties in one datascript query.
 #
@@ -40,7 +40,8 @@ TODAY=$(today)
 # on another device) rewrites it to the re-index time for every page at once.
 # A whole day of sessions then silently drops out of the report. The `date::`
 # property is written by session-save and stays put, so it is the only
-# trustworthy notion of "which day did this session happen".
+# trustworthy notion of "which day did this session happen" — and the only one
+# that still answers correctly for a past date.
 QUERY='[:find (pull ?p [:block/name :block/original-name :block/properties]) :where [?p :block/name ?name] [(clojure.string/starts-with? ?name "session/")] [?p :block/properties _]]'
 
 PAGES=$(curl -sf \
@@ -56,10 +57,10 @@ PAGES=$(curl -sf \
 #
 # `date` may be an array ["2026-06-15"], a plain string, or a page ref
 # "[[2026-06-15]]"; stringifying the whole value covers all three.
-echo "$PAGES" | jq -r --arg today "$TODAY" '
+echo "$PAGES" | jq -r --arg day "$DATE" '
   def one(v): if (v | type) == "array" then (v[0] // "") else (v // "") end;
 
-  [ .[][] | select((.properties.date | tostring) | contains($today)) ]
+  [ .[][] | select((.properties.date | tostring) | contains($day)) ]
   | sort_by(.name)
   | .[]
   | (.["original-name"] // .name) as $name
