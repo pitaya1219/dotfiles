@@ -7,11 +7,11 @@ filters take explicit dates, so nothing here depends on the day being today.
 
 ## Step A — Own user GID (for comment filtering)
 
-Call `mcp__claude_ai_Asana__asana_get_user` (no arguments → returns authenticated user). Save `data.gid` as `MY_GID`.
+Call `mcp__claude_ai_Asana__get_me` (no arguments). Save `data.gid` as `MY_GID`.
 
 ## Step B — Assigned tasks
 
-Use `mcp__claude_ai_Asana__asana_search_tasks` in parallel. The date filters are
+Use `mcp__claude_ai_Asana__search_tasks` in parallel. The date filters are
 range-only — there is no bare `modified_on` / `completed_on`, so pin both ends
 to `DATE` to get a single day:
 
@@ -22,19 +22,28 @@ Collect resulting task GIDs as `assigned_gids`.
 
 ## Step C — Comment activity on non-assigned tasks
 
-Call `mcp__claude_ai_Asana__asana_search_tasks` with `followers_any=me`,
+Call `mcp__claude_ai_Asana__search_tasks` with `followers_any=me`,
 `modified_on_after=DATE`, `modified_on_before=DATE`, `completed=false`,
 `opt_fields=name,projects.name`, `limit=50`.
 
-From the results, exclude tasks already in `assigned_gids`. For each remaining task, call `mcp__claude_ai_Asana__asana_get_stories_for_task` (run lookups in parallel) with `opt_fields=created_by.gid,text,type,created_at`.
+From the results, exclude tasks already in `assigned_gids`. For each remaining
+task, call `mcp__claude_ai_Asana__get_task` (run lookups in parallel) with
+`include_subtasks=false`, `opt_fields=name`, and `comment_limit` set to a
+little more than a busy day's traffic (5–10). It returns the *most recent*
+comments, which is the only part of the thread that can fall on `DATE`.
 
-A task counts as "Commented" if it has at least one story where:
-- `type == "comment"`
-- `created_by.gid == MY_GID`
-- `created_at` starts with `DATE` (UTC date prefix, e.g. `2026-06-12`)
+A task counts as "Commented" if one of those comments has
+`created_by.gid == MY_GID` and a `created_at` whose UTC date is `DATE`.
 
-For matching tasks, record: task name, project name, and first 80 chars of the earliest matching comment.
+For matching tasks, record: task name, project name, and first 80 chars of the
+earliest matching comment.
+
+> Do not reach for `get_task_stories` here. It ignores `opt_fields`, so every
+> call returns the task's whole activity feed with full comment bodies — tens of
+> thousands of tokens per busy task, and paginated on top. Use it only when the
+> full history is actually the thing you need.
 
 ## API call budget
 
-Per report: `asana_get_user` ×1, `asana_search_tasks` ×3, `asana_get_stories_for_task` ×(non-assigned followers, ~10–15). Total ~15–20 (acceptable).
+Per report: `get_me` ×1, `search_tasks` ×3, `get_task` ×(non-assigned
+followers, ~10–20). Total ~15–25 (acceptable).
