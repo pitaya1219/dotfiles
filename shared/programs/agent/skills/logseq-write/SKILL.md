@@ -75,6 +75,11 @@ script resolves all three forms itself. If the file is missing, it prints:
 Nextcloud asset credentials (used only by `--asset`) come from `passage`
 (`logseq-assets/nextcloud/...`), not from `logseq.json`.
 
+`--asset` uploads whatever bytes it's given — no format is required or
+assumed. When bundling multiple files into one asset, prefer `tar` +
+`zstd` (`.tar.zst`) over `.zip`: it compresses better and `zstd` is already
+on this machine.
+
 ## Availability check
 
 To check reachability without writing anything (e.g. before deciding whether
