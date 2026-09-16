@@ -35,9 +35,10 @@ in
   options.dotfiles.agent.skills.exclude = lib.mkOption {
     type = lib.types.listOf lib.types.str;
     # Skills that only make sense against work accounts (Asana boards, the work
-    # review style) default to excluded, so a profile added later has to opt in
-    # rather than silently inherit them. Set to [] to take everything.
-    default = [ "asana-board-digest" "asana-create-task" "my-review" ];
+    # review style) or work repositories default to excluded, so a profile added
+    # later has to opt in rather than silently inherit them. Set to [] to take
+    # everything.
+    default = [ "asana-board-digest" "asana-create-task" "kraken-container-test" "my-review" ];
     example = [ "asana-board-digest" "asana-create-task" "my-review" "dive-pr" ];
     description = "Blacklist of skill directory names to keep out of ~/.agent/skills. Applied after include, so a name listed in both is excluded. Defaults to the work-only skills; a profile that wants them must override this.";
   };
