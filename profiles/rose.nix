@@ -183,6 +183,20 @@
           };
         };
 
+        services.windmill-backup = {
+          main = {
+            enable = true;
+            homelabRoot = "/home/rose/homelab";
+            dumpDir = "/media/backup/windmill";
+            keep = 5;
+            encrypted = true;
+            parentDir = "backup";
+            encryptSubdir = "windmill";
+            onCalendar = "*-*-* 04:00:00";
+            onBootDelay = "5h";
+          };
+        };
+
         home = {
           username = "rose";
           homeDirectory = "/home/rose";
