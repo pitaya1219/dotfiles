@@ -143,6 +143,7 @@
             enable = true;
             homelabRoot = "/home/rose/homelab";
             sourceDir = "/home/rose/homelab/apps/communication/tuwunel/data";
+            distDir = "/media/backup/tuwunel/";
             parentDir = "backup";
             encryptSubdir = "tuwunel";
             encrypted = true;
