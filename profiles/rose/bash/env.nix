@@ -4,4 +4,5 @@ rec {
  DOCKER_HOST = "unix:///\${XDG_RUNTIME_DIR}/docker.sock";
  DBUS_SESSION_BUS_ADDRESS = "unix:path=/run/user/\$(id -u)/bus";
  DOCKER_IPTABLES_PATH = "/usr/sbin/iptables";
+ WINDMILL_LOKI_MCP_URL = "\$(passage show homelab/windmill/mcp/loki/url)";
 }

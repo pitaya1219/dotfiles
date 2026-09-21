@@ -19,6 +19,17 @@
           token = { command = "passage show logseq/http-api/claude-code/token"; };
         };
 
+        # u/Ryu/loki_query as its own MCP connection, carrying a token scoped
+        # (Account settings > Tokens > Generate MCP URL > Limit token
+        # permissions) to just that script's path -- distinct from the broad
+        # `windmill` connection in shared/programs/mcp-servers.nix. rose-only,
+        # unlike logseq/dufs (also in the personal workspace, but shared
+        # across profiles there since every profile already shares the same
+        # Logseq HTTP API credential via dotfiles.agent.logseq above).
+        dotfiles.httpMcpServers.loki = {
+          url = "\${WINDMILL_LOKI_MCP_URL}";
+        };
+
         imports = [
           ../lib/passage-secrets.nix
           ../shared/activations/huggingface_hub.nix

@@ -27,4 +27,17 @@
   config.dotfiles.httpMcpServers.windmill = {
     url = "\${WINDMILL_MCP_URL}";
   };
+
+  # u/Ryu/logseq_query + logseq_write and u/Ryu/dufs_manage, each its own MCP
+  # connection carrying a token scoped to just that script's path -- shared
+  # across every profile here (unlike loki, which is rose-only; see
+  # profiles/rose.nix) because every profile already shares the same Logseq
+  # HTTP API credential via dotfiles.agent.logseq.
+  config.dotfiles.httpMcpServers.logseq = {
+    url = "\${WINDMILL_LOGSEQ_MCP_URL}";
+  };
+
+  config.dotfiles.httpMcpServers.dufs = {
+    url = "\${WINDMILL_DUFS_MCP_URL}";
+  };
 }
