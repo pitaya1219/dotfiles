@@ -137,6 +137,9 @@
           homelab.homeManagerModules.dns-updater
           homelab.homeManagerModules.nextcloud-backup
           homelab.homeManagerModules.budget-book-backup
+          homelab.homeManagerModules.gitea-backup
+          homelab.homeManagerModules.identity-backup
+          homelab.homeManagerModules.tuwunel-backup
         ];
         r-shibuya = hermesModules;
         droid = hermesModules;

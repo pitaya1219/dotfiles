@@ -110,6 +110,47 @@
           };
         };
 
+        services.gitea-backup = {
+          main = {
+            enable = true;
+            homelabRoot = "/home/rose/homelab";
+            dumpDir = "/media/backup/gitea";
+            keep = 5;
+            encrypted = true;
+            parentDir = "backup";
+            encryptSubdir = "gitea";
+            onCalendar = "*-*-* 02:00:00";
+            onBootDelay = "3h";
+          };
+        };
+
+        services.identity-backup = {
+          main = {
+            enable = true;
+            homelabRoot = "/home/rose/homelab";
+            dumpDir = "/media/backup/identity";
+            keep = 5;
+            encrypted = true;
+            parentDir = "backup";
+            encryptSubdir = "identity";
+            onCalendar = "*-*-* 02:30:00";
+            onBootDelay = "3h 30min";
+          };
+        };
+
+        services.tuwunel-backup = {
+          main = {
+            enable = true;
+            homelabRoot = "/home/rose/homelab";
+            sourceDir = "/home/rose/homelab/apps/communication/tuwunel/data";
+            parentDir = "backup";
+            encryptSubdir = "tuwunel";
+            encrypted = true;
+            onCalendar = "*-*-* 01:30:00";
+            onBootDelay = "2h";
+          };
+        };
+
         home = {
           username = "rose";
           homeDirectory = "/home/rose";
