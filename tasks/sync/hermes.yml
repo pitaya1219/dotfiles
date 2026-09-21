@@ -1,0 +1,55 @@
+version: '3'
+
+# One-way backup for the slice of a spaces container's Hermes agent state
+# that homelab's hermes-agent.nix does not reproduce on rebuild -- SOUL.md
+# once it has drifted from the git-tracked template (see soulDriftWatch in
+# homelab/spaces/template/hermes-agent.nix), and skills/ an agent grew on
+# its own and hasn't promoted to spaces/template/hermes-skills/ yet.
+# Everything else under ~/.hermes (the agent install, hooks, plugins,
+# config.yaml) is reinstalled from git on every rebuild, so unlike
+# logseq.yml this never needs a matching `down` -- there is nothing else to
+# restore.
+
+env:
+  HERMES_HOME: '{{if .HERMES_HOME}}{{.HERMES_HOME}}{{else}}{{env "HOME"}}/.hermes{{end}}'
+  HERMES_STAGE_DIR: '{{if .HERMES_STAGE_DIR}}{{.HERMES_STAGE_DIR}}{{else}}{{env "HOME"}}/.hermes-backup{{end}}'
+  HERMES_REMOTE: '{{.HERMES_REMOTE | default "app/hermes"}}'
+  LOG_FILE: '{{if .LOG_FILE}}{{.LOG_FILE}}{{else}}{{env "HOME"}}/.local/share/hermes-sync.log{{end}}'
+
+tasks:
+  default:
+    desc: Stage and upload the git-invisible slice of Hermes agent state
+    aliases: [up]
+    cmds:
+      - |
+        bash <<'INNEREOF'
+        set -euo pipefail
+        mkdir -p "$(dirname "{{.LOG_FILE}}")" "{{.HERMES_STAGE_DIR}}"
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - Staging hermes state from {{.HERMES_HOME}}" >> "{{.LOG_FILE}}"
+
+        if [ -f "{{.HERMES_HOME}}/SOUL.md" ]; then
+          cp -f "{{.HERMES_HOME}}/SOUL.md" "{{.HERMES_STAGE_DIR}}/SOUL.md"
+        fi
+
+        # Full re-copy each run rather than an incremental mirror -- skills/
+        # is small, and this keeps deletions (a skill the agent removed)
+        # correct without depending on rsync being installed in the
+        # container.
+        rm -rf "{{.HERMES_STAGE_DIR}}/skills"
+        if [ -d "{{.HERMES_HOME}}/skills" ]; then
+          cp -a "{{.HERMES_HOME}}/skills" "{{.HERMES_STAGE_DIR}}/skills"
+        fi
+        INNEREOF
+      - >-
+        task sync:up:pcloud
+        SOURCE_DIR="{{.HERMES_STAGE_DIR}}"
+        ENCRYPT_SUBDIR="{{.HERMES_REMOTE}}"
+        PARENT_DIR=""
+        -- {{.CLI_ARGS}}
+
+  test:
+    desc: Dry run for the hermes backup upload
+    cmd:
+      task: default
+      vars:
+        CLI_ARGS: '--dry-run {{.CLI_ARGS}}'

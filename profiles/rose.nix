@@ -47,6 +47,7 @@
           ./rose/tailscale.nix
           ./rose/internal-relay.nix
           ./rose/logseq-sync.nix
+          ./rose/hermes-backup.nix
           ./rose/disk-cleanup-check.nix
         ];
 

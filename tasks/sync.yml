@@ -11,6 +11,7 @@ vars:
 
 includes:
   logseq: ./sync/logseq.yml
+  hermes: ./sync/hermes.yml
 
 tasks:
   # ──────── Generic rclone sync ────────
