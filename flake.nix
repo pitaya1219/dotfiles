@@ -140,6 +140,8 @@
           homelab.homeManagerModules.gitea-backup
           homelab.homeManagerModules.identity-backup
           homelab.homeManagerModules.tuwunel-backup
+          homelab.homeManagerModules.dufs-backup
+          homelab.homeManagerModules.grist-backup
         ];
         r-shibuya = hermesModules;
         droid = hermesModules;

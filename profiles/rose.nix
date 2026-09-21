@@ -152,6 +152,37 @@
           };
         };
 
+        services.dufs-backup = {
+          main = {
+            enable = true;
+            homelabRoot = "/home/rose/homelab";
+            sourceDir = "/home/rose/homelab/apps/storage/dufs/data";
+            distDir = "/media/backup/dufs/";
+            parentDir = "backup";
+            encryptSubdir = "dufs";
+            encrypted = true;
+            onCalendar = "*-*-* 03:00:00";
+            onBootDelay = "4h";
+          };
+        };
+
+        services.grist-backup = {
+          main = {
+            enable = true;
+            homelabRoot = "/home/rose/homelab";
+            # data/app is a symlink (-> /media/ssd/app/grist/app); rclone
+            # won't follow it without --copy-links, so point at the real
+            # path directly instead.
+            sourceDir = "/media/ssd/app/grist/app";
+            distDir = "/media/backup/grist/";
+            parentDir = "backup";
+            encryptSubdir = "grist";
+            encrypted = true;
+            onCalendar = "*-*-* 03:30:00";
+            onBootDelay = "4h 30min";
+          };
+        };
+
         home = {
           username = "rose";
           homeDirectory = "/home/rose";
