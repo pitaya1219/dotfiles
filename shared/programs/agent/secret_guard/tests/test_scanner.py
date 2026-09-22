@@ -14,6 +14,10 @@ from secret_guard.scanner import find_secrets, is_risky_command, redact
     [
         ("aws_key = AKIAABCDEFGHIJKLMNOP", "aws_access_key_id"),
         (
+            '{"clientId":"123","clientSecret":"oBhbCVuTgxdxdm85zph023VsUHONv4bnmSD2jl3CV43CTcTe0ohht7aUl4N0JkA1"}',
+            "generic_secret_assignment",
+        ),
+        (
             "-----BEGIN RSA PRIVATE KEY-----\nMIIB...\n-----END RSA PRIVATE KEY-----",
             "private_key",
         ),
@@ -115,4 +119,40 @@ def test_flags_risky_commands(command):
     ],
 )
 def test_allows_benign_commands(command):
+    assert is_risky_command(command) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "tofu output -raw vikunja_client_secret",
+        "terraform output -json",
+        "passage show shellm/client/secret",
+        "passage show homelab/zitadel/apps/gitea/client/secret",
+    ],
+)
+def test_flags_bare_secret_dumps(command):
+    assert is_risky_command(command) is not None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # Piped straight into another command -- never reaches this tool
+        # call's own visible stdout.
+        "tofu output -raw x_client_secret | passage insert -m -f homelab/x/client/secret",
+        "passage show shellm/client/secret | passage insert -m -f other/path",
+        # Captured via $(...) into a variable, not displayed.
+        'CID=$(tofu output -raw x_client_id 2>/dev/null)',
+        'SECRET=$(passage show homelab/x/client/secret)',
+        # Multi-line: captured on one line, safely consumed on a later one
+        # -- this is the exact shape used to rotate a Zitadel client's
+        # secret in passage without ever displaying it.
+        "CID=$(tofu output -raw x_client_id 2>/dev/null)\n"
+        "CSECRET=$(tofu output -raw x_client_secret 2>/dev/null)\n"
+        'echo -n "$CID" | passage insert -m -f homelab/x/client/id\n'
+        'echo -n "$CSECRET" | passage insert -m -f homelab/x/client/secret',
+    ],
+)
+def test_allows_piped_or_captured_secret_dumps(command):
     assert is_risky_command(command) is None

@@ -37,7 +37,7 @@ _GENERIC_KEY_NAME = (
     r"[A-Z0-9_]*"
 )
 GENERIC_ASSIGNMENT = re.compile(
-    r"(?P<key>%s)\s*[:=]\s*['\"]?(?P<value>[^\s'\";,]{8,})['\"]?"
+    r"(?P<key>%s)['\"]?\s*[:=]\s*['\"]?(?P<value>[^\s'\";,]{8,})['\"]?"
     % _GENERIC_KEY_NAME,
     re.IGNORECASE,
 )
@@ -60,6 +60,19 @@ RISKY_COMMAND_PATTERNS = [
     ("aws_creds_read", re.compile(r"\b(cat|less|more|head|tail|bat)\b[^|;&]*\.aws/credentials\b")),
     ("ssh_key_read", re.compile(r"\b(cat|less|more|head|tail|bat)\b[^|;&]*\.ssh/id_(rsa|ed25519|ecdsa|dsa)\b")),
     ("gpg_export_secret", re.compile(r"\bgpg\b[^|;&]*--export-secret-keys?\b")),
-    ("terraform_output", re.compile(r"\bterraform\b[^|;&]*\boutput\b")),
     ("shell_history", re.compile(r"(?:^|[;&|]\s*)history\b")),
+]
+
+# Commands whose stdout IS a bare secret value, with no surrounding
+# key=value framing for find_secrets() to catch after the fact -- these can
+# only be caught by command shape, before execution. Unlike
+# RISKY_COMMAND_PATTERNS above, a match here is only risky when it isn't
+# consumed elsewhere: `tofu output -raw x_secret | passage insert -m -f y`
+# and `SECRET=$(tofu output -raw x_secret)` are the normal, safe way to
+# rotate a secret without it ever reaching this tool call's own visible
+# output, so scanner.is_risky_command treats a pipe or $(...)/backtick
+# capture as clearing the match -- see scanner._is_bare_secret_dump.
+BARE_DUMP_PATTERNS = [
+    ("tofu_output", re.compile(r"\b(?:tofu|terraform)\b[^|;&\n]*\boutput\b")),
+    ("passage_show", re.compile(r"\bpassage\s+show\b")),
 ]

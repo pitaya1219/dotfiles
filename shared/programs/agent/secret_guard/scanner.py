@@ -6,14 +6,21 @@ and for flagging shell commands that are likely to dump secrets to stdout.
 No I/O or AI-specific formatting here — that belongs in the entry points.
 """
 
-from typing import List, Optional, Tuple
+import re
+from typing import List, Optional, Pattern, Tuple
 
 from .patterns import (
+    BARE_DUMP_PATTERNS,
     GENERIC_ASSIGNMENT,
     PLACEHOLDER_VALUES,
     RISKY_COMMAND_PATTERNS,
     SECRET_PATTERNS,
 )
+
+# Splits a command into independent statements -- a pipe within one of
+# these stays intact (that's exactly what _is_bare_secret_dump needs to see
+# to tell a piped-away dump from a bare one).
+_STATEMENT_SPLIT = re.compile(r"\n|;|&&|\|\|")
 
 
 def _is_placeholder(value: str) -> bool:
@@ -81,9 +88,31 @@ def redact(text: str) -> Tuple[str, List[str]]:
     return "".join(out), names
 
 
+def _is_bare_secret_dump(command: str, invocation: Pattern) -> bool:
+    """True if `invocation` matches within some statement of `command` in a
+    way that would put its stdout directly into this tool call's own
+    visible output: not piped into another command, and not captured via
+    $(...)/backticks into a variable.
+    """
+    for statement in _STATEMENT_SPLIT.split(command):
+        m = invocation.search(statement)
+        if not m:
+            continue
+        prefix = statement[: m.start()]
+        if "$(" in prefix or "`" in prefix:
+            continue
+        if "|" in statement[m.end() :]:
+            continue
+        return True
+    return False
+
+
 def is_risky_command(command: str) -> Optional[str]:
     """Return the name of the matched risky-command pattern, or None."""
     for name, pattern in RISKY_COMMAND_PATTERNS:
         if pattern.search(command):
+            return name
+    for name, pattern in BARE_DUMP_PATTERNS:
+        if _is_bare_secret_dump(command, pattern):
             return name
     return None
