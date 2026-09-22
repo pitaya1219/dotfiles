@@ -51,9 +51,22 @@ PLACEHOLDER_VALUES = {
 # Bash command shapes that are highly likely to dump secrets to stdout.
 # Deliberately conservative — extend as new leak vectors are found rather
 # than trying to be exhaustive up front.
+#
+# Statement-start prefix shared by env_dump/shell_var_dump: a real command
+# boundary (^/;/&/|) plus the openers that also start a fresh command --
+# `(`/`` ` `` covers subshells, process substitution (`<(env)`) and command
+# substitution (`$(env)`), all of which land the invocation's stdout back
+# into this tool call's own visible output just like a bare `env` does.
+# re.MULTILINE makes `^` match after every real newline too, since a
+# multi-statement command sent as one Bash call is often newline- rather
+# than `;`-separated and each line is its own statement.
+_STMT_START = r"(?:^|[;&|(`]\s*)"
+
 RISKY_COMMAND_PATTERNS = [
-    ("env_dump", re.compile(r"(?:^|[;&|]\s*)(env|printenv)\b")),
-    ("shell_var_dump", re.compile(r"(?:^|[;&|]\s*)(set|export\s+-p|declare\s+-p)\b")),
+    ("env_dump", re.compile(_STMT_START + r"(env|printenv)\b", re.MULTILINE)),
+    ("shell_var_dump", re.compile(
+        _STMT_START + r"(set|export\s+-p|declare\s+-p)\b", re.MULTILINE
+    )),
     ("dotenv_read", re.compile(
         r"\b(cat|less|more|head|tail|bat)\b[^|;&]*\.env\b(?!\.(example|sample|template|dist))"
     )),

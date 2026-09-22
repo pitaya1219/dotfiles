@@ -110,12 +110,34 @@ def test_flags_risky_commands(command):
 @pytest.mark.parametrize(
     "command",
     [
+        # Newline-separated statements (a single multi-line Bash call, not
+        # joined by ;/&/|) -- the risky statement isn't the first line.
+        'echo "checking env"\nprintenv SSH_AUTH_SOCK',
+        "echo start\nenv\necho end",
+        # Process substitution / command substitution / subshell / backtick
+        # -- all start a fresh command right after an opening `(` or `` ` ``.
+        "diff <(env | sort) <(ssh host env | sort)",
+        "cat <(printenv)",
+        "CID=$(env)",
+        "(env)",
+        "echo `env`",
+    ],
+)
+def test_flags_risky_commands_in_nested_or_multiline_shapes(command):
+    assert is_risky_command(command) is not None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
         "ls -la",
         "cat README.md",
         "git status",
         "npm test",
         "cat .env.example",
         "cat .env.sample",
+        "docker run --env FOO=bar image",
+        "envsubst < template.conf",
     ],
 )
 def test_allows_benign_commands(command):
