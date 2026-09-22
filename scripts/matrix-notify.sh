@@ -18,6 +18,12 @@
 
 set -euo pipefail
 
+# systemd user services (e.g. disk-cleanup-check.timer) start with the
+# distro's default PATH, which doesn't include the nix profile -- passage
+# has no /usr/bin fallback there, so it silently resolves to nothing and
+# every "$(passage show ...)" below comes back empty.
+export PATH="$HOME/.nix-profile/bin:$PATH"
+
 # Default values
 SESSION_ID=""
 REPO=""
@@ -315,7 +321,7 @@ RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
   -d "$JSON_PAYLOAD" \
   "$WEBHOOK_URL" 2>/dev/null || true)
 
-if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "201" ]; then
+if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "201" ] || [ "$RESPONSE" = "202" ]; then
     if [ "$HOOK_MODE" = false ]; then
         echo "Notification sent to Matrix (session: ${SESSION_ID}, repo: ${REPO})"
     fi
