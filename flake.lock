@@ -181,11 +181,11 @@
         "uv2nix": "uv2nix_3"
       },
       "locked": {
-        "lastModified": 1790247187,
-        "narHash": "sha256-eMAiFd0GPO76wBQYgIqeNtFPrlB6pyakxDTJDRoZZqw=",
+        "lastModified": 1790341579,
+        "narHash": "sha256-gwpMalvQ2yMD1YB+zVM/TmvAVHro8VnprxFs+4KvwLU=",
         "owner": "pitaya1219",
         "repo": "mistral-vibe-nix",
-        "rev": "191c7846a42fe22421cec309a74fa46239ff143a",
+        "rev": "89094f49eae5d383abe9a886d945c400a44640d5",
         "type": "github"
       },
       "original": {
