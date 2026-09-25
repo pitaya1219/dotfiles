@@ -93,7 +93,12 @@ in
     # Color schemes
     everforest
     miasma-nvim
-    nightfox-nvim
+    # lib/vim/init.lua replaces the whole vim.log table, and the require check
+    # loads nvim's own autoread runtime, which needs nvim's vim.log.new logger.
+    # Drop this once nightfox stops shipping that compat shim.
+    (nightfox-nvim.overrideAttrs (_: {
+      nvimSkipModules = [ "nightfox.lib.vim.init" ];
+    }))
     kanagawa-nvim
     kanagawa-paper-nvim
     iceberg-vim
