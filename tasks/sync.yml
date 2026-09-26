@@ -82,11 +82,16 @@ tasks:
     vars:
       EXCLUDE_ARGS: '{{if .EXCLUDE}}{{range splitList "," .EXCLUDE}}--exclude "{{.}}" {{end}}{{end}}'
     cmds:
+      # The timer runs this every 30 min as a oneshot (never concurrently), so
+      # 45m outlives any legitimate run while letting an interrupted run's
+      # lock self-expire instead of blocking every later sync until someone
+      # deletes it by hand.
       - >-
         mkdir -p "{{.BACKUP_LOG_DIR | replace "~" "$HOME"}}" &&
         rclone bisync
         "{{.SOURCE_DIR}}" "{{.REMOTE}}{{.DIST_DIR}}"
         {{.EXCLUDE_ARGS}}
+        --max-lock 45m
         --resilient
         --recover
         --create-empty-src-dirs
