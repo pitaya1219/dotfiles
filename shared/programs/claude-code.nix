@@ -38,7 +38,7 @@
     dotfiles.claude-code.mcpServers = (lib.mapAttrs (_: srv: {
       type = "http";
       url = srv.url;
-    }) config.dotfiles.httpMcpServers) // {
+    }) (lib.filterAttrs (_: srv: lib.elem "claude" srv.clients) config.dotfiles.httpMcpServers)) // {
       gitea = {
         command = "gitea-mcp";
         args = [

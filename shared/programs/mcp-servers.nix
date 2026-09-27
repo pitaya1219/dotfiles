@@ -8,6 +8,11 @@
           type = lib.types.str;
           description = "Remote MCP endpoint URL. May itself carry an auth token as a query param (e.g. Windmill's issued MCP URLs do) — treat it like a secret.";
         };
+        clients = lib.mkOption {
+          type = lib.types.listOf (lib.types.enum [ "claude" "vibe" ]);
+          default = [ "claude" "vibe" ];
+          description = "Agent CLIs this entry is generated for.";
+        };
       };
     });
     default = {};
@@ -32,12 +37,16 @@
   # connection carrying a token scoped to just that script's path -- shared
   # across every profile here (unlike loki, which is rose-only; see
   # profiles/rose.nix) because every profile already shares the same Logseq
-  # HTTP API credential via dotfiles.agent.logseq.
+  # HTTP API credential via dotfiles.agent.logseq. Claude-only: Vibe reaches
+  # Logseq and Dufs through connectors registered per project in .vibe/config.toml
+  # instead, so generating an entry there would only duplicate them.
   config.dotfiles.httpMcpServers.logseq = {
     url = "\${WINDMILL_LOGSEQ_MCP_URL}";
+    clients = [ "claude" ];
   };
 
   config.dotfiles.httpMcpServers.dufs = {
     url = "\${WINDMILL_DUFS_MCP_URL}";
+    clients = [ "claude" ];
   };
 }

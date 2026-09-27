@@ -4,6 +4,7 @@ let
   tomlFormat = pkgs.formats.toml { };
 
   # Remote HTTP MCP servers from the shared dotfiles.httpMcpServers option.
+  # Entries listed for another client only (see `clients` there) are skipped.
   # `url` (e.g. Windmill's issued MCP URL, token and all) contains the
   # `${WINDMILL_MCP_URL}`-style placeholder from mcp-servers.nix; it's
   # resolved below via envsubst at activation time (see installVibeConfig) —
@@ -12,7 +13,7 @@ let
     inherit name;
     transport = "http";
     url = srv.url;
-  }) config.dotfiles.httpMcpServers;
+  }) (lib.filterAttrs (_: srv: lib.elem "vibe" srv.clients) config.dotfiles.httpMcpServers);
 
   generatedMcpConfig = tomlFormat.generate "vibe-mcp-servers.toml" {
     mcp_servers = generatedMcpServers;
