@@ -3,9 +3,11 @@
 #
 # Source this (do not exec) to populate, in the caller's shell:
 #   AGENT_TYPE       claude-code | vibe | unknown
-#   SESSION_ID       session UUID (or trailing hash for Vibe fallback); may be empty
+#   SESSION_ID       session UUID (or trailing hash for legacy Vibe); may be empty
 #   WORKDIR_ENCODED  $(pwd) with '/' → '-' (Claude Code project-dir encoding)
-#   TRANSCRIPT_PATH  absolute path to the full raw transcript (.jsonl); may be empty
+#   TRANSCRIPT_PATH  absolute path to the full raw transcript (.jsonl); may be empty.
+#                    For a unified-harness Vibe session this is a temp file rebuilt
+#                    by vibe_unified.py, since no messages.jsonl exists there.
 #
 # All agent-type branching for session-save lives here so SKILL.md stays orchestration.
 # Best-effort: leaves values empty rather than failing when nothing is detected.
@@ -38,10 +40,40 @@ if [ "$_running" = "unknown" ]; then
   fi
 fi
 
+# --- Vibe, unified harness (~/.vibe/logs/session/unified/<uuid>/) ----------
+# Sessions here are identified by meta.json's working_directory, not by recency,
+# so this runs before the Claude probes: an unknown agent launched from a
+# directory that also has a Claude project dir must not be labelled claude-code.
+_vibe_helper="$(dirname "${BASH_SOURCE[0]:-$0}")/vibe_unified.py"
+_vibe_roots=(
+  "$(pwd)/.vibe/logs/session/unified"
+  "$HOME/agent-sessions/.vibe/logs/session/unified"
+  "${VIBE_HOME:-$HOME/.vibe}/logs/session/unified"
+)
+
+# $1 = match (working_directory must be cwd or an ancestor) | any (newest overall)
+_detect_vibe_unified() {
+  local dir="" _r
+  if [ -n "${VIBE_SESSION_ID:-}" ]; then
+    for _r in "${_vibe_roots[@]}"; do
+      [ -f "$_r/$VIBE_SESSION_ID/meta.json" ] && { dir="$_r/$VIBE_SESSION_ID"; break; }
+    done
+  fi
+  [ -z "$dir" ] && dir=$(python3 "$_vibe_helper" resolve "$1" "$(pwd)" "${_vibe_roots[@]}" 2>/dev/null)
+  [ -n "$dir" ] || return 1
+  AGENT_TYPE="vibe"
+  SESSION_ID=$(basename "$dir")
+  TRANSCRIPT_PATH=$(python3 "$_vibe_helper" transcript "$dir" 2>/dev/null)
+}
+
+if [ "$_running" != "claude-code" ]; then
+  _detect_vibe_unified match || true
+fi
+
 # --- Claude Code -----------------------------------------------------------
 # Runs when we know we are under Claude Code, or when the agent is unknown
-# (best-effort probe of the Claude store).
-if [ "$_running" = "claude-code" ] || [ "$_running" = "unknown" ]; then
+# and the unified Vibe probe found nothing (best-effort probe of the Claude store).
+if [ -z "$SESSION_ID" ] && { [ "$_running" = "claude-code" ] || [ "$_running" = "unknown" ]; }; then
 
   # 0. Authoritative: session id straight from the environment (recent CLI).
   #    The transcript is <session-id>.jsonl under some project dir; the id is
@@ -107,7 +139,7 @@ if [ "$_running" = "claude-code" ] || [ "$_running" = "unknown" ]; then
   fi
 fi
 
-# --- Vibe ------------------------------------------------------------------
+# --- Vibe, legacy harness (--legacy-harness) --------------------------------
 # 4. <base>/logs/session/session_*/{meta.json,messages.jsonl}
 # Only when we are NOT running under Claude Code — otherwise a leftover Vibe
 # log from a previous session would masquerade as the current one.
@@ -124,6 +156,12 @@ if [ -z "$SESSION_ID" ] && [ "$_running" != "claude-code" ]; then
     _vibe_msgs="$(dirname "$_meta")/messages.jsonl"
     [ -f "$_vibe_msgs" ] && TRANSCRIPT_PATH="$_vibe_msgs"
   fi
+fi
+
+# Last resort for Vibe: no working_directory matched, so take the newest unified
+# session overall rather than reporting nothing.
+if [ -z "$SESSION_ID" ] && [ "$_running" != "claude-code" ]; then
+  _detect_vibe_unified any || true
 fi
 
 export AGENT_TYPE SESSION_ID WORKDIR_ENCODED TRANSCRIPT_PATH

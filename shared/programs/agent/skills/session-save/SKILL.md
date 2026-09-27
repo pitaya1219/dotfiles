@@ -2,7 +2,7 @@
 name: session-save
 description: Save current session summary to Logseq (if available) or as a local markdown file
 user-invocable: true
-version: 3.0.0
+version: 3.1.0
 ---
 
 Create a comprehensive summary of the current session and save it.
@@ -31,10 +31,42 @@ lives in that script, so this skill stays orchestration-only.
 source "$HOME/.agent/skills/session-save/detect-session.sh"
 # Sets, best-effort (empty when undetected):
 #   AGENT_TYPE       claude-code | vibe | unknown
-#   SESSION_ID       session UUID (or trailing hash for Vibe fallback)
+#   SESSION_ID       session UUID (or trailing hash for legacy Vibe)
 #   WORKDIR_ENCODED  $(pwd) with '/' → '-'
 #   TRANSCRIPT_PATH  absolute path to the full raw transcript (.jsonl)
 ```
+
+How the adapter resolves each agent:
+
+- **Claude Code** — `CLAUDE_CODE_SESSION_ID` (else `AI_AGENT`/`CLAUDECODE`) marks it;
+  the transcript is `~/.claude/projects/*/<session-id>.jsonl`. Without an id it falls
+  back to the newest `.jsonl` in the project dir for `pwd` or an ancestor.
+- **Vibe, unified harness** (default) — sessions live in
+  `~/.vibe/logs/session/unified/<session-uuid>/` (store format
+  `mistral.vibe.unified-session-store/v1`) and have no `messages.jsonl`. The session
+  is picked by `meta.json`'s `environment.working_directory`: `pwd` or its nearest
+  ancestor that any session was launched from, newest `bumped_at` among those. Only
+  when nothing matches does it take the newest unified session overall. `VIBE_SESSION_ID`,
+  when set, names the session directly and skips the search. The search runs before
+  the Claude probes unless a Claude marker is set, so an unmarked shell in a
+  directory that also has a Claude project dir is resolved as Vibe.
+- **Vibe, legacy harness** (`--legacy-harness`) — `logs/session/session_*/messages.jsonl`,
+  newest directory wins. Only consulted after the unified search finds nothing.
+
+### Unified-harness transcript
+
+`vibe_unified.py` rebuilds a `messages.jsonl`-equivalent into a temp file and
+`TRANSCRIPT_PATH` points at it, so everything downstream still receives a plain `.jsonl`
+(one LLM message object per line):
+
+1. `CURRENT` names the newest `generation`.
+2. `generations/<generation>/manifest.json` lists `checkpoint.chunks`, ordered chunk ids.
+3. Each `chunks/<id>.json` is a list of `{"message": ..., "source": ...}`; the
+   `message` objects, in chunk order, are the transcript.
+
+Known limitation: the turn in flight is journaled but not yet in the newest generation,
+so the transcript covers everything up to the last checkpoint — the most recent
+exchange, including this skill's own turn, may be missing. Re-running later picks it up.
 
 `~/.claude/skills` and `~/.vibe/skills` both point at `~/.agent/skills`, so the
 `~/.agent/...` path resolves regardless of which agent runs this skill.
