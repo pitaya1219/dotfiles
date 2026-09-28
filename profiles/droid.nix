@@ -102,6 +102,7 @@
           ../shared/programs/herdr-run.nix
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
+          ../shared/programs/nix.nix
           ../shared/activations/huggingface_hub.nix
           ../shared/activations/proton-pass.nix
           ./droid/activations/linux-terminal-font.nix

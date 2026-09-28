@@ -37,6 +37,7 @@
           ../shared/programs/herdr-run.nix
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
+          ../shared/programs/nix.nix
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "aviateur")
           ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "aviateur")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })

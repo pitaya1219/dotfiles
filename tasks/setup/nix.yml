@@ -27,19 +27,22 @@ tasks:
           echo "Create {{.NIX_CONF_PATH}}."
           touch "{{.NIX_CONF_PATH}}"
         fi
-        if grep -q 'experimental-features = nix-command flakes' "{{.NIX_CONF_PATH}}"; then
+        # Only enough to let home-manager run: flakes have to be on before the
+        # first switch, and nothing declarative exists yet to turn them on.
+        # Everything else -- substituters, trusted keys -- is declared in
+        # shared/programs/nix.nix (home-manager profiles) and in
+        # profiles/r-shibuya/darwin.nix (nix-darwin), so it is not appended
+        # here any more.
+        #
+        # After that first switch home-manager owns this file and points it at
+        # a store path, where an append would fail; leave it alone once it has.
+        if [ -L "{{.NIX_CONF_PATH}}" ]; then
+          echo "✅ nix.conf is managed by home-manager, leaving it alone"
+        elif grep -q 'experimental-features = nix-command flakes' "{{.NIX_CONF_PATH}}"; then
           echo "✅ Flakes already enabled";
         else
           echo 'experimental-features = nix-command flakes' >> "{{.NIX_CONF_PATH}}"
         fi
-        for setting in \
-          "substituters = https://cache.nixos.org https://nix-community.cachix.org" \
-          "trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCUSeBs="; do
-          if ! grep -qF "$setting" "{{.NIX_CONF_PATH}}"; then
-            echo "$setting" >> "{{.NIX_CONF_PATH}}"
-            echo "✅ Added setting: $setting"
-          fi
-        done
   home:
     desc: Setup nix home-manager (or nix-darwin on macOS) and switch profile
     silent: true

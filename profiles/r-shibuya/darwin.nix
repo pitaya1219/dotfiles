@@ -17,6 +17,15 @@
     trusted-users = [ "root" "r-shibuya" ];
     # Trust Netskope's combined CA bundle (standard CAs + Netskope CA) for binary cache fetches.
     ssl-cert-file = "/Library/Application Support/Netskope/STAgent/data/nscacert_combined.pem";
+
+    # Declared here rather than in ~/.config/nix/nix.conf, which is where
+    # `task setup:nix:flake` used to append them: substitution runs in the
+    # daemon, and this is the file it reads. `extra-` rather than a plain list
+    # because cache.nixos.org and its key are Nix's built-in defaults already.
+    extra-substituters = [ "https://nix-community.cachix.org" ];
+    extra-trusted-public-keys = [
+      "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCUSeBs="
+    ];
   };
 
   # Match the actual nixbld group GID on this machine (default changed from 30000 to 350)

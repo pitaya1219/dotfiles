@@ -53,6 +53,7 @@
           ../shared/programs/herdr-run.nix
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
+          ../shared/programs/nix.nix
           ./lepetitprince/ssh/local-mirrors.nix
           ./lepetitprince/activations/herdr_mirror.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "lepetitprince")
