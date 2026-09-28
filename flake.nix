@@ -16,7 +16,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     mistral-vibe = {
-      url = "github:pitaya1219/mistral-vibe-nix";
+      url = "git+https://git.pitaya.f5.si/pitaya1219/mistral-vibe-nix.git?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     homelab.url = "git+https://git.pitaya.f5.si/pitaya1219/homelab.git?ref=main";
