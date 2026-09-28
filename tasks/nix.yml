@@ -111,6 +111,16 @@ tasks:
         # inconsistency this guards against is a missing file, not an altered
         # one.
         nix-store --verify
+  cache:prune:
+    desc: Prune the local binary cache to its size budget now, instead of waiting for the scheduled run
+    silent: true
+    cmds:
+      # The wrapper carries this machine's cache directory and budget, so
+      # neither is repeated here; pass --dry-run through CLI_ARGS to see what
+      # a run would remove. Where the cache belongs to root -- r-shibuya --
+      # the script says so rather than half-pruning, and the answer is sudo.
+      - prune-local-binary-cache {{.CLI_ARGS}}
+
   sandbox:
     desc: Activate this checkout against a throwaway home directory and open a shell in it
     silent: true

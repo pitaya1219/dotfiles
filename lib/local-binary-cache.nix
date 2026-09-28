@@ -23,6 +23,10 @@
   keyFile,
   # Its public half, as `<name>:<base64>`.
   publicKey,
+  # How large the cache is allowed to get. Nothing evicts from a cache Nix
+  # writes with `nix copy`, so without a ceiling it grows for as long as the
+  # machine builds. Raise it per profile where there is room.
+  maxSize ? "5GiB",
   pkgs,
 }:
 
@@ -39,8 +43,23 @@ let
     ${nix} copy --to "file://${cacheDir}" $OUT_PATHS \
       || echo "warning: could not push to ${cacheDir}; build kept, cache stale" >&2
   '';
+
+  # Kept out of the post-build hook on purpose. That hook runs on every build
+  # and is non-fatal by design; a full scan of the cache directory there would
+  # be paid for by every build to be useful a few times a year. The schedulers
+  # in the two nix-cache.nix modules run this instead.
+  prune = pkgs.writeShellApplication {
+    name = "prune-local-binary-cache";
+    runtimeInputs = [ pkgs.python3 ];
+    text = ''
+      exec python3 ${./prune-binary-cache.py} \
+        --cache-dir "${cacheDir}" --max-size "${maxSize}" "$@"
+    '';
+  };
 in
 {
+  inherit prune;
+
   settings = {
     # Sign as we build, so nothing needs a separate signing pass before it can
     # be substituted back.

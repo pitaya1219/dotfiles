@@ -19,6 +19,28 @@ in
 {
   nix.settings = cache.settings;
 
+  home.packages = [ cache.prune ];
+
+  # A user unit, matching who owns the cache here. r-shibuya needs a root
+  # launchd daemon for the same job; see profiles/r-shibuya/nix-cache.nix.
+  systemd.user.services.prune-local-binary-cache = {
+    Unit.Description = "Prune the local Nix binary cache to its size budget";
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${cache.prune}/bin/prune-local-binary-cache";
+    };
+  };
+
+  systemd.user.timers.prune-local-binary-cache = {
+    Unit.Description = "Local Nix binary cache prune timer";
+    Timer = {
+      OnCalendar = "*-*-* 04:15:00";
+      Persistent = true;
+      AccuracySec = "10min";
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
+
   home.activation.localBinaryCache =
     lib.hm.dag.entryAfter [ "writeBoundary" ] cache.checkScript;
 }

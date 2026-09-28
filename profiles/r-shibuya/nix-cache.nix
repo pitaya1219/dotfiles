@@ -21,6 +21,20 @@ in
 {
   nix.settings = cache.settings;
 
+  environment.systemPackages = [ cache.prune ];
+
+  # A daemon rather than an agent: the cache is under /nix/var and the nix
+  # daemon writes it as root, so a job running as r-shibuya could read the
+  # directory and delete nothing in it.
+  launchd.daemons.prune-local-binary-cache = {
+    serviceConfig = {
+      ProgramArguments = [ "${cache.prune}/bin/prune-local-binary-cache" ];
+      StartCalendarInterval = [ { Hour = 4; Minute = 15; } ];
+      StandardOutPath = "/var/log/prune-local-binary-cache.log";
+      StandardErrorPath = "/var/log/prune-local-binary-cache.log";
+    };
+  };
+
   # postActivation rather than an earlier phase: nix.settings has to be written
   # before a failure here is worth reporting, since the message tells you what
   # the configuration expects.
