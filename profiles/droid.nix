@@ -110,6 +110,7 @@
           ./droid/ssh/config.nix
           ./droid/ssh/headscale.nix
           ./droid/tailscale.nix
+          ./droid/nix-cache.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "droid")
           ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "droid")
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "droid")

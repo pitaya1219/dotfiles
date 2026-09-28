@@ -210,6 +210,7 @@ in
         };
       })
       ./r-shibuya/darwin.nix
+      ./r-shibuya/nix-cache.nix
     ];
   };
 }
