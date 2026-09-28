@@ -74,7 +74,12 @@ tasks:
           if [[ "$(uname)" == "Darwin" ]] && [[ -f "profiles/${profile}/darwin.nix" ]]; then
             task setup:nix:darwin PROFILE="${profile}"
           else
-            nix run home-manager/master -- switch --flake .#"${profile}"
+            # -b backup: the first switch after nix.conf became declarative
+            # finds the file the old `setup:nix:flake` wrote still sitting
+            # there, and home-manager refuses to clobber a file it does not
+            # own. This renames it to nix.conf.backup instead of stopping the
+            # switch. It is a no-op once nothing is in the way.
+            nix run home-manager/master -- switch -b backup --flake .#"${profile}"
           fi
         fi
 
