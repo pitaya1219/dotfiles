@@ -240,6 +240,41 @@ target_for() {
   return 1
 }
 
+# herdr-mirror's own per-host id map (remote id → { localId, tombstone, ... },
+# see its src/state.rs): the same file remote_action.rs reverse-looks-up to
+# turn a mirror pane's local ids into the real remote workspace/pane behind
+# it. Reading it here is what lets `--new` land beside the remote session a
+# mirrored pane is showing instead of in herdr-mirror's own `.mirror-pane`
+# placeholder — see open_new().
+MIRROR_STATE_DIR="${AGENT_OPEN_MIRROR_STATE:-$HOME/.local/state/herdr-mirror}"
+
+# Prints "host\tremote_ws_id\tremote_pane_id" for the first host whose map
+# claims local_ws as a mirrored workspace (a workspace only ever mirrors one
+# host), empty with a non-zero exit when none does. remote_pane_id comes back
+# empty when local_pane itself isn't the mirrored pane the map knows about —
+# some other, unmirrored pane focused inside an otherwise-mirrored workspace —
+# and the caller has to cope with that rather than assume it.
+mirror_lookup() {
+  local local_ws="$1" local_pane="$2" name target map rws rpane
+  while IFS="$TAB" read -r name target; do
+    [ -n "$name" ] || continue
+    map="$MIRROR_STATE_DIR/$name-map.json"
+    [ -f "$map" ] || continue
+    rws=$(jq -r --arg lid "$local_ws" '
+      (.workspaces // {}) | to_entries[]
+      | select(.value.localId == $lid and ((.value.tombstone // false) | not))
+      | .key' "$map" 2>/dev/null | head -1)
+    [ -n "$rws" ] || continue
+    rpane=$(jq -r --arg lid "$local_pane" '
+      (.panes // {}) | to_entries[]
+      | select(.value.localId == $lid and ((.value.tombstone // false) | not))
+      | .key' "$map" 2>/dev/null | head -1)
+    printf '%s\t%s\t%s\n' "$name" "$rws" "$rpane"
+    return 0
+  done < <(mirror_hosts)
+  return 1
+}
+
 # One multiplexed connection per host: the picker calls out once to build the
 # listing and again on every preview redraw, and a fresh handshake per cursor
 # move is the difference between a preview that keeps up and one that does not.
@@ -257,12 +292,14 @@ shq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 
 # PATH on a non-interactive `ssh host cmd` never picks up ~/.nix-profile/bin —
 # the same gap herdr-mirror documents for its own remote_bin setting — so the
-# lookup is spelled out here instead of left to the remote shell.
-remote_run() {
-  local target="$1" arg
-  shift
+# lookup is spelled out here instead of left to the remote shell. Generic over
+# the binary so a mirrored pane's own herdr can be queried (its real cwd) the
+# same way agent-open itself is re-entered on the remote end.
+remote_run_bin() {
+  local target="$1" binname="$2" arg
+  shift 2
   # shellcheck disable=SC2016  # $HOME and $bin are the remote shell's to expand
-  local cmd='if command -v agent-open >/dev/null 2>&1; then bin=agent-open; else bin="$HOME/.nix-profile/bin/agent-open"; fi; "$bin"'
+  local cmd="if command -v $binname >/dev/null 2>&1; then bin=$binname; else bin=\"\$HOME/.nix-profile/bin/$binname\"; fi; \"\$bin\""
   for arg in "$@"; do
     cmd="$cmd $(shq "$arg")"
   done
@@ -270,6 +307,8 @@ remote_run() {
   # and shq() has already quoted every part of it that has to survive the hop
   ssh "${SSH_OPTS[@]}" "$target" "$cmd"
 }
+
+remote_run() { remote_run_bin "$1" agent-open "${@:2}"; }
 
 # The scan is split in two so the hosts can be working while this machine is:
 # every host is a `ls -t | head | jq` sweep of its own transcripts, and so is
@@ -446,10 +485,14 @@ open_in_herdr() {
 # the agent's process on this machine, pointed at a path that only exists over
 # there. Nothing appears until the mirror for that host is running
 # (prefix+shift+m) — the tab is real either way, just not on screen.
+# workspace, when given, is a REMOTE workspace id (from mirror_lookup): the
+# tab lands inside the existing mirrored workspace instead of --open's normal
+# lookup-or-create-by-project-name, which is what makes open_new()'s mirror
+# path indistinguishable from herdr-mirror's own remote-tab.
 open_remote() {
-  local host="$1" cwd="$2" cmdline="$3" target out
+  local host="$1" cwd="$2" cmdline="$3" workspace="${4:-}" target out
   target=$(target_for "$host") || die "no target for host: $host"
-  out=$(remote_run "$target" --open "$cwd" "$cmdline" 2>&1) ||
+  out=$(remote_run "$target" --open "$cwd" "$cmdline" "$workspace" 2>&1) ||
     die "opening on $host failed: $out"
 }
 
@@ -466,7 +509,7 @@ pick_agent() {
 }
 
 open_new() {
-  local agent="$1" pane_id pane cwd workspace
+  local agent="$1" pane_id pane cwd workspace host_line host rws rpane target remote_cwd
 
   # herdr captures the pane a keybinding fired from in HERDR_ACTIVE_PANE_ID,
   # which is the only one of these that is set for a `type = "shell"` command
@@ -483,8 +526,27 @@ open_new() {
   pane=$(herdr pane get "$pane_id" 2>&1) || die "herdr pane get failed: $pane"
   cwd=$(jq -r '.result.pane.foreground_cwd // .result.pane.cwd // empty' <<<"$pane" 2>/dev/null) || cwd=""
   workspace=$(jq -r '.result.pane.workspace_id // empty' <<<"$pane" 2>/dev/null) || workspace=""
-  [ -n "$cwd" ] && [ -d "$cwd" ] || cwd="$PWD"
 
+  # A mirrored pane's local cwd is herdr-mirror's own `.mirror-pane`
+  # placeholder, not anywhere that exists on this machine — opening there
+  # would put the new agent in a client-side directory instead of beside the
+  # remote session being looked at. Route through the same host the mirror
+  # comes from instead, the way herdr-mirror's own remote-tab does.
+  if host_line=$(mirror_lookup "$workspace" "$pane_id") && [ -n "$host_line" ]; then
+    IFS="$TAB" read -r host rws rpane <<<"$host_line"
+    target=$(target_for "$host") || die "mirror host $host has no target in $MIRROR_HOSTS"
+    remote_cwd=""
+    if [ -n "$rpane" ]; then
+      remote_cwd=$(remote_run_bin "$target" herdr pane get "$rpane" 2>/dev/null |
+        jq -r '.result.pane.foreground_cwd // .result.pane.cwd // empty' 2>/dev/null) || remote_cwd=""
+    fi
+    [ -n "$remote_cwd" ] ||
+      die "focused pane is in $host's mirror, but its remote cwd could not be resolved — is the mirror daemon syncing?"
+    open_remote "$host" "$remote_cwd" "$agent" "$rws"
+    return
+  fi
+
+  [ -n "$cwd" ] && [ -d "$cwd" ] || cwd="$PWD"
   open_in_herdr "$cwd" "$(tab_label_for "$cwd")" "$agent" "$workspace"
 }
 
@@ -515,7 +577,10 @@ case "${1:-}" in
   --open)
     cwd="${2:-}"
     [ -n "$cwd" ] || die "--open needs a directory"
-    open_in_herdr "$cwd" "$(tab_label_for "$cwd")" "${3:-}"
+    # $4, when set, is a REMOTE workspace id (open_remote's mirror path):
+    # this runs on the far end of the ssh hop, so it is this host's own
+    # workspace to create the tab in, not something to translate further.
+    open_in_herdr "$cwd" "$(tab_label_for "$cwd")" "${3:-}" "${4:-}"
     exit 0
     ;;
   --source)
