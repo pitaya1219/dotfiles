@@ -1,0 +1,94 @@
+name: Warm Attic Cache
+
+# Fills the `dotfiles` Attic cache with the x86_64-linux closures that rose,
+# lepetitprince and aviateur pull from (shared/programs/attic-cache.nix). The
+# act-runner is x86_64-linux like all three, so what it builds they can
+# substitute rather than build again.
+#
+# This is the only writer. Those three machines pull and never push: a push
+# token is a secret, and here it is a Gitea Actions secret on one host instead
+# of a passage entry that has to be delivered to every machine and left in
+# attic-client's config file on each of them.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      # A flake.lock bump is what invalidates the closure wholesale. Editing a
+      # profile usually adds a package or two, which whichever machine switches
+      # first can absorb on its own.
+      - 'flake.nix'
+      - 'flake.lock'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Authenticate to Gitea for flake inputs
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          git config --global url."https://oauth2:${BOT_TOKEN}@git.pitaya.f5.si/".insteadOf "https://git.pitaya.f5.si/"
+
+      - name: Read the cache's public key
+        id: cache
+        run: |
+          # Asked for rather than committed here: the key is only used so that
+          # attic-client's own build can come from the cache, and a copy in this
+          # file would be a second place to update whenever the cache is
+          # recreated. shared/programs/attic-cache.nix does commit it, because
+          # there it is what the machines trust and so has to be reviewable.
+          #
+          # sed rather than jq: nothing installs jq in this image.
+          key=$(curl -fsS http://attic:8080/_api/v1/cache-config/dotfiles \
+            | sed -n 's/.*"public_key":"\([^"]*\)".*/\1/p')
+          if [ -z "$key" ]; then
+            echo "no dotfiles cache on the server: run \`task attic:cache:new -- dotfiles\`" >&2
+            echo "on the homelab host first." >&2
+            exit 1
+          fi
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Start pushing to the Attic cache
+        uses: https://git.pitaya.f5.si/pitaya1219/actions/attic-warm@main
+        with:
+          cache: dotfiles
+          token: ${{ secrets.ATTIC_TOKEN }}
+          server: http://attic:8080
+          public-key: ${{ steps.cache.outputs.key }}
+          # This flake has no devShell to realize; the profile builds below are
+          # what watch-store has to run alongside.
+          realize: 'false'
+
+      - name: Build the x86_64-linux profiles
+        run: |
+          for profile in rose lepetitprince aviateur; do
+            echo "=== $profile ==="
+            # Warming is best effort: one profile that cannot build is no
+            # reason to leave the other two out of the cache.
+            nix build --no-link --print-build-logs \
+              ".#homeConfigurations.$profile.activationPackage" \
+              || echo "::warning::$profile did not build; its paths are missing from the cache"
+          done
+
+      - name: Wait for pushes to flush
+        run: |
+          # watch-store pushes asynchronously as paths are realized, and it dies
+          # with the job.
+          sleep 60
