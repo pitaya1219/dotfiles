@@ -181,17 +181,18 @@
         "uv2nix": "uv2nix_3"
       },
       "locked": {
-        "lastModified": 1790341579,
-        "narHash": "sha256-gwpMalvQ2yMD1YB+zVM/TmvAVHro8VnprxFs+4KvwLU=",
-        "owner": "pitaya1219",
-        "repo": "mistral-vibe-nix",
-        "rev": "89094f49eae5d383abe9a886d945c400a44640d5",
-        "type": "github"
+        "lastModified": 1790595949,
+        "narHash": "sha256-tSVV3IpZl5/gTDz0Ql0AIGkN22/KqKTG+8d7NQEsRa0=",
+        "ref": "main",
+        "rev": "3cc0d83f5b52a5f3dd3140ed7ae98cb2e2e29b0f",
+        "revCount": 38,
+        "type": "git",
+        "url": "https://git.pitaya.f5.si/pitaya1219/mistral-vibe-nix.git"
       },
       "original": {
-        "owner": "pitaya1219",
-        "repo": "mistral-vibe-nix",
-        "type": "github"
+        "ref": "main",
+        "type": "git",
+        "url": "https://git.pitaya.f5.si/pitaya1219/mistral-vibe-nix.git"
       }
     },
     "mistral-vibe-src": {
