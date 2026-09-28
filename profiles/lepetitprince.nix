@@ -54,6 +54,7 @@
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
           ../shared/programs/nix.nix
+          ../shared/programs/attic-cache.nix
           ./lepetitprince/ssh/local-mirrors.nix
           ./lepetitprince/activations/herdr_mirror.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "lepetitprince")

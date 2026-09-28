@@ -53,6 +53,7 @@
           ../shared/programs/starship.nix
           ../shared/programs/readline.nix
           ../shared/programs/nix.nix
+          ../shared/programs/attic-cache.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "rose")
           ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "rose")
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
