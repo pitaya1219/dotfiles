@@ -617,8 +617,8 @@ selection=$(
     --with-nth=1 \
     --no-hscroll \
     --prompt='resume > ' \
-    --header=$'enter: resume  ctrl-a: auto-approve  ctrl-p: plan mode\nctrl-l: claude only  ctrl-v: vibe only  ctrl-o: both  ctrl-s: this host only' \
-    --expect=ctrl-a,ctrl-p \
+    --header=$'enter: resume  ctrl-a: auto-approve  ctrl-p: plan mode  ctrl-u: smart-approve (vibe)\nctrl-l: claude only  ctrl-v: vibe only  ctrl-o: both  ctrl-s: this host only' \
+    --expect=ctrl-a,ctrl-p,ctrl-u \
     --bind="ctrl-l:reload($reenter --source claude)" \
     --bind="ctrl-v:reload($reenter --source vibe)" \
     --bind="ctrl-o:reload($reenter --source all)" \
@@ -649,7 +649,11 @@ case "$agent:$key" in
   claude:ctrl-a) flags=" --permission-mode auto" ;;
   claude:ctrl-p) flags=" --permission-mode plan" ;;
   vibe:ctrl-a)   flags=" --auto-approve" ;;
+  # --smart-approve needs --experimental-harness (Unified Harness) or it is a
+  # silent no-op and the session falls back to the default ask agent.
+  vibe:ctrl-u)   flags=" --smart-approve --experimental-harness" ;;
   # Vibe has no plan mode, so ctrl-p there falls through to a plain resume.
+  # claude has no smart-approve classifier, so ctrl-u there also falls through.
 esac
 
 cmdline=$(resume_command "$agent" "$id" "$flags")

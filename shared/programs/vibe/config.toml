@@ -12,9 +12,90 @@ enable_experimental_hooks = true
 enable_system_trust_store = true
 
 # Dedicated, passphrase-less herdr-mirror keys (see profiles/*/ssh/) let an
-# agent session ssh to dragonfruit/rose/aviateur with no human in the loop.
+# agent session ssh to dragonfruit/rose/aviateur with no human in the loop --
+# exactly why the bash tool itself must not be able to invoke ssh/scp/sftp
+# directly: it would inherit that same unattended reach.
+#
+# The tool's config field is `denylist` (a literal command PREFIX, matched
+# without a trailing "*" -- see vibe.core.tools.builtins.bash._matches_pattern),
+# not `deny`. A prior revision of this file used both the wrong key and glob
+# syntax; BaseToolConfig allows extra keys, so it validated but never matched
+# anything and ssh/scp/sftp ran unrestricted. `denylist`/`denylist_standalone`/
+# `sensitive_patterns` are also deep-merged per key across config layers (see
+# MergeStrategy.DEEP_MERGE in vibe.core.utils.merge), which replaces a list
+# wholesale when this layer sets it -- so each list below repeats Vibe's own
+# built-in defaults (bash.py `_get_default_*`) alongside the additions, or
+# setting it here would silently drop them.
 [tools.bash]
-deny = ["ssh *"]
+denylist = [
+  # --- built-in defaults (bash.py _get_default_denylist) ---
+  "gdb", "pdb", "passwd",
+  "nano", "vim", "vi", "emacs",
+  "bash -i", "sh -i", "zsh -i", "fish -i", "dash -i",
+  "screen", "tmux",
+  # --- additions: same credential/host-access surface as ssh ---
+  "ssh", "scp", "sftp",
+  # --- additions: absolute rule from shared/programs/agent/conventions.md
+  # ("NEVER update the git config") enforced as a hard block, not just an
+  # instruction the model has to remember ---
+  "git config --global",
+]
+denylist_standalone = [
+  # --- built-in defaults (bash.py _get_default_denylist_standalone) ---
+  "python", "python3", "ipython",
+  "bash", "sh", "nohup", "vi", "vim", "emacs", "nano", "su",
+  # --- additions: bare interactive-interpreter launches, same class of risk
+  # as the python/ipython entries above ---
+  "node", "ruby", "irb",
+]
+sensitive_patterns = [
+  # Built-in default. Forces ASK/classify even when `permission = "always"`
+  # or a stored allowlist grant would otherwise let the tool through silently.
+  "sudo",
+  # Additions: network egress and arbitrary-code-execution primitives. Not a
+  # denylist entry -- these have legitimate uses -- but every call must at
+  # least clear smart-approve's classifier (or a human, without smart-approve)
+  # rather than ever being silently pre-approved by a broad allowlist grant.
+  "curl", "wget", "nc", "ncat", "netcat", "eval",
+]
+
+# Gitea MCP tools: reads are safe to leave on "always" (no side effects).
+# Writes are forced to "ask" so a human always sees the exact gitea call
+# before it runs, mirroring this workspace's outbound_guard policy for the
+# Claude Code side (.agent/outbound_guard/config.py: gh pr/issue/release
+# writes are always confirmed, never silently auto-approved). Under smart
+# approve this resolves BEFORE the risk classifier runs (see
+# UnifiedPermissionResolver._context_for), so it is not a suggestion the
+# classifier can override in either direction.
+[tools.gitea_get_file_contents]
+permission = "always"
+
+[tools.gitea_get_dir_contents]
+permission = "always"
+
+[tools.gitea_pull_request_read]
+permission = "always"
+
+[tools.gitea_issue_read]
+permission = "always"
+
+# `gitea_pull_request_write` covers create/comment/review/close AND merge in
+# one tool -- and this workspace's git workflow rules forbid ever merging a
+# PR via CLI/API, only from the web UI. Since the classifier cannot be
+# trusted to reliably tell "create a PR" (routine) from "merge a PR"
+# (forbidden) apart from arguments alone, force a human to see every call.
+[tools.gitea_pull_request_write]
+permission = "ask"
+
+[tools.gitea_issue_write]
+permission = "ask"
+
+[tools.gitea_create_release]
+permission = "ask"
+
+# Branch creation is routine (every task requires one per the git workflow
+# rules), reversible, and does not affect anyone else -- leave it on the
+# default (smart-approve classifies it; legacy/ask asks as before).
 
 [[providers]]
 name = "mistral"
