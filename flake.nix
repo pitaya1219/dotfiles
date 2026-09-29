@@ -70,60 +70,6 @@
           neovim = prev.neovim // { lua = final.luajit; };
         };
 
-        # WORKAROUND: Disable pipx install checks to avoid test suite failures.
-        # The test suite has assertion failures in package specifier formatting.
-        # This affects all platforms. Should be removed once upstream fixes are available.
-        pipx-no-check = final: prev: {
-          pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [
-            (_: pyPrev: {
-              pipx = pyPrev.pipx.overrideAttrs (_: { doInstallCheck = false; });
-            })
-          ];
-        };
-
-        # WORKAROUND: On the current nixpkgs pin (python3.14), poetry's pytest
-        # suite has a handful of failing tests (test_executor batch/yanked-package
-        # assertions, test_env full-pipe) that abort the derivation build. They are
-        # upstream test issues, not a problem with poetry itself, so disable the
-        # test suite.
-        #
-        # Override the top-level `poetry` directly (not via pythonPackagesExtensions):
-        # pkgs.poetry builds its unwrapped module through a private `python3.override`
-        # package set in its own package.nix, so there is no `python3Packages.poetry`
-        # for a python-set extension to hook. pkgs.poetry is a toPythonApplication, so
-        # overridePythonAttrs threads to the underlying module; setting the
-        # python-level `doCheck = false` makes mk-python-derivation skip the pytest
-        # install-check phase (it derives stdenv doInstallCheck from that attr).
-        # Should be removed once upstream fixes land on our nixpkgs pin.
-        poetry-no-check = final: prev: {
-          poetry = prev.poetry.overridePythonAttrs (_: { doCheck = false; });
-        };
-
-        # WORKAROUND: nixpkgs bumped pandas past parquet-tools' pinned <3.0.0
-        # upper bound, breaking pythonRuntimeDepsCheckHook. parquet-tools already
-        # relaxes halo/tabulate/thrift the same way upstream; extend that to pandas.
-        # Should be removed once parquet-tools bumps its pandas ceiling upstream.
-        parquet-tools-relax-pandas = final: prev: {
-          parquet-tools = prev.parquet-tools.overridePythonAttrs (old: {
-            pythonRelaxDeps = (old.pythonRelaxDeps or [ ]) ++ [ "pandas" ];
-          });
-        };
-
-        # WORKAROUND: nixpkgs' bundled ld64 (957.1, via cctools-binutils-darwin
-        # 1010.6) crashes with a Trace/BPT trap (SIGTRAP, exit 133) in
-        # ld::passes::stubs::Pass::process while linking starship against
-        # apple-sdk-14.4 frameworks. Deterministic (crashes at the same binary
-        # offset every time) but not reproducible with a minimal synthetic
-        # link, so it looks like a real bug in this old ld64 build triggered
-        # only by large/complex link jobs. Route around it via lld instead.
-        # Should be removed once nixpkgs ships a newer ld64 that fixes this.
-        starship-lld = final: prev: {
-          starship = prev.starship.overrideAttrs (old: {
-            nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ final.llvmPackages.bintools ];
-            RUSTFLAGS = (old.RUSTFLAGS or "") + " -C link-arg=-fuse-ld=lld";
-          });
-        };
-
       };
       
       # hermes-agent ships its own home-manager module, and its default package
