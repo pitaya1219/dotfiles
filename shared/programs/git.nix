@@ -3,7 +3,14 @@
 {
   programs.git = {
     enable = true;
+    includes = [
+      { path = "${config.home.homeDirectory}/.config/git/config.local"; }
+    ];
     settings = {
+      user = {
+        name = lib.mkDefault "pitaya1219";
+        email = lib.mkDefault "runningryuya@proton.me";
+      };
       credential = {
         helper = "${config.home.homeDirectory}/.config/git/git-credential-protonpass.sh";
       };
