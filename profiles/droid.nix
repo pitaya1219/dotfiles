@@ -117,6 +117,11 @@
           (import ../shared/programs/unfree.nix { additionalPackages = []; })
         ];
 
+        programs.git.settings.user = {
+          name = "pitaya1219";
+          email = "runningryuya@proton.me";
+        };
+
         home = {
           username = "droid";
           homeDirectory = "/home/droid";
