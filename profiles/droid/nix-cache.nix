@@ -13,7 +13,7 @@ let
     nixPackage = config.nix.package;
     cacheDir = "${config.home.homeDirectory}/.cache/nix-binary-cache";
     keyFile = "${config.home.homeDirectory}/.local/share/nix/cache-priv.pem";
-    publicKey = "droid-1:Yxe6Fazr+okQ6jOSX02zLIR7+Vt5+yCIjwtp+k5g2OM=";
+    publicKey = "droid-2:c36XBJ8DU2FyafJ8cv3VzR2nmeQhx3f0aKP7amCtizE=";
   };
 in
 {
