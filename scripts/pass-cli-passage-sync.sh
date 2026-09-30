@@ -147,7 +147,9 @@ passage_show() {
 }
 
 passage_write() {
-  printf '%s' "$2" | passage insert --echo --force "$1" >/dev/null 2>&1
+  # --echo keeps only the first line; --multiline is needed for keys and certs.
+  # The trailing newline keeps materialized files (e.g. SSH keys) well-formed.
+  printf '%s\n' "$2" | passage insert --multiline --force "$1" >/dev/null 2>&1
 }
 
 pass_cli_read() {
