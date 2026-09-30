@@ -11,8 +11,10 @@ let
   # up at it: "dragonfruit" and "dragonfruit-herdr-mirror" reach it as
   # 100.64.0.2:1771, rose/aviateur as "localhost" from dragonfruit's end of the
   # ProxyJump. The file is keyed "[localhost]:1771", so the first two use
-  # HostKeyAlias to look it up under that name. This replaces trust on first
-  # use, which BatchMode (herdr-mirror's daemon) cannot do and rejects outright.
+  # HostKeyAlias to look it up under that name. ssh looks an alias up verbatim,
+  # without appending the port, so the brackets and port belong in the alias.
+  # This replaces trust on first use, which BatchMode (herdr-mirror's daemon)
+  # cannot do and rejects outright.
   dragonfruitLoopbackKnownHosts = "${config.home.homeDirectory}/.ssh/known_hosts.d/dragonfruit-loopback";
 
   # Android's kernel lacks the tun module, so tailscaled here only runs in
@@ -24,7 +26,7 @@ let
       Port 1771
       ProxyCommand ${pkgs.socat}/bin/socat - SOCKS5:localhost:%h:%p,socksport=1055
       UserKnownHostsFile ${dragonfruitLoopbackKnownHosts}
-      HostKeyAlias localhost
+      HostKeyAlias [localhost]:1771
 
     # herdr-mirror only (see profiles/lepetitprince.nix for the matching
     # authorized_keys entry). Kept as its own alias, not folded into
@@ -38,7 +40,7 @@ let
       IdentityFile ${dragonfruitMirrorKeyPath}
       IdentitiesOnly yes
       UserKnownHostsFile ${dragonfruitLoopbackKnownHosts}
-      HostKeyAlias localhost
+      HostKeyAlias [localhost]:1771
 
     # rose and aviateur are local accounts on dragonfruit, not separately
     # network-reachable, and sshd there only accepts them from its own
