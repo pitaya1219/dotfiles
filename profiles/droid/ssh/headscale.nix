@@ -7,12 +7,12 @@ let
   roseMirrorKeyPath = "${config.home.homeDirectory}/.ssh/id_ed25519_droid-herdr-mirror-rose";
   aviateurMirrorKeyPath = "${config.home.homeDirectory}/.ssh/id_ed25519_droid-herdr-mirror-aviateur";
 
-  # rose/aviateur are reached as "localhost" from dragonfruit's end of the
-  # ProxyJump, which is a host identity droid has never seen before — but
-  # it's the exact same sshd/host key as "dragonfruit"/"dragonfruit-herdr-mirror"
-  # (100.64.0.2:1771), just under a different apparent name. Pin that known
-  # key explicitly (scoped to just these two aliases) instead of either
-  # trusting on first use or leaving BatchMode to reject it outright.
+  # dragonfruit's sshd host key, pinned from passage for every alias that ends
+  # up at it: "dragonfruit" and "dragonfruit-herdr-mirror" reach it as
+  # 100.64.0.2:1771, rose/aviateur as "localhost" from dragonfruit's end of the
+  # ProxyJump. The file is keyed "[localhost]:1771", so the first two use
+  # HostKeyAlias to look it up under that name. This replaces trust on first
+  # use, which BatchMode (herdr-mirror's daemon) cannot do and rejects outright.
   dragonfruitLoopbackKnownHosts = "${config.home.homeDirectory}/.ssh/known_hosts.d/dragonfruit-loopback";
 
   # Android's kernel lacks the tun module, so tailscaled here only runs in
@@ -23,6 +23,8 @@ let
       HostName 100.64.0.2
       Port 1771
       ProxyCommand ${pkgs.socat}/bin/socat - SOCKS5:localhost:%h:%p,socksport=1055
+      UserKnownHostsFile ${dragonfruitLoopbackKnownHosts}
+      HostKeyAlias localhost
 
     # herdr-mirror only (see profiles/lepetitprince.nix for the matching
     # authorized_keys entry). Kept as its own alias, not folded into
@@ -35,6 +37,8 @@ let
       User lepetitprince
       IdentityFile ${dragonfruitMirrorKeyPath}
       IdentitiesOnly yes
+      UserKnownHostsFile ${dragonfruitLoopbackKnownHosts}
+      HostKeyAlias localhost
 
     # rose and aviateur are local accounts on dragonfruit, not separately
     # network-reachable, and sshd there only accepts them from its own
