@@ -320,6 +320,33 @@ test_numeric_suffixed_page_does_not_collide() {
     fi
 }
 
+# --- Test 9: the diff is a diff block with outline bullets rewritten ---
+# An unchanged bullet line " - item" differs from a removed one only by its
+# leading space, which Logseq does not keep in a code block.
+test_diff_block_rewrites_outline_bullets() {
+    local name="diff_block_rewrites_outline_bullets"
+    local root
+    root=$(new_fixture)
+    cleanup_roots+=("$root")
+
+    printf -- '- kept\n\t- child\n- newer\n---\n' >"$root/logseq/pages/bullets.md"
+    printf -- '- kept\n\t- child\n- older\n---\n' >"$root/logseq/pages/bullets.md.conflict-1"
+
+    if ! run_conflict "$root"; then
+        log_fail "$name" "task invocation failed, see $root/task_output.log"
+        return
+    fi
+
+    local page summary
+    page=$(conflict_page_path "$root" "bullets")
+    summary=$(sed -n '/^```diff$/,/^```$/p' "$page" 2>/dev/null)
+    if [[ "$summary" == *$'\n • kept\n \t• child\n-• older\n+• newer\n ---\n'* ]]; then
+        log_pass "$name"
+    else
+        log_fail "$name" "unexpected diff block in $page: $summary"
+    fi
+}
+
 echo "Running conflict_test.sh against $REPO_ROOT"
 echo
 
@@ -331,6 +358,7 @@ test_missing_base_restored
 test_second_same_day_conflict_gets_new_slot
 test_earlier_days_report_not_clobbered
 test_numeric_suffixed_page_does_not_collide
+test_diff_block_rewrites_outline_bullets
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

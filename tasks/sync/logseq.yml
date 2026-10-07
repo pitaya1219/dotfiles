@@ -184,6 +184,11 @@ tasks:
         # (exit >=2). With `pipefail`, piping straight into `tail` would make
         # the normal "differ" exit code look like an error and print a
         # spurious "(Could not compute diff)" after already-correct output.
+        #
+        # Outline bullets are rewritten to "•" after the diff marker. An
+        # unchanged bullet line is " - item", told apart from a removed one
+        # only by its leading space, and Logseq has rendered such lines as
+        # removed in a ```diff block.
         safe_diff() {
             local output status
             output=$(diff -u "$1" "$2" 2>/dev/null)
@@ -191,7 +196,7 @@ tasks:
             if [[ $status -ge 2 ]]; then
                 echo "(Could not compute diff)"
             else
-                echo "$output" | tail -n +4
+                echo "$output" | tail -n +4 | sed -E 's/^([-+ ][[:space:]]*)-( |$)/\1•\2/'
             fi
         }
 
@@ -367,7 +372,7 @@ tasks:
                     echo "${num_versions} version(s) of [[${page_name}]] were found during sync (see Diff Summary and Versions below)."
                     echo "## Diff Summary"
                     echo ""
-                    echo "Legend: removed | added | unchanged"
+                    echo 'Legend: `-` removed | `+` added | no marker unchanged | outline bullets shown as `•`'
                     echo ""
                     if [[ $num_versions -lt 2 ]]; then
                         # Only one version reached disk (e.g. actual_base was not
@@ -389,7 +394,7 @@ tasks:
                         for ((i = 1; i < num_versions; i++)); do
                             echo "### Version $i (${version_labels[$((i - 1))]}) vs Version $((i + 1)) (${version_labels[$i]})"
                             echo ""
-                            echo '```'
+                            echo '```diff'
                             safe_diff "${version_files[$((i - 1))]}" "${version_files[$i]}"
                             echo '```'
                             echo ""
@@ -474,7 +479,8 @@ tasks:
 
         # Run a unified diff and print it, distinguishing "files differ" (diff
         # exit 1, the expected case whenever we get here) from a real failure
-        # (exit >=2). See sync:logseq:_conflict for the full rationale.
+        # (exit >=2), and rewrite outline bullets to "•". See
+        # sync:logseq:_conflict for the full rationale.
         safe_diff() {
             local output status
             output=$(diff -u "$1" "$2" 2>/dev/null)
@@ -482,7 +488,7 @@ tasks:
             if [[ $status -ge 2 ]]; then
                 echo "(Could not compute diff)"
             else
-                echo "$output" | tail -n +4
+                echo "$output" | tail -n +4 | sed -E 's/^([-+ ][[:space:]]*)-( |$)/\1•\2/'
             fi
         }
 
@@ -654,9 +660,9 @@ tasks:
                             echo ""
                             echo "[[${page_name}]] shrank from ${before_size} to ${after_size} bytes during sync."
                             echo ""
-                            echo "Legend: removed | added | unchanged"
+                            echo 'Legend: `-` removed | `+` added | no marker unchanged | outline bullets shown as `•`'
                             echo ""
-                            echo '```'
+                            echo '```diff'
                             if [[ -f "$after_file" ]]; then
                                 safe_diff "$before_file" "$after_file"
                             else
@@ -674,9 +680,9 @@ tasks:
                             echo "[[${page_name}]] shrank from ${before_size} to ${after_size} bytes during sync (possible lost update)."
                             echo "## Diff Summary"
                             echo ""
-                            echo "Legend: removed | added | unchanged"
+                            echo 'Legend: `-` removed | `+` added | no marker unchanged | outline bullets shown as `•`'
                             echo ""
-                            echo '```'
+                            echo '```diff'
                             if [[ -f "$after_file" ]]; then
                                 safe_diff "$before_file" "$after_file"
                             else
