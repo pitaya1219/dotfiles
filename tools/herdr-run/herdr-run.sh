@@ -25,7 +25,9 @@ usage() {
 usage: herdr-run [resume|focus|mirror] [target-or-action-id]
 
 With no arguments, opens an fzf palette over every action below — resuming a
-session, focusing any live agent, and every herdr-mirror plugin action.
+session, focusing any live agent, every herdr-mirror plugin action, and
+moving the current tab to another workspace ("Move tab to:" rows, palette
+only).
 `focus`/`mirror` with no id open the same palette pre-filtered to that
 category; give an explicit id to skip the palette and run it directly.
 
@@ -68,10 +70,41 @@ mirror_rows() {
   '
 }
 
+# herdr has no tab-to-workspace move, only `pane move`, so the tab is carried
+# over by moving its pane into a new tab there. A split tab would come out as
+# separate tabs, so move_tab refuses it rather than reassembling the layout.
+# The "term:" workspaces belong to herdr-toggle-terminal.sh and are skipped.
+move_rows() {
+  local pane="${HERDR_ACTIVE_PANE_ID:-}" ws
+  [ -n "$pane" ] || return 0
+  ws=$(herdr pane get "$pane" | jq -r '.result.pane.workspace_id')
+  herdr workspace list | jq -r --arg ws "$ws" --arg pane "$pane" '
+    .result.workspaces[]
+    | select(.workspace_id != $ws and (.label | startswith("term:") | not))
+    | [.workspace_id, "Move tab to: " + .label, "move_tab " + ($pane | @sh) + " " + (.workspace_id | @sh)]
+    | @tsv
+  '
+}
+
+move_tab() {
+  local pane="$1" ws="$2" tab info label count
+  tab=$(herdr pane get "$pane" | jq -r '.result.pane.tab_id')
+  info=$(herdr tab get "$tab")
+  label=$(jq -r '.result.tab.label' <<<"$info")
+  count=$(jq -r '.result.tab.pane_count' <<<"$info")
+  if [ "$count" -gt 1 ]; then
+    printf 'tab "%s" has %s panes; only single-pane tabs can be moved\n' "$label" "$count" >&2
+    read -rsn1 _ </dev/tty || true
+    return 1
+  fi
+  herdr pane move "$pane" --new-tab --workspace "$ws" --label "$label" --no-focus >/dev/null
+}
+
 all_rows() {
   static_rows
   agent_rows
   mirror_rows
+  move_rows
 }
 
 # $1, if given, seeds the fzf query so callers can open the palette
