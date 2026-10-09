@@ -11,33 +11,25 @@
 # custom-command keybinding; the pane id is captured before this runs, so it
 # still names the pane the user was looking at.
 #
-# Local and remote (herdr-mirror) tabs both get a shell tab paired with them
-# via pair_state, keyed by tab id, but they differ in *where* that shell tab
-# lives:
+# The shell tab lives in the same workspace as the tab it is paired with,
+# labeled "sh: <name>" to stay visually distinct from the tabs actually being
+# worked in. The pairing is kept in pair_state, keyed by tab id, with the
+# shell side additionally recorded as a shadow so a toggle knows which side it
+# was invoked from.
 #
-# Local: in a dedicated shell workspace, one per source workspace, found via
-# its own label (`term:<source_workspace_id>`) rather than pair_state, so
-# that lookup needs no separate state at all.
-#
-# Remote (mirror): in the *same* mirrored workspace as the source tab, not a
-# separate one. A first version mirrored the local design exactly — a
-# dedicated shell workspace, opened via the mirror plugin's
-# remote-new-workspace action — but every remote-new-workspace call risks
-# herdr-mirror's own daemon (src/daemon.rs, nikok6/herdr-mirror) reconciling
-# it twice: its poll loop and its workspace-creation-event handler can both
+# Local and remote (herdr-mirror) tabs differ only in how the shell tab is
+# created. A local one is a plain `tab create`. A remote one has to be created
+# on the remote host via the mirror plugin's remote-new-tab action and then
+# show up here through herdr-mirror's daemon (src/daemon.rs,
+# nikok6/herdr-mirror), whose poll loop and creation-event handler can both
 # run a "converge" pass concurrently with no id-based dedup between them, so
-# one call occasionally mirrors back as two local proxies instead of one,
-# confirmed live via `herdr plugin log list` (two separate "workspace.created"
-# intercept events for one remote-new-workspace call) — and the daemon can
-# tombstone either one *later*, well outside a single script run, so even a
-# workspace that looked fine right after creation could vanish out from
-# under the next toggle. remote-new-tab has the same daemon underneath it,
-# but staying inside the one mirrored workspace the source tab already lives
-# in — rather than opening a fresh workspace on every first toggle — means
-# never calling remote-new-workspace at all, so this only has the tab-level
-# instance of the race to contend with, not the workspace-level one, and
-# tabs are labeled "sh: <name>" to stay visually distinct from the tabs
-# actually being worked in, sharing the same workspace as they now do.
+# one call occasionally mirrors back as two local proxies instead of one —
+# confirmed live via `herdr plugin log list` — and the daemon can tombstone
+# either one *later*, well outside a single script run. Its workspace-level
+# counterpart, remote-new-workspace, has the same race, which is why the
+# shell tab never gets a workspace of its own: staying inside the workspace
+# the source tab already lives in leaves only the tab-level instance of the
+# race to contend with.
 #
 # herdr-mirror workspaces are labeled "<prefix>: <name>", where <prefix> is
 # whatever hosts.toml sets per host (not a fixed string), so detecting one
@@ -46,7 +38,6 @@
 set -euo pipefail
 
 herdr_bin=${HERDR_BIN_PATH:-herdr}
-label_prefix="term:"
 shell_tab_prefix="sh: "
 mirror_hosts_toml="$HOME/.config/herdr-mirror/hosts.toml"
 state_home=${XDG_STATE_HOME:-$HOME/.local/state}
@@ -68,17 +59,15 @@ tab_exists() {
   "$herdr_bin" tab get "$1" >/dev/null 2>&1
 }
 
-# Generic id -> id lookup, used for both the remote and local tab pairing.
 paired_id() {
   [[ -f $pair_state ]] || return 0
   jq -r --arg id "$1" '.pairs[$id] // empty' "$pair_state"
 }
 
 # True if $1 is the shadow half of a pair recorded by record_pair (its
-# second argument at the time). The local case never needs this — its
-# workspace label already says which side it's on — but a remote shell tab
-# lives in the same workspace as its source and has no marking of its own
-# beyond the "sh: " label, so knowing which side we're on comes from here.
+# second argument at the time). A shell tab lives in the same workspace as its
+# source and has no marking of its own beyond the "sh: " label, so knowing
+# which side we're on comes from here.
 is_shadow_id() {
   [[ -f $pair_state ]] || return 1
   jq -e --arg id "$1" '(.shadows // []) | index($id) != null' "$pair_state" >/dev/null 2>&1
@@ -189,74 +178,35 @@ current_label=$("$herdr_bin" workspace get "$current_ws" | jq -r '.result.worksp
 current_tab=$(jq -r '.result.pane.tab_id' <<<"$pane")
 current_tab_label=$("$herdr_bin" tab get "$current_tab" | jq -r '.result.tab.label // empty')
 
-if is_mirror_workspace "$current_label"; then
-  if is_shadow_id "$current_tab"; then
-    # Already in one of our own shell tabs: jump back to the specific
-    # source tab it's paired with. If that pairing is gone (a stray tab
-    # created some other way, or its source was closed) this is just a
-    # no-op, matching herdr's own behavior when a goto target no longer
-    # exists.
-    paired_tab=$(paired_id "$current_tab")
-    if [[ -n $paired_tab ]] && tab_exists "$paired_tab"; then
-      "$herdr_bin" tab focus "$paired_tab" >/dev/null
-    fi
-    exit 0
-  fi
-
-  shell_label="$shell_tab_prefix${current_tab_label:-$current_tab}"
-  paired_tab=$(paired_id "$current_tab")
-  if [[ -n $paired_tab ]] && tab_exists "$paired_tab"; then
-    shadow_tab=$paired_tab
-  else
-    orphan=$(find_orphaned_shell_tab "$current_ws")
-    if [[ -n $orphan ]]; then
-      record_pair "$current_tab" "$orphan"
-      shadow_tab=$orphan
-    else
-      shadow_tab=$(open_remote_tab "$current_tab" "$current_ws")
-    fi
-  fi
-
-  "$herdr_bin" tab rename "$shadow_tab" "$shell_label" >/dev/null
-  "$herdr_bin" tab focus "$shadow_tab" >/dev/null
-  exit 0
-fi
-
-if [[ $current_label == "$label_prefix"* ]]; then
-  # Already in a shell tab: jump back to the specific source tab it's paired
-  # with. If that tab (or its pairing) is gone, fall back to the workspace
-  # this shadow shadows, landing on whatever tab was last active there —
-  # matching herdr's own behavior when a goto target no longer exists.
+if is_shadow_id "$current_tab"; then
+  # Already in one of our own shell tabs: jump back to the specific source
+  # tab it's paired with. If that pairing is gone (a stray tab created some
+  # other way, or its source was closed) this is just a no-op, matching
+  # herdr's own behavior when a goto target no longer exists.
   paired_tab=$(paired_id "$current_tab")
   if [[ -n $paired_tab ]] && tab_exists "$paired_tab"; then
     "$herdr_bin" tab focus "$paired_tab" >/dev/null
-  else
-    "$herdr_bin" workspace focus "${current_label#"$label_prefix"}" >/dev/null
   fi
   exit 0
 fi
 
-shadow_label="$label_prefix$current_ws"
-shadow_ws=$("$herdr_bin" workspace list | jq -r --arg label "$shadow_label" \
-  '.result.workspaces[] | select(.label == $label) | .workspace_id' | head -n1)
-
-if [[ -z $shadow_ws ]]; then
-  # First toggle from this workspace: reuse the new workspace's own root tab
-  # as the shell tab for the current source tab, rather than leaving it as
-  # unpaired clutter alongside a second, separately created tab.
-  shadow_tab=$("$herdr_bin" workspace create --cwd "$cwd" --label "$shadow_label" --no-focus |
+shell_label="$shell_tab_prefix${current_tab_label:-$current_tab}"
+paired_tab=$(paired_id "$current_tab")
+if [[ -n $paired_tab ]] && tab_exists "$paired_tab"; then
+  shadow_tab=$paired_tab
+elif is_mirror_workspace "$current_label"; then
+  orphan=$(find_orphaned_shell_tab "$current_ws")
+  if [[ -n $orphan ]]; then
+    record_pair "$current_tab" "$orphan"
+    shadow_tab=$orphan
+  else
+    shadow_tab=$(open_remote_tab "$current_tab" "$current_ws")
+  fi
+else
+  shadow_tab=$("$herdr_bin" tab create --workspace "$current_ws" --cwd "$cwd" --no-focus |
     jq -r '.result.tab.tab_id')
   record_pair "$current_tab" "$shadow_tab"
-else
-  paired_tab=$(paired_id "$current_tab")
-  if [[ -n $paired_tab ]] && tab_exists "$paired_tab"; then
-    shadow_tab=$paired_tab
-  else
-    shadow_tab=$("$herdr_bin" tab create --workspace "$shadow_ws" --cwd "$cwd" --no-focus |
-      jq -r '.result.tab.tab_id')
-    record_pair "$current_tab" "$shadow_tab"
-  fi
 fi
 
-[[ -n $current_tab_label ]] && "$herdr_bin" tab rename "$shadow_tab" "$current_tab_label" >/dev/null
+"$herdr_bin" tab rename "$shadow_tab" "$shell_label" >/dev/null
 "$herdr_bin" tab focus "$shadow_tab" >/dev/null

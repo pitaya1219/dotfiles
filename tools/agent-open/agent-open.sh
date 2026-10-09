@@ -1,6 +1,6 @@
-# agent-open — opens a coding agent as a herdr tab, either fresh in the current
-# workspace (`--new <agent>`) or by resuming a past session picked out of fzf,
-# in which case the tab starts in the directory that session ran in.
+# agent-open — opens a coding agent as a herdr tab in the current workspace,
+# either fresh (`--new <agent>`) or by resuming a past session picked out of
+# fzf, in which case the tab starts in the directory that session ran in.
 #
 # Sessions on the hosts herdr-mirror folds into this sidebar are listed next to
 # the local ones, and resuming one opens its tab on that host rather than here.
@@ -430,8 +430,8 @@ tab_label_for() {
   printf '%s' "${branch:-$(basename "$cwd")}"
 }
 
-# herdr keeps one workspace per project in normal use, so a workspace whose
-# label already matches gets a new tab instead of a second workspace.
+# With no workspace given, a workspace whose label matches the project gets a
+# new tab instead of a second workspace being created.
 # `workspace create --cwd` falls back to the server's own directory when the
 # path does not exist instead of failing, which is why cwd is checked first.
 open_in_herdr() {
@@ -440,9 +440,9 @@ open_in_herdr() {
   [ -d "$cwd" ] || die "no such directory: $cwd"
   project=$(basename "$cwd")
 
-  # A caller that already knows the workspace (opening a new session beside the
-  # one asking for it) passes it in; the picker does not, and looks one up by
-  # project name instead.
+  # A caller that already knows the workspace (the one the user invoked from)
+  # passes it in; without one — outside herdr, from a mirrored workspace, or
+  # on the far end of open_remote's ssh hop — it is looked up by project name.
   #
   # No workspace yet, herdr not running, or a reply jq cannot read all land on
   # the same branch below: create rather than reuse. `|| true` because head
@@ -548,6 +548,23 @@ open_new() {
 
   [ -n "$cwd" ] && [ -d "$cwd" ] || cwd="$PWD"
   open_in_herdr "$cwd" "$(tab_label_for "$cwd")" "$agent" "$workspace"
+}
+
+# The workspace of the pane the picker was opened from, so a local resume lands
+# beside it the way `--new` does rather than in a workspace named after the
+# session's directory — every ~/agent-sessions session shares one, so that
+# lookup would gather them all in a workspace of their own. Empty when there is
+# no such pane (run outside herdr) or the pane is in a herdr-mirror workspace,
+# whose tabs belong to the remote host; open_in_herdr then looks one up by
+# project name instead.
+invoking_workspace() {
+  local pane_id="${HERDR_ACTIVE_PANE_ID:-${HERDR_PANE_ID:-}}" workspace
+  [ -n "$pane_id" ] || return 0
+  workspace=$({ herdr pane get "$pane_id" 2>/dev/null |
+    jq -r '.result.pane.workspace_id // empty' 2>/dev/null; } || true)
+  [ -n "$workspace" ] || return 0
+  mirror_lookup "$workspace" "$pane_id" >/dev/null && return 0
+  printf '%s' "$workspace"
 }
 
 # The project's .envrc is already loaded: herdr's default_shell wraps every
@@ -661,5 +678,5 @@ cmdline=$(resume_command "$agent" "$id" "$flags")
 if [ -n "$host" ]; then
   open_remote "$host" "$cwd" "$cmdline"
 else
-  open_in_herdr "$cwd" "$(tab_label_for "$cwd")" "$cmdline"
+  open_in_herdr "$cwd" "$(tab_label_for "$cwd")" "$cmdline" "$(invoking_workspace)"
 fi

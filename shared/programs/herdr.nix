@@ -176,7 +176,7 @@ in
           {
             key = "prefix+backtick";
             type = "shell";
-            description = "toggle terminal workspace";
+            description = "toggle terminal tab";
             command = "${config.home.homeDirectory}/dotfiles/scripts/herdr-toggle-terminal.sh";
           }
           {
