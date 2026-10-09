@@ -540,19 +540,24 @@ pick_agent() {
     fzf --prompt='new > ' --header='start a new agent session here' --no-info
 }
 
-open_new() {
-  local agent="$1" pane_id pane cwd workspace host_line host rws rpane target remote_cwd
-
-  # herdr captures the pane a keybinding fired from in HERDR_ACTIVE_PANE_ID,
-  # which is the only one of these that is set for a `type = "shell"` command
-  # (scripts/herdr-paste.py leans on the same variable). HERDR_PANE_ID covers
-  # running this by hand from inside a pane; the snapshot covers neither being
-  # set, and is the same fallback herdr-paste.py uses.
-  pane_id="${HERDR_ACTIVE_PANE_ID:-${HERDR_PANE_ID:-}}"
+# herdr captures the pane a keybinding fired from in HERDR_ACTIVE_PANE_ID,
+# which is the only one of these that is set for a `type = "shell"` command
+# (scripts/herdr-paste.py leans on the same variable). HERDR_PANE_ID covers
+# running this by hand from inside a pane; the snapshot covers neither being
+# set, and is the same fallback herdr-paste.py uses.
+invoking_pane_id() {
+  local pane_id="${HERDR_ACTIVE_PANE_ID:-${HERDR_PANE_ID:-}}"
   if [ -z "$pane_id" ]; then
     pane_id=$({ herdr api snapshot 2>/dev/null |
       jq -r '.result.snapshot.focused_pane_id // empty' 2>/dev/null; } || true)
   fi
+  printf '%s' "$pane_id"
+}
+
+open_new() {
+  local agent="$1" pane_id pane cwd workspace host_line host rws rpane target remote_cwd
+
+  pane_id=$(invoking_pane_id)
   [ -n "$pane_id" ] || die "no pane to open beside — is this running inside herdr?"
 
   pane=$(herdr pane get "$pane_id" 2>&1) || die "herdr pane get failed: $pane"
@@ -609,6 +614,13 @@ resume_command() {
 
 # ------------------------------------------------------------------- main ---
 
+# fzf runs reload() and --preview through `sh -c`, so re-entry has to be a
+# command line rather than an argv, and naming the interpreter is what keeps it
+# working when the script is started as `bash path/to/agent-open.sh` out of a
+# checkout: there the file carries neither a shebang nor the execute bit, both
+# of which only the writeShellApplication build supplies.
+reenter="bash $(printf '%q' "$0")"
+
 case "${1:-}" in
   --new)
     agent="${2:-}"
@@ -656,13 +668,6 @@ case "${1:-}" in
     exit 0
     ;;
 esac
-
-# fzf runs reload() and --preview through `sh -c`, so re-entry has to be a
-# command line rather than an argv, and naming the interpreter is what keeps it
-# working when the script is started as `bash path/to/agent-open.sh` out of a
-# checkout: there the file carries neither a shebang nor the execute bit, both
-# of which only the writeShellApplication build supplies.
-reenter="bash $(printf '%q' "$0")"
 
 selection=$(
   source_rows all yes | fzf \
