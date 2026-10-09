@@ -157,6 +157,10 @@
                 type = "command";
                 command = "${config.home.homeDirectory}/dotfiles/scripts/claude-notify.sh || true";
               }
+              {
+                type = "command";
+                command = "agent-open --shelf-refresh || true";
+              }
             ];
           }
         ];

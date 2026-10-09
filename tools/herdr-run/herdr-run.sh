@@ -48,6 +48,8 @@ static_rows() {
   printf '%s\t%s\t%s\n' \
     resume 'Resume an agent session' 'agent-open' \
     new 'Start a new agent session' 'agent-open --new' \
+    shelf 'Open the session shelf' 'agent-open --shelf' \
+    shelve 'Keep this session on the shelf' 'agent-open --shelve' \
     toggle-term 'Toggle terminal workspace' "$HOME/dotfiles/scripts/herdr-toggle-terminal.sh"
 }
 

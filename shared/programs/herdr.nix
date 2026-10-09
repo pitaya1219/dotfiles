@@ -125,6 +125,13 @@ in
           # the question for anyone who would rather bind a chord after all.
           { key = "prefix+alt+a"; type = "popup"; command = "agent-open --new"; width = "40%"; height = "30%"; description = "Start a new agent session"; }
 
+          # The shelf is the resume list cut down to sessions marked as having
+          # more to do (see the shelf section of tools/agent-open). k keeps the
+          # focused pane's session on it; shift+o opens it. Neither chord uses
+          # alt, so both work from the droid-profile terminals too.
+          { key = "prefix+shift+k"; type = "shell"; command = "agent-open --shelve"; description = "Keep this session on the shelf"; }
+          { key = "prefix+shift+o"; type = "popup"; command = "agent-open --shelf"; width = "90%"; height = "80%"; description = "Open the session shelf"; }
+
           # tools/herdr-run: a single fzf command palette over resume, live
           # agents (`herdr agent list`), and mirror actions (`herdr plugin
           # action list --plugin mirror`) — every action the alt+... chords
