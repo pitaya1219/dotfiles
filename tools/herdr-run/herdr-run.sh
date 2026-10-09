@@ -27,6 +27,7 @@ usage: herdr-run [resume|focus|mirror] [target-or-action-id]
 With no arguments, opens an fzf palette over every action below — resuming a
 session, focusing any live agent, every herdr-mirror plugin action, and
 moving the current tab to another workspace ("Move tab to:" rows, palette
+only), and every session on the agent-open shelf ("Shelf:" rows, palette
 only).
 `focus`/`mirror` with no id open the same palette pre-filtered to that
 category; give an explicit id to skip the palette and run it directly.
@@ -72,6 +73,26 @@ mirror_rows() {
   '
 }
 
+# One row per shelved session (tools/agent-open's shelf section), in the
+# order the shelf picker lists them. A live one is focused like a "Focus:"
+# row; a paused one is resumed into the workspace and tab label it had.
+shelf_rows() {
+  local display path pane cmd
+  agent-open --shelf-rows | while IFS= read -r line; do
+    # cut, not `IFS=$'\t' read`: a paused row's empty pane field would merge
+    # into its neighbour.
+    display=$(cut -f1 <<<"$line" | tr -s ' ')
+    path=$(cut -f2 <<<"$line")
+    pane=$(cut -f3 <<<"$line")
+    if [ -n "$pane" ]; then
+      cmd="herdr agent focus $(printf '%q' "$pane")"
+    else
+      cmd="agent-open --shelf-resume $(printf '%q' "$path")"
+    fi
+    printf '%s\t%s\t%s\n' "$path" "Shelf: $display" "$cmd"
+  done
+}
+
 # herdr has no tab-to-workspace move, only `pane move`, so the tab is carried
 # over by moving its pane into a new tab there. A split tab would come out as
 # separate tabs, so move_tab refuses it rather than reassembling the layout.
@@ -104,6 +125,7 @@ move_tab() {
 
 all_rows() {
   static_rows
+  shelf_rows
   agent_rows
   mirror_rows
   move_rows

@@ -867,6 +867,11 @@ case "${1:-}" in
     shelf_rows
     exit 0
     ;;
+  --shelf-resume)
+    [ -f "${2:-}" ] || die "no shelf entry: ${2:-}"
+    shelf_resume "$2"
+    exit 0
+    ;;
   --shelf-preview)
     shelf_preview "${2:-}"
     exit 0
