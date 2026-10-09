@@ -132,6 +132,21 @@ status_row() {
 
 # ---------------------------------------------------------------- sources ---
 
+# The first thing typed into a Claude Code session, read from the transcript
+# slurped as an array. Slash-command turns and the caveat Claude Code prepends
+# to them are markup, not a description of the session.
+CLAUDE_FIRST_PROMPT_JQ='
+  def first_prompt:
+    [.[]
+     | select(.type == "user" and (.isSidechain | not))
+     | .message.content
+     | if type == "string" then .
+       elif type == "array" then (map(select(.type == "text") | .text) | join(" "))
+       else "" end
+     | gsub("\\s+"; " ") | ltrimstr(" ")]
+    | map(select(. != "" and (startswith("<") | not))) | first // "";
+'
+
 # Claude Code writes one .jsonl per session under a directory named after the
 # project path, but that name is a lossy encoding (both slashes and dashes in
 # the path become dashes), so the working directory is read from the transcript.
@@ -145,18 +160,9 @@ source_claude() {
     # Both values sit in the opening messages; 80 lines clears the header
     # without reading megabytes of transcript.
     IFS="$TAB" read -r cwd title <<<"$(
-      head -n 80 "$f" | jq -rs '
+      head -n 80 "$f" | jq -rs "$CLAUDE_FIRST_PROMPT_JQ"'
         ([.[] | select(.cwd != null) | .cwd] | first // "") as $cwd
-        | ([.[]
-             | select(.type == "user" and (.isSidechain | not))
-             | .message.content
-             | if type == "string" then .
-               elif type == "array" then (map(select(.type == "text") | .text) | join(" "))
-               else "" end
-             | gsub("\\s+"; " ") | ltrimstr(" ")]
-           # Slash-command turns and the caveat Claude Code prepends to them
-           # are markup, not a description of the session.
-           | map(select(. != "" and (startswith("<") | not))) | first // "") as $title
+        | first_prompt as $title
         | [$cwd, $title] | @tsv
       ' 2>/dev/null
     )"
@@ -672,14 +678,22 @@ vibe_session_dir() {
       "$HOME"/agent-sessions/*/.vibe/logs/session/session_*_"$1" 2>/dev/null || true; } | head -1
 }
 
-# Claude Code titles its terminal after the task. Vibe's terminal title is
-# always "Vibe", so its own session title is read instead, and the first user
-# message stands in while that is still unset.
+# Claude Code titles its terminal after the task once it has summarised one,
+# and reads "Claude Code" until then. Vibe's terminal title is always "Vibe",
+# so its own session title is read instead. For either, the first user message
+# stands in while there is nothing better.
 shelf_title() {
-  local agent="$1" id="$2" pane="$3" dir
+  local agent="$1" id="$2" pane="$3" dir title log
   case "$agent" in
     claude)
-      jq -r '.result.pane.terminal_title_stripped // empty' <<<"$pane" 2>/dev/null || true
+      title=$(jq -r '.result.pane.terminal_title_stripped // empty' <<<"$pane" 2>/dev/null || true)
+      if [ -n "$title" ] && [ "$title" != "Claude Code" ]; then
+        printf '%s' "$title"
+        return 0
+      fi
+      log=$({ ls "$HOME"/.claude/projects/*/"$id".jsonl 2>/dev/null || true; } | head -1)
+      [ -n "$log" ] || return 0
+      head -n 80 "$log" | jq -rs "$CLAUDE_FIRST_PROMPT_JQ"' first_prompt' 2>/dev/null || true
       ;;
     vibe)
       dir=$(vibe_session_dir "$id")
@@ -782,7 +796,7 @@ cmd_shelf_refresh() {
 # live ones, newest first within each. The live check asks herdr which session
 # every pane holds, so a session counts as live wherever it was reopened.
 #
-#   1 display  state, last snapshot, workspace/tab, title
+#   1 display  state, agent, last snapshot, workspace/tab, title
 #   2 path     the entry file
 #   3 pane     pane holding the session, empty when paused
 shelf_rows() {
@@ -803,7 +817,10 @@ shelf_rows() {
       [ (if $pane == "" then 0 else 1 end),
         (.updated_at // 0),
         (if $pane == "" then "paused" else "live" end),
-        ((.workspace_label // "?") + "/" + (.tab_label // "?")),
+        (.agent // "?"),
+        # The tab label tells sessions apart; a long workspace label would
+        # otherwise push it out of the column.
+        ((.workspace_label // "?")[0:10] + "/" + (.tab_label // "?")),
         (.title // "" | gsub("\\s+"; " ")),
         $path, $pane ] | @tsv
     ' "$f" 2>/dev/null || true
@@ -816,15 +833,16 @@ shelf_rows() {
 # cut rather than `IFS=$'\t' read`: the empty pane field on every paused row
 # would otherwise merge into its neighbour (see field() below).
 emit_shelf_row() {
-  local line="$1" updated state place title path pane
+  local line="$1" updated state agent place title path pane
   updated=$(cut -f2 <<<"$line")
   state=$(cut -f3 <<<"$line")
-  place=$(cut -f4 <<<"$line")
-  title=$(cut -f5 <<<"$line")
-  path=$(cut -f6 <<<"$line")
-  pane=$(cut -f7 <<<"$line")
-  printf '%-6s  %-16s  %-24s  %s\t%s\t%s\n' \
-    "$state" "$(format_epoch "$updated")" "${place:0:24}" "$(one_line "$title")" "$path" "$pane"
+  agent=$(cut -f4 <<<"$line")
+  place=$(cut -f5 <<<"$line")
+  title=$(cut -f6 <<<"$line")
+  path=$(cut -f7 <<<"$line")
+  pane=$(cut -f8 <<<"$line")
+  printf '%-6s  %-6s  %-16s  %-24s  %s\t%s\t%s\n' \
+    "$state" "$agent" "$(format_epoch "$updated")" "${place:0:24}" "$(one_line "$title")" "$path" "$pane"
 }
 
 shelf_preview() {
