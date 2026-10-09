@@ -40,6 +40,7 @@ set -euo pipefail
 herdr_bin=${HERDR_BIN_PATH:-herdr}
 shell_tab_prefix="sh: "
 mirror_hosts_toml="$HOME/.config/herdr-mirror/hosts.toml"
+agent_sessions_root="$HOME/agent-sessions"
 state_home=${XDG_STATE_HOME:-$HOME/.local/state}
 pair_state="$state_home/herdr/toggle-terminal-pairs.json"
 remote_timeout_s=${HERDR_TOGGLE_TERMINAL_REMOTE_TIMEOUT_S:-30}
@@ -53,6 +54,32 @@ is_mirror_workspace() {
     [[ -n $prefix && $label == "$prefix: "* ]] && return 0
   done < <(sed -nE 's/^[[:space:]]*prefix[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p' "$mirror_hosts_toml")
   return 1
+}
+
+# Agents are launched in ~/agent-sessions itself and only cd inside their tool
+# subprocesses, so the pane cwd of one never names the session directory it
+# works in. That directory is always <root>/session-<session_id>
+# (get_session_dir in ~/agent-sessions/.agent/session_boundary/config.py).
+# herdr reports the full id only for Claude (agent_session.value); other
+# agents expose just the 8-character tokens.session prefix, which is trusted
+# only when it matches exactly one directory. Prints nothing when no existing
+# directory is found.
+agent_session_dir() {
+  local pane=$1 id prefix
+  local -a matches
+  id=$(jq -r '.result.pane.agent_session.value // empty' <<<"$pane")
+  if [[ $id =~ ^[A-Za-z0-9_-]+$ ]]; then
+    [[ -d $agent_sessions_root/session-$id ]] && echo "$agent_sessions_root/session-$id"
+    return 0
+  fi
+  prefix=$(jq -r '.result.pane.tokens.session // empty' <<<"$pane")
+  [[ $prefix =~ ^[A-Za-z0-9_-]+$ ]] || return 0
+  matches=()
+  for id in "$agent_sessions_root/session-$prefix"*; do
+    [[ -d $id ]] && matches+=("$id")
+  done
+  [[ ${#matches[@]} -eq 1 ]] && echo "${matches[0]}"
+  return 0
 }
 
 tab_exists() {
@@ -203,6 +230,10 @@ elif is_mirror_workspace "$current_label"; then
     shadow_tab=$(open_remote_tab "$current_tab" "$current_ws")
   fi
 else
+  if [[ $cwd == "$agent_sessions_root" || $cwd == "$agent_sessions_root/"* ]]; then
+    session_dir=$(agent_session_dir "$pane")
+    [[ -n $session_dir ]] && cwd=$session_dir
+  fi
   shadow_tab=$("$herdr_bin" tab create --workspace "$current_ws" --cwd "$cwd" --no-focus |
     jq -r '.result.tab.tab_id')
   record_pair "$current_tab" "$shadow_tab"
