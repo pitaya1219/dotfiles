@@ -64,3 +64,14 @@ command = "$HOME/dotfiles/scripts/herdr-agent-report.py --agent vibe --state idl
 timeout = 10.0
 strict = false
 description = "Report session_id and idle state to herdr (fallback: turn end)"
+
+# Keeps a shelved session's tab and workspace labels current (see the shelf
+# section of tools/agent-open). Sessions not on the shelf exit before calling
+# herdr.
+[[hooks]]
+name = "agent-shelf-refresh"
+type = "post_agent"
+command = "agent-open --shelf-refresh vibe"
+timeout = 10.0
+strict = false
+description = "Refresh this session's agent-open shelf entry"

@@ -628,11 +628,12 @@ resume_command() {
 # One JSON file per session, so the hooks of sessions running side by side
 # never write to the same file:
 #
-#   agent            claude
-#   id               resume argument for that agent
+#   agent            claude | vibe
+#   id               resume argument for that agent: the full session id for
+#                    claude, the 8-character prefix for vibe
 #   cwd              directory the session runs in — where it is resumed
-#   title            the agent's own terminal title, the closest thing to a
-#                    description of the task
+#   title            the closest thing to a description of the task: claude's
+#                    own terminal title, vibe's session title
 #   tab_label        herdr tab label, restored on resume
 #   workspace_id     herdr workspace id; only valid while that server lives
 #   workspace_label  herdr workspace label, the fallback once the id is stale
@@ -640,17 +641,55 @@ resume_command() {
 #   updated_at       epoch seconds of the last snapshot
 SHELF_DIR="${AGENT_SHELF_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/agent-shelf}"
 
-# herdr names the session behind a pane only for agents it accepts session
-# reports from (see scripts/herdr-agent-report.py), which today is Claude Code
-# alone. Prints "agent\tid", empty for any other pane.
+# herdr holds the session behind a pane only for agents it accepts session
+# reports from, which is Claude Code. Vibe's report is dropped (see
+# scripts/herdr-agent-report.py), so its session is read from the $session
+# token that script also sets: the first 8 characters of the id, which is
+# exactly what `vibe --resume` takes (see source_vibe). The token is empty
+# until the session's first hook fires.
+#
+# A jq function over one pane object, yielding [agent, id] or nothing; both
+# the single-pane lookup and the live check in shelf_rows use it.
+SHELF_SESSION_JQ='
+  def shelf_session:
+    if .agent == "claude" and (.agent_session.value // "") != "" then
+      ["claude", .agent_session.value]
+    elif .agent == "vibe" and (.tokens.session // "") != "" then
+      ["vibe", .tokens.session]
+    else empty end;
+'
+
+# Prints "agent\tid", empty for a pane with no session to resume.
 shelf_session_of() {
-  jq -r '
-    .result.pane
-    | select(.agent == "claude")
-    | .agent_session
-    | select(. != null and .value != null)
-    | [.agent, .value] | @tsv
-  ' <<<"$1" 2>/dev/null || true
+  jq -r "$SHELF_SESSION_JQ"' .result.pane | shelf_session | @tsv' <<<"$1" 2>/dev/null || true
+}
+
+# Vibe names its session directories session_<YYYYMMDD>_<HHMMSS>_<id8>, under
+# the shared VIBE_HOME or a session directory's own (see source_vibe).
+vibe_session_dir() {
+  # shellcheck disable=SC2012  # ls -t is the portable way to order by mtime
+  { ls -dt "${VIBE_HOME:-$HOME/.vibe}"/logs/session/session_*_"$1" \
+      "$HOME"/agent-sessions/*/.vibe/logs/session/session_*_"$1" 2>/dev/null || true; } | head -1
+}
+
+# Claude Code titles its terminal after the task. Vibe's terminal title is
+# always "Vibe", so its own session title is read instead, and the first user
+# message stands in while that is still unset.
+shelf_title() {
+  local agent="$1" id="$2" pane="$3" dir
+  case "$agent" in
+    claude)
+      jq -r '.result.pane.terminal_title_stripped // empty' <<<"$pane" 2>/dev/null || true
+      ;;
+    vibe)
+      dir=$(vibe_session_dir "$id")
+      [ -n "$dir" ] || return 0
+      { jq -r '.title // empty' "$dir/meta.json" 2>/dev/null || true; } | grep . ||
+        { jq -r 'select(.role == "user" and .injected != true)
+                  | .content | if type == "string" then . else tostring end' \
+            "$dir/messages.jsonl" 2>/dev/null || true; } | head -1
+      ;;
+  esac
 }
 
 shelf_path() { printf '%s/%s-%s.json' "$SHELF_DIR" "$1" "$2"; }
@@ -661,11 +700,15 @@ shelf_notify() {
   herdr notification show "$1" --body "$2" --sound none >/dev/null 2>&1 || true
 }
 
-# Merges the pane's current labels into the entry at $2. cwd and shelved_at are
-# kept from the first snapshot: the session is resumed where it started, and a
-# label that reads empty (herdr unreachable mid-call) never wipes a known one.
+# Merges the pane's current labels into the entry for agent $2, session $3.
+# cwd and shelved_at are kept from the first snapshot: the session is resumed
+# where it started, and a label that reads empty (herdr unreachable mid-call)
+# never wipes a known one.
 shelf_write() {
-  local pane="$1" path="$2" tab ws tab_label ws_label previous='{}' tmp
+  local pane="$1" agent="$2" id="$3" path tab ws tab_label ws_label title previous='{}' tmp
+  path=$(shelf_path "$agent" "$id")
+  title=$(shelf_title "$agent" "$id" "$pane")
+  title=$(printf '%s' "$title" | tr '\n\t' '  ')
   tab=$(jq -r '.result.pane.tab_id // empty' <<<"$pane")
   ws=$(jq -r '.result.pane.workspace_id // empty' <<<"$pane")
   tab_label=$({ herdr tab get "$tab" 2>/dev/null |
@@ -679,16 +722,19 @@ shelf_write() {
   jq -n \
     --argjson prev "$previous" \
     --argjson pane "$pane" \
+    --arg agent "$agent" \
+    --arg id "$id" \
+    --arg title "$title" \
     --arg tab_label "$tab_label" \
     --arg ws_label "$ws_label" \
     --argjson now "$(date +%s)" '
       def keep($new; $old): if ($new // "") != "" then $new else ($old // "") end;
       $pane.result.pane as $p
       | $prev + {
-          agent: $p.agent_session.agent,
-          id: $p.agent_session.value,
+          agent: $agent,
+          id: $id,
           cwd: ($prev.cwd // $p.cwd),
-          title: keep($p.terminal_title_stripped; $prev.title),
+          title: keep($title; $prev.title),
           tab_label: keep($tab_label; $prev.tab_label),
           workspace_id: keep($p.workspace_id; $prev.workspace_id),
           workspace_label: keep($ws_label; $prev.workspace_label),
@@ -705,30 +751,31 @@ cmd_shelve() {
   pane=$(herdr pane get "$pane_id" 2>&1) || die "herdr pane get failed: $pane"
   session=$(shelf_session_of "$pane")
   if [ -z "$session" ]; then
-    shelf_notify "Not shelved" "No Claude Code session in this pane"
+    shelf_notify "Not shelved" "No resumable Claude Code or Vibe session in this pane yet"
     return 0
   fi
   IFS="$TAB" read -r agent id <<<"$session"
   path=$(shelf_path "$agent" "$id")
-  shelf_write "$pane" "$path"
+  shelf_write "$pane" "$agent" "$id"
   title=$(jq -r '.title' "$path" 2>/dev/null || true)
   shelf_notify "Shelved" "${title:-$id}"
 }
 
-# Called from the agent's turn-end hook with the hook payload on stdin. Every
-# session runs it on every turn, so anything not on the shelf leaves before
-# the first herdr call.
+# Called from the agent's turn-end hook, named by $1, with the hook payload on
+# stdin. Every session runs it on every turn, so anything not on the shelf
+# leaves before the first herdr call. Both agents hand over the full session
+# id; vibe's entry is keyed by its first 8 characters (see SHELF_SESSION_JQ).
 cmd_shelf_refresh() {
-  local payload id path pane
+  local agent="${1:-claude}" payload id pane
   payload=$(cat)
   id=$(jq -r '.session_id // empty' <<<"$payload" 2>/dev/null || true)
   [ -n "$id" ] || return 0
-  path=$(shelf_path claude "$id")
-  [ -f "$path" ] || return 0
+  [ "$agent" = vibe ] && id="${id:0:8}"
+  [ -f "$(shelf_path "$agent" "$id")" ] || return 0
   [ -n "${HERDR_PANE_ID:-}" ] || return 0
   pane=$(herdr pane get "$HERDR_PANE_ID" 2>/dev/null) || return 0
-  [ "$(shelf_session_of "$pane")" = "claude${TAB}$id" ] || return 0
-  shelf_write "$pane" "$path"
+  [ "$(shelf_session_of "$pane")" = "$agent${TAB}$id" ] || return 0
+  shelf_write "$pane" "$agent" "$id"
 }
 
 # One row per entry: paused ones (no pane holds the session any more) before
@@ -741,10 +788,11 @@ cmd_shelf_refresh() {
 shelf_rows() {
   local live f key pane
   [ -d "$SHELF_DIR" ] || return 0
-  live=$({ herdr pane list 2>/dev/null | jq -r '
+  live=$({ herdr pane list 2>/dev/null | jq -r "$SHELF_SESSION_JQ"'
     .result.panes[]?
-    | select(.agent_session != null and .agent_session.value != null)
-    | [.agent_session.agent + "-" + .agent_session.value, .pane_id] | @tsv
+    | .pane_id as $pane
+    | shelf_session
+    | [.[0] + "-" + .[1], $pane] | @tsv
   ' 2>/dev/null; } || true)
 
   for f in "$SHELF_DIR"/*.json; do
@@ -785,7 +833,11 @@ shelf_preview() {
   agent=$(jq -r '.agent' "$path")
   id=$(jq -r '.id' "$path")
   cwd=$(jq -r '.cwd' "$path")
-  log=$({ ls "$HOME"/.claude/projects/*/"$id".jsonl 2>/dev/null || true; } | head -1)
+  case "$agent" in
+    claude) log=$({ ls "$HOME"/.claude/projects/*/"$id".jsonl 2>/dev/null || true; } | head -1) ;;
+    vibe)   log="$(vibe_session_dir "$id")/messages.jsonl" ;;
+    *)      log="" ;;
+  esac
   preview "$agent" "$id" "$cwd" "$log" ""
 }
 
@@ -877,7 +929,7 @@ case "${1:-}" in
     exit 0
     ;;
   --shelf-refresh)
-    cmd_shelf_refresh
+    cmd_shelf_refresh "${2:-}"
     exit 0
     ;;
   --preview)
