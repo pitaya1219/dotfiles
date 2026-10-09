@@ -465,11 +465,16 @@ title_label() {
 # new tab instead of a second workspace being created.
 # `workspace create --cwd` falls back to the server's own directory when the
 # path does not exist instead of failing, which is why cwd is checked first.
+#
+# workspace_label overrides the project name for both the lookup and the
+# label of a workspace created here: a shelved session goes back to the
+# workspace it was shelved from, whatever that one is called.
 open_in_herdr() {
-  local cwd="$1" label="$2" cmdline="$3" workspace="${4:-}" project created pane tab out
+  local cwd="$1" label="$2" cmdline="$3" workspace="${4:-}" workspace_label="${5:-}"
+  local project created pane tab out
 
   [ -d "$cwd" ] || die "no such directory: $cwd"
-  project=$(basename "$cwd")
+  project="${workspace_label:-$(basename "$cwd")}"
 
   # A caller that already knows the workspace (the one the user invoked from)
   # passes it in; without one — outside herdr, from a mirrored workspace, or
@@ -612,6 +617,225 @@ resume_command() {
   printf '%s --resume %s%s' "$agent" "$id" "$flags"
 }
 
+# ------------------------------------------------------------------ shelf ---
+
+# The resume picker lists every recent session, which is too many to tell the
+# unfinished ones apart and says nothing about where each one used to sit. The
+# shelf is the short list kept on purpose: a session is put on it by hand
+# (`--shelve`, bound in shared/programs/herdr.nix), kept current by the agent's
+# turn-end hook (`--shelf-refresh`), and taken off when it is done.
+#
+# One JSON file per session, so the hooks of sessions running side by side
+# never write to the same file:
+#
+#   agent            claude
+#   id               resume argument for that agent
+#   cwd              directory the session runs in — where it is resumed
+#   title            the agent's own terminal title, the closest thing to a
+#                    description of the task
+#   tab_label        herdr tab label, restored on resume
+#   workspace_id     herdr workspace id; only valid while that server lives
+#   workspace_label  herdr workspace label, the fallback once the id is stale
+#   shelved_at       epoch seconds the entry was created
+#   updated_at       epoch seconds of the last snapshot
+SHELF_DIR="${AGENT_SHELF_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/agent-shelf}"
+
+# herdr names the session behind a pane only for agents it accepts session
+# reports from (see scripts/herdr-agent-report.py), which today is Claude Code
+# alone. Prints "agent\tid", empty for any other pane.
+shelf_session_of() {
+  jq -r '
+    .result.pane
+    | select(.agent == "claude")
+    | .agent_session
+    | select(. != null and .value != null)
+    | [.agent, .value] | @tsv
+  ' <<<"$1" 2>/dev/null || true
+}
+
+shelf_path() { printf '%s/%s-%s.json' "$SHELF_DIR" "$1" "$2"; }
+
+# A `type = "shell"` binding has no terminal to print to, so the outcome of
+# --shelve is reported where it can be seen.
+shelf_notify() {
+  herdr notification show "$1" --body "$2" --sound none >/dev/null 2>&1 || true
+}
+
+# Merges the pane's current labels into the entry at $2. cwd and shelved_at are
+# kept from the first snapshot: the session is resumed where it started, and a
+# label that reads empty (herdr unreachable mid-call) never wipes a known one.
+shelf_write() {
+  local pane="$1" path="$2" tab ws tab_label ws_label previous='{}' tmp
+  tab=$(jq -r '.result.pane.tab_id // empty' <<<"$pane")
+  ws=$(jq -r '.result.pane.workspace_id // empty' <<<"$pane")
+  tab_label=$({ herdr tab get "$tab" 2>/dev/null |
+    jq -r '.result.tab.label // empty' 2>/dev/null; } || true)
+  ws_label=$({ herdr workspace get "$ws" 2>/dev/null |
+    jq -r '.result.workspace.label // empty' 2>/dev/null; } || true)
+  [ -f "$path" ] && previous=$(cat "$path")
+
+  mkdir -p "$SHELF_DIR"
+  tmp="$path.new"
+  jq -n \
+    --argjson prev "$previous" \
+    --argjson pane "$pane" \
+    --arg tab_label "$tab_label" \
+    --arg ws_label "$ws_label" \
+    --argjson now "$(date +%s)" '
+      def keep($new; $old): if ($new // "") != "" then $new else ($old // "") end;
+      $pane.result.pane as $p
+      | $prev + {
+          agent: $p.agent_session.agent,
+          id: $p.agent_session.value,
+          cwd: ($prev.cwd // $p.cwd),
+          title: keep($p.terminal_title_stripped; $prev.title),
+          tab_label: keep($tab_label; $prev.tab_label),
+          workspace_id: keep($p.workspace_id; $prev.workspace_id),
+          workspace_label: keep($ws_label; $prev.workspace_label),
+          shelved_at: ($prev.shelved_at // $now),
+          updated_at: $now
+        }
+    ' >"$tmp" && mv "$tmp" "$path"
+}
+
+cmd_shelve() {
+  local pane_id pane session agent id path title
+  pane_id=$(invoking_pane_id)
+  [ -n "$pane_id" ] || die "no pane to shelve — is this running inside herdr?"
+  pane=$(herdr pane get "$pane_id" 2>&1) || die "herdr pane get failed: $pane"
+  session=$(shelf_session_of "$pane")
+  if [ -z "$session" ]; then
+    shelf_notify "Not shelved" "No Claude Code session in this pane"
+    return 0
+  fi
+  IFS="$TAB" read -r agent id <<<"$session"
+  path=$(shelf_path "$agent" "$id")
+  shelf_write "$pane" "$path"
+  title=$(jq -r '.title' "$path" 2>/dev/null || true)
+  shelf_notify "Shelved" "${title:-$id}"
+}
+
+# Called from the agent's turn-end hook with the hook payload on stdin. Every
+# session runs it on every turn, so anything not on the shelf leaves before
+# the first herdr call.
+cmd_shelf_refresh() {
+  local payload id path pane
+  payload=$(cat)
+  id=$(jq -r '.session_id // empty' <<<"$payload" 2>/dev/null || true)
+  [ -n "$id" ] || return 0
+  path=$(shelf_path claude "$id")
+  [ -f "$path" ] || return 0
+  [ -n "${HERDR_PANE_ID:-}" ] || return 0
+  pane=$(herdr pane get "$HERDR_PANE_ID" 2>/dev/null) || return 0
+  [ "$(shelf_session_of "$pane")" = "claude${TAB}$id" ] || return 0
+  shelf_write "$pane" "$path"
+}
+
+# One row per entry: paused ones (no pane holds the session any more) before
+# live ones, newest first within each. The live check asks herdr which session
+# every pane holds, so a session counts as live wherever it was reopened.
+#
+#   1 display  state, last snapshot, workspace/tab, title
+#   2 path     the entry file
+#   3 pane     pane holding the session, empty when paused
+shelf_rows() {
+  local live f key pane
+  [ -d "$SHELF_DIR" ] || return 0
+  live=$({ herdr pane list 2>/dev/null | jq -r '
+    .result.panes[]?
+    | select(.agent_session != null and .agent_session.value != null)
+    | [.agent_session.agent + "-" + .agent_session.value, .pane_id] | @tsv
+  ' 2>/dev/null; } || true)
+
+  for f in "$SHELF_DIR"/*.json; do
+    [ -f "$f" ] || continue
+    key=$(basename "$f" .json)
+    pane=$(awk -F"$TAB" -v k="$key" '$1 == k { print $2; exit }' <<<"$live")
+    jq -r --arg path "$f" --arg pane "$pane" '
+      [ (if $pane == "" then 0 else 1 end),
+        (.updated_at // 0),
+        (if $pane == "" then "paused" else "live" end),
+        ((.workspace_label // "?") + "/" + (.tab_label // "?")),
+        (.title // "" | gsub("\\s+"; " ")),
+        $path, $pane ] | @tsv
+    ' "$f" 2>/dev/null || true
+  done | sort -t"$TAB" -k1,1n -k2,2nr |
+    while IFS= read -r line; do
+      emit_shelf_row "$line"
+    done
+}
+
+# cut rather than `IFS=$'\t' read`: the empty pane field on every paused row
+# would otherwise merge into its neighbour (see field() below).
+emit_shelf_row() {
+  local line="$1" updated state place title path pane
+  updated=$(cut -f2 <<<"$line")
+  state=$(cut -f3 <<<"$line")
+  place=$(cut -f4 <<<"$line")
+  title=$(cut -f5 <<<"$line")
+  path=$(cut -f6 <<<"$line")
+  pane=$(cut -f7 <<<"$line")
+  printf '%-6s  %-16s  %-24s  %s\t%s\t%s\n' \
+    "$state" "$(format_epoch "$updated")" "${place:0:24}" "$(one_line "$title")" "$path" "$pane"
+}
+
+shelf_preview() {
+  local path="$1" agent id cwd log
+  [ -f "$path" ] || { printf '(entry removed)\n'; return 0; }
+  agent=$(jq -r '.agent' "$path")
+  id=$(jq -r '.id' "$path")
+  cwd=$(jq -r '.cwd' "$path")
+  log=$({ ls "$HOME"/.claude/projects/*/"$id".jsonl 2>/dev/null || true; } | head -1)
+  preview "$agent" "$id" "$cwd" "$log" ""
+}
+
+# A stored workspace id is reused only while it still carries the stored
+# label: ids restart with every herdr server, and a reused id can belong to a
+# different workspace altogether. Otherwise open_in_herdr looks the workspace
+# up by label, and creates it under that label when it is gone.
+shelf_resume() {
+  local path="$1" agent id cwd tab_label ws_id ws_label current
+  agent=$(jq -r '.agent' "$path")
+  id=$(jq -r '.id' "$path")
+  cwd=$(jq -r '.cwd' "$path")
+  tab_label=$(jq -r '.tab_label // empty' "$path")
+  ws_id=$(jq -r '.workspace_id // empty' "$path")
+  ws_label=$(jq -r '.workspace_label // empty' "$path")
+
+  if [ -n "$ws_id" ]; then
+    current=$({ herdr workspace get "$ws_id" 2>/dev/null |
+      jq -r '.result.workspace.label // empty' 2>/dev/null; } || true)
+    [ -n "$current" ] && [ "$current" = "$ws_label" ] || ws_id=""
+  fi
+
+  open_in_herdr "$cwd" "${tab_label:-$(tab_label_for "$cwd")}" \
+    "$(resume_command "$agent" "$id" "")" "$ws_id" "$ws_label"
+}
+
+cmd_shelf() {
+  local selection path pane
+  selection=$(
+    shelf_rows | fzf \
+      --delimiter="$TAB" \
+      --with-nth=1 \
+      --no-hscroll \
+      --prompt='shelf > ' \
+      --header=$'enter: resume (paused) / focus (live)  ctrl-x: done — take off the shelf' \
+      --bind="ctrl-x:execute-silent(rm -f {2})+reload($reenter --shelf-rows)" \
+      --preview="$reenter --shelf-preview {2}" \
+      --preview-window=down,60%,wrap
+  ) || return 0
+  [ -n "$selection" ] || return 0
+  path=$(cut -f2 <<<"$selection")
+  pane=$(cut -f3 <<<"$selection")
+  if [ -n "$pane" ]; then
+    herdr agent focus "$pane" >/dev/null
+    return 0
+  fi
+  [ -f "$path" ] || return 0
+  shelf_resume "$path"
+}
+
 # ------------------------------------------------------------------- main ---
 
 # fzf runs reload() and --preview through `sh -c`, so re-entry has to be a
@@ -629,6 +853,26 @@ case "${1:-}" in
       [ -n "$agent" ] || exit 0
     fi
     open_new "$agent"
+    exit 0
+    ;;
+  --shelve)
+    cmd_shelve
+    exit 0
+    ;;
+  --shelf)
+    cmd_shelf
+    exit 0
+    ;;
+  --shelf-rows)
+    shelf_rows
+    exit 0
+    ;;
+  --shelf-preview)
+    shelf_preview "${2:-}"
+    exit 0
+    ;;
+  --shelf-refresh)
+    cmd_shelf_refresh
     exit 0
     ;;
   --preview)
