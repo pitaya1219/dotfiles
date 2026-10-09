@@ -7,12 +7,15 @@
 # See the remote section for why the host list is taken from the mirror's
 # config and not one of its own.
 #
-# Both paths label the new tab with the target directory's git branch. That is
+# A resumed tab is labeled with the session's title, cut to the width
+# herdr-tab-name asks agents to keep to; `--new`, which has no title yet, and a
+# session without one get the target directory's git branch instead. Either is
 # a placeholder as much as a label: the agent is expected to replace it with a
 # short task name through herdr-tab-name (see shared/programs/herdr.nix), and
-# the branch is what stays visible until it does — or forever, if it does not.
+# the placeholder is what stays visible until it does — or forever, if it does
+# not.
 #
-# Every source prints the same six tab-separated fields, which is what lets a
+# Every source prints the same seven tab-separated fields, which is what lets a
 # single launcher handle any row the picker returns:
 #
 #   1 display  the preformatted list line: agent, last activity, project, title
@@ -21,6 +24,8 @@
 #   4 cwd      working directory the session ran in
 #   5 log      transcript path, read by the preview
 #   6 host     herdr-mirror host the session lives on, empty when it is local
+#   7 title    the session's title on one line, empty on a host whose
+#              agent-open predates this field
 #
 # Only field 1 is shown (--with-nth); the rest stay addressable as {2}..{6} in
 # --preview, which sees the untransformed line.
@@ -98,19 +103,20 @@ one_line() {
 # host is the part that does, and it goes in front of the project for that
 # reason.
 # The one place the row schema is spelled out: four display columns, then the
-# five fields behind them. Both callers below assemble arguments for it rather
+# six fields behind them. Both callers below assemble arguments for it rather
 # than carrying a copy of the format, so the shape has a single definition to
 # change.
 emit_row() {
-  printf '%-6s  %-16s  %-24s  %s\t%s\t%s\t%s\t%s\t%s\n' "$@"
+  printf '%-6s  %-16s  %-24s  %s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$@"
 }
 
 row() {
   local agent="$1" when="$2" project="$3" title="$4" id="$5" cwd="$6" log="$7"
-  local place="$project"
+  local place="$project" line
   [ -z "$HOST_LABEL" ] || place="$HOST_LABEL:$project"
-  emit_row "$agent" "$when" "${place:0:24}" "$(one_line "$title")" \
-    "$agent" "$id" "$cwd" "$log" "$HOST_LABEL"
+  line=$(one_line "$title")
+  emit_row "$agent" "$when" "${place:0:24}" "$line" \
+    "$agent" "$id" "$cwd" "$log" "$HOST_LABEL" "$line"
 }
 
 # A host that cannot be reached gets a row of its own rather than dropping out
@@ -121,7 +127,7 @@ row() {
 # tell it apart from a session.
 status_row() {
   local host="$1" note="$2"
-  emit_row '!' '' "${host:0:24}" "$note" '' '' '' '' "$host"
+  emit_row '!' '' "${host:0:24}" "$note" '' '' '' '' "$host" 
 }
 
 # ---------------------------------------------------------------- sources ---
@@ -430,6 +436,31 @@ tab_label_for() {
   printf '%s' "${branch:-$(basename "$cwd")}"
 }
 
+# The first 12 terminal columns of a one-line title, the width herdr-tab-name
+# is asked to keep to (~/.agent/conventions.md): herdr's tab bar divides its
+# width among every tab in the workspace. The wide ranges are the CJK and emoji
+# blocks a title realistically contains, not the full East Asian Width table.
+title_label() {
+  local text="$1" out="" width=0 c cp w i
+  for ((i = 0; i < ${#text}; i++)); do
+    c="${text:i:1}"
+    printf -v cp '%d' "'$c"
+    w=1
+    if ((cp >= 0x1100 && cp <= 0x115F)) || ((cp >= 0x2E80 && cp <= 0xA4CF)) ||
+      ((cp >= 0xAC00 && cp <= 0xD7A3)) || ((cp >= 0xF900 && cp <= 0xFAFF)) ||
+      ((cp >= 0xFE30 && cp <= 0xFE4F)) || ((cp >= 0xFF00 && cp <= 0xFF60)) ||
+      ((cp >= 0xFFE0 && cp <= 0xFFE6)) || ((cp >= 0x1F300 && cp <= 0x1FAFF)) ||
+      ((cp >= 0x20000 && cp <= 0x3FFFD)); then
+      w=2
+    fi
+    ((width + w <= 12)) || break
+    out+="$c"
+    width=$((width + w))
+  done
+  # A cut can land right after a space, which herdr would show as a gap.
+  printf '%s' "${out%" "}"
+}
+
 # With no workspace given, a workspace whose label matches the project gets a
 # new tab instead of a second workspace being created.
 # `workspace create --cwd` falls back to the server's own directory when the
@@ -489,10 +520,11 @@ open_in_herdr() {
 # tab lands inside the existing mirrored workspace instead of --open's normal
 # lookup-or-create-by-project-name, which is what makes open_new()'s mirror
 # path indistinguishable from herdr-mirror's own remote-tab.
+# label, when given, replaces the far end's own branch label for the tab.
 open_remote() {
-  local host="$1" cwd="$2" cmdline="$3" workspace="${4:-}" target out
+  local host="$1" cwd="$2" cmdline="$3" workspace="${4:-}" label="${5:-}" target out
   target=$(target_for "$host") || die "no target for host: $host"
-  out=$(remote_run "$target" --open "$cwd" "$cmdline" "$workspace" 2>&1) ||
+  out=$(remote_run "$target" --open "$cwd" "$cmdline" "$workspace" "$label" 2>&1) ||
     die "opening on $host failed: $out"
 }
 
@@ -597,7 +629,11 @@ case "${1:-}" in
     # $4, when set, is a REMOTE workspace id (open_remote's mirror path):
     # this runs on the far end of the ssh hop, so it is this host's own
     # workspace to create the tab in, not something to translate further.
-    open_in_herdr "$cwd" "$(tab_label_for "$cwd")" "${3:-}" "${4:-}"
+    # $5, when set, is the tab label; without it the branch is read here,
+    # where the directory actually exists.
+    label="${5:-}"
+    [ -n "$label" ] || label=$(tab_label_for "$cwd")
+    open_in_herdr "$cwd" "$label" "${3:-}" "${4:-}"
     exit 0
     ;;
   --source)
@@ -657,6 +693,7 @@ agent=$(field 2)
 id=$(field 3)
 cwd=$(field 4)
 host=$(field 6)
+label=$(title_label "$(field 7)")
 
 # A status row has no agent to resume; picking one is a no-op, not an error.
 [ -n "$agent" ] || exit 0
@@ -676,7 +713,8 @@ esac
 cmdline=$(resume_command "$agent" "$id" "$flags")
 
 if [ -n "$host" ]; then
-  open_remote "$host" "$cwd" "$cmdline"
+  open_remote "$host" "$cwd" "$cmdline" "" "$label"
 else
-  open_in_herdr "$cwd" "$(tab_label_for "$cwd")" "$cmdline" "$(invoking_workspace)"
+  [ -n "$label" ] || label=$(tab_label_for "$cwd")
+  open_in_herdr "$cwd" "$label" "$cmdline" "$(invoking_workspace)"
 fi
