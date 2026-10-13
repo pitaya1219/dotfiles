@@ -6,14 +6,17 @@ let
 
   # mtg / mtg-rec / mtg-live / mtg-self / mtg-minutes が呼ぶ外部コマンドを固定する。
   #   ffmpeg     … ffmpeg + ffprobe (録音・音声変換・トラック数判定)
-  #   whisper-cpp … whisper-cli (バッチ文字起こし) + whisper-stream (ライブ字幕)
+  #   whisper-cpp … whisper-cli (バッチ文字起こし)
   # claude CLI は別管理なので wrapProgram の --prefix で既存 PATH に委ねる。
   runtimeInputs = with pkgs; [ ffmpeg whisper-cpp switchaudio-osx ];
 
   # The python the scripts' shebangs point at. voice-in needs pyobjc because it
-  # types finalized text through CGEvent (Quartz). One interpreter for all of
-  # them beats having to remember which script has pyobjc and which does not.
-  pythonForScripts = pkgs.python3.withPackages (ps: [ ps.pyobjc-framework-Quartz ]);
+  # types finalized text through CGEvent (Quartz); the live captions run
+  # sherpa-onnx in-process and capture through sounddevice (PortAudio). One
+  # interpreter for all of them beats having to remember which script has what.
+  pythonForScripts = pkgs.python3.withPackages (ps: [
+    ps.numpy ps.pyobjc-framework-Quartz ps.sherpa-onnx ps.sounddevice
+  ]);
 
   programs = [
     "mtg" "mtg-live" "mtg-minutes" "mtg-rec" "mtg-self" "mtg-setup"
@@ -26,21 +29,12 @@ let
   # where the next switch leaves it pointing at something that no longer exists.
   voiceInBin = "/etc/profiles/per-user/${config.home.username}/bin/voice-in";
 
-  # スクリプトが既定で使うモデルを nix で固定取得する。
-  #   turbo … バッチ文字起こし(mtg-minutes)と相手側ライブ字幕の既定。約1.6GB
-  #   small … バッテリー優先で軽くしたいとき用(--self-model small など)。約0.5GB
-  # small は既定ではないが、代替モデル(MODEL_FALLBACK)と軽量化の選択肢として
-  # 使うので置いておく。
-  # base は引き続き手動DL(README §1 参照)。スクリプトは config ではなく
-  # ~/.cache の各 ggml-*.bin を直接見る。
+  # バッチ文字起こし(mtg-minutes)のモデルを nix で固定取得する。
+  # スクリプトは config ではなく ~/.cache の各 ggml-*.bin を直接見る。
   whisperModels = {
     "ggml-large-v3-turbo.bin" = pkgs.fetchurl {
       url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin";
       hash = "sha256-H8cPd0046xaZk6w5Huo1fvR8iHV+9y7llDh5t+jivGk=";
-    };
-    "ggml-small.bin" = pkgs.fetchurl {
-      url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin";
-      hash = "sha256-G+OpsgY4Z7k35k4ux0gzZKeZF+FX+pjF2UtcH//qmHs=";
     };
     # whisper-cli --vad 用の silero VAD モデル(約0.9MB)。長い無音を含む録音を
     # そのまま渡すと whisper が幻聴を返すため、発話区間だけを切り出すのに使う。
@@ -48,6 +42,29 @@ let
       url = "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin";
       hash = "sha256-KZQNmNQrkfvQXOSJ8+z3xy8KQvAn5IdZGaKPtMBOos8=";
     };
+  };
+
+  # Live captions (mtg / mtg-live / mtg-self / voice-in): ReazonSpeech through
+  # sherpa-onnx. The release tarball also carries fp32/fp16 weights and test
+  # audio (418MB); only the int8 transducer the scripts load is kept.
+  reazonspeech = pkgs.runCommand "reazonspeech-ja-en-2025-01-17-int8" {
+    src = pkgs.fetchurl {
+      url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-ja-en-reazonspeech-2025-01-17.tar.bz2";
+      hash = "sha256-3AN1hgjAKA4svKrEWXRn/8+EauCwZDbxcGc4oR2ob10=";
+    };
+  } ''
+    tar -xjf $src
+    d=sherpa-onnx-zipformer-ja-en-reazonspeech-2025-01-17
+    mkdir -p $out
+    for part in encoder decoder joiner; do
+      cp $d/$part-epoch-35-avg-1.int8.onnx $out/$part.int8.onnx
+    done
+    cp $d/tokens.txt $out/
+  '';
+
+  liveVadModel = pkgs.fetchurl {
+    url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx";
+    hash = "sha256-niRJ4Qh0ltjUyrqQfyPgvT942R+lUkebucI6wJy7H9Y=";
   };
 
   mtg-minutes = pkgs.stdenvNoCC.mkDerivation {
@@ -193,7 +210,7 @@ in
       daemon = {
         enable = lib.mkEnableOption ''
           voice-in をログイン時から常駐させる。ホットキーを押した瞬間に送出が
-          始まる(常駐していないと、デバイス列挙とモデルロードで約3秒かかる)
+          始まる(常駐していないと、押してからモデルロードを待つ)
         '';
 
         warmIdleSec = lib.mkOption {
@@ -201,7 +218,7 @@ in
           default = null;
           example = 900;
           description = ''
-            使われないままこの秒数が過ぎたら whisper-stream を落とす。0 で落とさない。
+            使われないままこの秒数が過ぎたらモデルを解放する。0 で解放しない。
             null なら `--warm-idle` を渡さず voice-in 側の既定に任せる
             (既定値をここと Python の両方に書くと、片方だけ直して食い違う)。
           '';
@@ -276,6 +293,10 @@ in
     home.file = lib.mapAttrs'
       (name: drv: lib.nameValuePair ".cache/whisper-cpp/models/${name}" { source = drv; })
       whisperModels
+    // {
+      ".cache/mtg-minutes/models/reazonspeech".source = reazonspeech;
+      ".cache/mtg-minutes/models/silero_vad.onnx".source = liveVadModel;
+    }
     # Karabiner's complex_modifications are files dropped in assets/ and then
     # enabled from the GUI. karabiner.json itself is rewritten by the app, so it
     # cannot be a symlink (read-only makes every GUI change fail).

@@ -3,31 +3,27 @@
 voice-in - dictate at any moment straight into whatever app has focus.
 
 The audio goes through neither macOS dictation (which uploads to Apple) nor
-Claude's; it is processed locally by whisper.cpp. Only finalized text reaches
-the app.
+Claude's; it is processed locally by sherpa-onnx (ReazonSpeech). Only finalized
+text reaches the app.
 
     microphone -> OBS (RNNoise) -> BlackHole 2ch
                                       |
                                       v
-                     whisper-stream (VAD, local) -> finalized text
+                     sherpa-onnx (VAD, local) -> finalized text
                                       |
                                       v
                      CGEvent Unicode keystrokes -> the focused app
 
 On granularity:
-    whisper-stream runs in VAD mode (--step 0) and each utterance is sent once
-    speech breaks. Nothing streams in word by word: VAD mode emits committed
-    lines, whereas sliding mode (--step > 0) only repaints one line with \\r,
-    so feeding it to another app would mean erasing what was already inserted
-    and rewriting it - which breaks the moment the user types.
-    Splitting into utterances and deduping is mtgcommon.LiveTranscriber's job
-    (VAD mode does not clear the buffer, it re-reads the trailing --length, so
-    consecutive chunks overlap heavily).
+    Each utterance is sent once speech breaks (0.35s of silence). Nothing
+    streams in word by word: feeding partial text to another app would mean
+    erasing what was already inserted and rewriting it - which breaks the
+    moment the user types.
 
 Two ways to run it:
-    one-shot (default) - whisper-stream starts on the press. Enumeration plus
-                         model load means seconds before capture begins.
-    daemon (--daemon)  - whisper-stream is kept warm, so sending starts on the
+    one-shot (default) - capture starts on the press, after the model load
+                         (under a second).
+    daemon (--daemon)  - the model is kept warm, so sending starts on the
                          press. --toggle uses the daemon when one is up and
                          falls back to a one-shot otherwise.
 
@@ -56,7 +52,6 @@ The state is visible two ways: a cue sounds when capture starts and stops
 """
 import argparse
 import errno
-import json
 import os
 import signal
 import socket
@@ -67,24 +62,21 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-import mtgcommon  # noqa: E402
 from mtgcommon import (  # noqa: E402
-    POLL_INTERVAL_SEC, READY_TIMEOUT_SEC, LiveTranscriber, add_device_args,
-    add_tuning_args, die, enumerate_capture_devices, hr, info,
-    print_capture_devices, resolve_model, resolve_or_report, sibling,
-    stop_process, warn,
+    POLL_INTERVAL_SEC, LiveTranscriber, add_device_args, add_tuning_args, die,
+    hr, info, list_capture_devices, print_capture_devices, release_recognizer,
+    sibling, stop_process, warn,
 )
 from textinject import TextInjector  # noqa: E402
 
 # Same capture side as mtg-self ("self" = mic -> OBS RNNoise -> BlackHole 2ch).
-# The device and model defaults come from there.
+# The device default comes from there.
 SIDE = "self"
 
 STATE_DIR = Path.home() / ".cache/voice-in"
 PID_FILE = STATE_DIR / "session.pid"
 LOG_FILE = STATE_DIR / "session.log"
 DAEMON_SOCK = STATE_DIR / "daemon.sock"
-DEVICE_CACHE = STATE_DIR / "device.json"
 
 # Seconds of silence after which sending stops on its own.
 # Left running by mistake, text would land in whatever app is touched next.
@@ -95,9 +87,9 @@ DEFAULT_IDLE_TIMEOUT_SEC = 300
 # means that phrase arrives about a second late. Without this it is always lost.
 TAIL_GRACE_SEC = 3.0
 
-# How long the daemon keeps whisper-stream warm while unused (seconds).
+# How long the daemon keeps the model warm while unused (seconds).
 # Holding it forever means transcribing everything said near the mic all day,
-# which costs GPU and battery. Past this it is released and reloaded on demand.
+# which costs CPU and battery. Past this it is released and reloaded on demand.
 DEFAULT_WARM_IDLE_SEC = 900
 
 # Start, stop and error cues.
@@ -123,53 +115,12 @@ def cue(name, enabled=True):
 
 
 # ---------------------------------------------------------------------------
-# Capture device resolution
-# ---------------------------------------------------------------------------
-# Enumeration costs 1.0-1.6s, so the id is remembered and reused. Ids do shift
-# though (see LiveTranscriber.opened_device), so the name of the device that
-# was actually opened is checked, and a mismatch forces re-enumeration.
-def load_device_cache(name):
-    try:
-        return json.loads(DEVICE_CACHE.read_text()).get(name)
-    except (OSError, ValueError, AttributeError):
-        return None
-
-
-def save_device_cache(name, cap_id):
-    try:
-        cache = json.loads(DEVICE_CACHE.read_text())
-        if not isinstance(cache, dict):
-            cache = {}
-    except (OSError, ValueError):
-        cache = {}
-    cache[name] = cap_id
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    DEVICE_CACHE.write_text(json.dumps(cache, ensure_ascii=False))
-
-
-def enumerate_and_resolve(model_path, name):
-    """Enumerate, resolve the device id and cache the result.
-
-    Raises when it cannot be resolved. Returning None instead would make every
-    caller re-check it, and those branches multiply across the retry path.
-    """
-    info("キャプチャデバイスを列挙中…")
-    cap_id, cap_name = resolve_or_report(
-        enumerate_capture_devices(model_path), name, "音声入力",
-        hint="--list で確認するか --capture-id で指定してください。")
-    if cap_id is None:
-        raise TranscriberError(f"キャプチャデバイス '{name}' が見つかりません")
-    save_device_cache(name, cap_id)
-    return cap_id, cap_name
-
-
-# ---------------------------------------------------------------------------
 # Sending
 # ---------------------------------------------------------------------------
 class Dictation:
     """Feed finalized utterances into the focused app.
 
-    LiveTranscriber calls on_utterance from whisper-stream's reader thread.
+    LiveTranscriber calls on_utterance from its recognition thread.
     Posting events is quick, so it is done inline rather than through a queue.
     """
 
@@ -179,11 +130,11 @@ class Dictation:
         self.log_text = log_text
         self.sound = sound
         self.session_zero = session_zero
-        # Utterances are selected by when they began. whisper-stream keeps
+        # Utterances are selected by when they began. Recognition keeps
         # running while the daemon is stopped, so only those starting inside
-        # the window [armed_at, disarmed_at] are sent. VAD mode reads back the
-        # trailing --length window on every detection, so a plain on/off would
-        # splice whatever was said just before the press into the first insert.
+        # the window [armed_at, disarmed_at] are sent. A plain on/off would
+        # splice the tail of a sentence begun before the press into the first
+        # insert.
         self.armed_at = None
         self.disarmed_at = None
         self._reset()
@@ -204,7 +155,7 @@ class Dictation:
         """Close the window, but keep waiting for utterances that began inside it.
 
         VAD only finalizes once speech breaks, so stopping right after the last
-        word means that phrase arrives about a second late. Cutting here would
+        word means that phrase arrives a moment late. Cutting here would
         lose it on every hold-to-talk press. The window is closed and arrivals
         are accepted for TAIL_GRACE_SEC.
         """
@@ -290,14 +241,12 @@ def make_injector(args, sound, fatal=True):
 
 
 def make_separator(args):
-    if args.separator is not None:
-        return args.separator
-    # Japanese runs words together; other languages need the space to be readable.
-    return "" if args.language == "ja" else " "
+    # The model transcribes Japanese, which runs words together.
+    return "" if args.separator is None else args.separator
 
 
 # ---------------------------------------------------------------------------
-# Starting whisper-stream (shared by the one-shot and the daemon)
+# Starting capture (shared by the one-shot and the daemon)
 # ---------------------------------------------------------------------------
 class TranscriberError(Exception):
     """Capture could not be started.
@@ -308,47 +257,17 @@ class TranscriberError(Exception):
     """
 
 
-def start_transcriber(args, model_path, on_utterance, session_zero):
-    """Resolve the capture device, start whisper-stream and wait for capture.
+def start_transcriber(args, on_utterance, session_zero, refresh_devices=False):
+    """Open the capture device by name and start recognising.
 
-    Opens with the cached id and, if a different device came up, re-enumerates
-    and starts again. When the id is right this skips 1.0-1.6s of enumeration.
-
-    The check happens *after* capture begins so that waiting for the report
-    line overlaps the model load. Waiting first would stall every start by that
-    timeout should whisper.cpp ever reword the line.
+    refresh_devices re-reads the device list, which the daemon needs to see a
+    device plugged in after it started. Only safe with no stream open.
     """
-    def launch(cap_id):
-        tr = LiveTranscriber(
-            SIDE, cap_id, model_path,
-            language=args.language, step=0, length=args.length,
-            vad_thold=args.vad_thold, on_utterance=on_utterance,
-            session_zero=session_zero,
-        )
-        tr.start()
-        if not tr.wait_ready(time.monotonic() + READY_TIMEOUT_SEC):
-            for line in list(tr.stderr_tail)[-5:]:
-                warn(f"  {line}")
-            tr.stop()
-            raise TranscriberError("whisper-stream を開始できませんでした")
-        return tr
-
-    if args.capture_id is not None:
-        # An explicit id is not second-guessed; the user meant it.
-        return launch(args.capture_id), args.capture_id, "(手動指定)"
-
-    if (cap_id := load_device_cache(args.device)) is None:
-        cap_id, cap_name = enumerate_and_resolve(model_path, args.device)
-        return launch(cap_id), cap_id, cap_name
-
-    tr = launch(cap_id)
-    if (opened := tr.opened_mismatch(args.device)) is None:
-        return tr, cap_id, f"{args.device} (キャッシュ)"
-
-    warn(f"デバイス番号がずれています(#{cap_id} は '{opened}')。列挙し直します。")
-    tr.stop()
-    cap_id, cap_name = enumerate_and_resolve(model_path, args.device)
-    return launch(cap_id), cap_id, cap_name
+    tr = LiveTranscriber(SIDE, args.device, vad_thold=args.vad_thold,
+                         on_utterance=on_utterance, session_zero=session_zero)
+    if not tr.start(list_capture_devices(refresh=refresh_devices)):
+        raise TranscriberError(f"音声入力を開始できませんでした: {tr.error}")
+    return tr
 
 
 def report_stop(dictation, cap_name):
@@ -435,18 +354,17 @@ def daemon_request(command, timeout=10.0):
 
 
 class Daemon:
-    """Keep whisper-stream warm and start sending when told to.
+    """Keep the model warm and start sending when told to.
 
-    From the hotkey this is what makes capture begin on the press: the roughly
-    three seconds of enumeration and model load a one-shot pays are paid ahead.
+    From the hotkey this is what makes capture begin on the press: the model
+    load a one-shot pays is paid ahead.
 
-    Staying warm has a cost, so whisper-stream is released once warm_idle
-    passes unused; the next press pays the reload (about 1.7s).
+    Staying warm has a cost, so the model is released once warm_idle passes
+    unused; the next press pays the reload.
     """
 
-    def __init__(self, args, model_path, injector, sound):
+    def __init__(self, args, injector, sound):
         self.args = args
-        self.model_path = model_path
         self.sound = sound
         self.session_zero = time.monotonic()
         self.dictation = Dictation(injector, make_separator(args),
@@ -454,7 +372,7 @@ class Daemon:
                                    session_zero=self.session_zero)
         self.tr = None
         self.cap_name = None
-        self.warm_since = None      # when whisper-stream started being kept warm
+        self.warm_since = None      # when the model started being kept warm
         self.lock = threading.RLock()
         self.stopping = threading.Event()
         # The watchdog sleeps until the next deadline, so an instruction that
@@ -469,15 +387,19 @@ class Daemon:
             "status": self.status, "quit": self.quit,
         }
 
-    # -- bringing whisper-stream up and down --------------------------------
+    # -- bringing capture up and down ---------------------------------------
     def _ensure_warm(self):
-        """Ensure whisper-stream is warm. Returns the reason when it cannot be."""
-        if self.tr is not None and self.tr.proc.poll() is None:
+        """Ensure capture is running. Returns the reason when it cannot be."""
+        if self.tr is not None and self.tr.alive():
             return None
+        if self.tr is not None:
+            self.tr.stop()
+            self.tr = None
         try:
-            self.tr, _, self.cap_name = start_transcriber(
-                self.args, self.model_path, self.dictation.on_utterance,
-                self.session_zero)
+            self.tr = start_transcriber(
+                self.args, self.dictation.on_utterance, self.session_zero,
+                refresh_devices=True)
+            self.cap_name = self.tr.opened_device
         except TranscriberError as e:
             # The daemon does not die here: replugging the device may fix the next start.
             self.tr = None
@@ -488,9 +410,10 @@ class Daemon:
     def _cool(self, reason="使われていないので"):
         if self.tr is None:
             return
-        info(f"{reason} whisper-stream を落とします")
+        info(f"{reason}音声認識を止めてモデルを解放します")
         self.tr.stop()
         self.tr = None
+        release_recognizer()
 
     # -- instructions -------------------------------------------------------
     def arm(self):
@@ -615,8 +538,8 @@ class Daemon:
             while not self.stopping.is_set():
                 # Sleep until the next deadline. Polling at a fixed interval
                 # would keep waking even in the steady state - nothing armed,
-                # whisper-stream released - which is most of the time a daemon
-                # is up, undoing the point of handing the GPU back at warm_idle.
+                # the model released - which is most of the time a daemon
+                # is up, undoing the point of handing the CPU back at warm_idle.
                 self.wake.wait(self._next_deadline())
                 self.wake.clear()
                 with self.lock:
@@ -629,9 +552,11 @@ class Daemon:
                     elif (self.tr is not None and self.args.warm_idle
                             and time.monotonic() - self.warm_since > self.args.warm_idle):
                         self._cool()
-                    # If whisper-stream died, leave the reload to the next arm
-                    if self.tr is not None and self.tr.proc.poll() is not None:
-                        warn("whisper-stream が終了しました。次回の開始時に起動し直します。")
+                    # If capture died, leave the restart to the next arm
+                    if self.tr is not None and not self.tr.alive():
+                        warn(f"音声入力が止まりました({self.tr.error or 'デバイスが閉じられました'})。"
+                             "次回の開始時に開き直します。")
+                        self.tr.stop()
                         self.tr = None
         except KeyboardInterrupt:
             pass
@@ -701,7 +626,7 @@ def spawn_background(argv_extra):
                      cwd=str(Path.home()))
 
 
-def run_once(args, model_name, model_path, sound):
+def run_once(args, sound):
     """Start on the press and keep sending until stopped."""
     injector = make_injector(args, sound)
     session_zero = time.monotonic()
@@ -710,13 +635,13 @@ def run_once(args, model_name, model_path, sound):
     dictation.arm()
 
     try:
-        tr, cap_id, cap_name = start_transcriber(
-            args, model_path, dictation.on_utterance, session_zero)
+        tr = start_transcriber(args, dictation.on_utterance, session_zero)
     except TranscriberError as e:
         cue("error", sound)
         die(f"{e}。")
+    cap_name = tr.opened_device
 
-    info(f"デバイス #{cap_id} ({cap_name}) / モデル {model_name}")
+    info(f"デバイス: {cap_name}")
     info("送出先: フォーカス中のアプリ" if injector else "送出しません(--no-insert)")
     # "Ctrl-C to quit" is a lie in the background - there is no terminal attached
     info("Ctrl-C で終了" if sys.stdout.isatty() else "止めるなら voice-in --stop")
@@ -726,7 +651,7 @@ def run_once(args, model_name, model_path, sound):
     dictation.last_at = time.monotonic()
 
     try:
-        while tr.proc.poll() is None:
+        while tr.alive():
             time.sleep(POLL_INTERVAL_SEC)
             if dictation.idle_expired(args.idle_timeout):
                 info(f"{args.idle_timeout}秒発話がないので自動停止します")
@@ -753,18 +678,18 @@ def build_parser():
     mode.add_argument("--arm", action="store_true",
                       help="開始だけする(押しっぱなしのホットキー用。離すとき --stop)")
     mode.add_argument("--daemon", action="store_true",
-                      help="常駐する。whisper-stream を温めたまま指示を待つ")
+                      help="常駐する。モデルを温めたまま指示を待つ")
     mode.add_argument("--stop", action="store_true", help="送出を停止")
     mode.add_argument("--status", action="store_true", help="状態を表示して終了")
     mode.add_argument("--quit-daemon", action="store_true", help="常駐を終了させる")
 
-    # Device/model and tuning defaults and help live once, in mtgcommon
+    # Device and tuning defaults and help live once, in mtgcommon
     # (copied here, voice-in would be left behind when a default is retuned).
-    # --list comes with add_device_args. --step (sliding) and --no-save
-    # (subtitle log) are unusable for dictation, so they are dropped.
+    # --list comes with add_device_args. --no-save (subtitle log) is
+    # meaningless for dictation, so it is dropped.
     src = ap.add_argument_group("入力")
     add_device_args(src, SIDE)
-    add_tuning_args(src, sliding=False, save=False)
+    add_tuning_args(src, save=False)
 
     out = ap.add_argument_group("出力")
     out.add_argument("--no-insert", action="store_true",
@@ -779,7 +704,7 @@ def build_parser():
     out.add_argument("--idle-timeout", type=int, default=DEFAULT_IDLE_TIMEOUT_SEC,
                      help=f"無発話がこの秒数続いたら送出を停止 (既定: {DEFAULT_IDLE_TIMEOUT_SEC}、0で無効)")
     out.add_argument("--warm-idle", type=int, default=DEFAULT_WARM_IDLE_SEC,
-                     help="常駐時、使われないままこの秒数が過ぎたら whisper-stream を落とす "
+                     help="常駐時、使われないままこの秒数が過ぎたらモデルを解放する "
                           f"(既定: {DEFAULT_WARM_IDLE_SEC}、0で落とさない)")
     return ap
 
@@ -829,33 +754,25 @@ def main():
         spawn_background([a for a in sys.argv[1:] if a != "--toggle"])
         return
 
-    model_name, model_path = resolve_model(args.model)
-
     if args.list:
-        info("キャプチャデバイスを列挙中…")
-        devices = enumerate_capture_devices(model_path)
-        print_capture_devices(devices, args.device)
-        # Refresh the cache while the listing is at hand; the next start is faster
-        cap_id, _ = mtgcommon.resolve_device(devices, args.device)
-        if cap_id is not None:
-            save_device_cache(args.device, cap_id)
+        print_capture_devices(list_capture_devices(), args.device)
         return
 
     if args.daemon:
         injector = make_injector(args, sound, fatal=False)
-        Daemon(args, model_path, injector, sound).run()
+        Daemon(args, injector, sound).run()
         return
 
     if (pid := running_pid()) is not None:
         die(f"既に動いています (pid {pid})。止めるなら voice-in --stop")
 
-    # The pid file goes down before capture starts. Preparation (enumeration
-    # plus model load) takes seconds, and --toggle pressed again during it would
+    # The pid file goes down before capture starts. Preparation (the model
+    # load) takes a moment, and --toggle pressed again during it would
     # read as "not running" and start a second one fighting for the device.
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     PID_FILE.write_text(str(os.getpid()))
     try:
-        run_once(args, model_name, model_path, sound)
+        run_once(args, sound)
     finally:
         PID_FILE.unlink(missing_ok=True)
 

@@ -6,8 +6,8 @@ mtg — 会議を録音しながら、自分と相手の発言を1つのター�
 あったのを、1コマンド・1プロセスにまとめたもの。
 
     mtg ─┬─ mtg-rec  をサブプロセスで起動 ── 2トラック .mkv を ~/Movies へ
-         ├─ whisper-stream (BlackHole 2ch)  ── 自分の字幕  ┐ このプロセス内で
-         └─ whisper-stream (BlackHole 16ch) ── 相手の字幕  ┘ 直接回す
+         ├─ BlackHole 2ch  ── 自分の字幕  ┐ このプロセス内の sherpa-onnx
+         └─ BlackHole 16ch ── 相手の字幕  ┘ (ReazonSpeech)で認識する
 
 表示例:
     [00:12] 相手: 来週のリリースなんですけど
@@ -27,9 +27,6 @@ BlackHole は複数プロセスからの同時読み出しに対応している�
 字幕は ~/Documents/mtg-minutes/live/live_<日時>.txt にも保存される。
 録音が失敗していた場合は、このファイルを mtg-minutes --transcript に渡せば
 ライブ字幕から議事録を作れる。
-
-字幕は両サイドとも turbo。2本目の turbo はモデルのページが共有されるため
-メモリをほとんど食わない(実測 ±0.00GB)。バッテリー優先なら --self-model small。
 """
 import argparse
 import os
@@ -41,11 +38,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from mtgcommon import (  # noqa: E402
-    LIVE_SILENCE_ALERT_SEC_DEFAULT, MEETING_OUTPUT_DEVICE, MODELS, OUT_DIR,
-    POLL_INTERVAL_SEC, READY_TIMEOUT_SEC, SIDES, LiveTranscriber, MeetingOutput,
-    add_tuning_args, die, enumerate_capture_devices, hr, info, open_live_log,
-    print_capture_devices, print_minutes_hint, resolve_model, resolve_or_report,
-    sibling, stamp, stop_all, warn,
+    LIVE_SILENCE_ALERT_SEC_DEFAULT, MEETING_OUTPUT_DEVICE, OUT_DIR,
+    POLL_INTERVAL_SEC, SIDES, LiveTranscriber, MeetingOutput,
+    add_tuning_args, die, hr, info, list_capture_devices, open_live_log,
+    print_capture_devices, print_minutes_hint, sibling, stamp, stop_all, warn,
 )
 import preflight  # noqa: E402
 
@@ -68,8 +64,8 @@ def build_parser():
     ap.add_argument("--duration", type=int, default=0, help="指定秒で自動停止(0=Ctrl-Cまで)")
     ap.add_argument("--out", default="", help="録音の出力パス(既定: ~/Movies/mtg_日時.mkv)")
 
-    g = ap.add_argument_group("デバイス / モデル")
-    # デバイス名は録音(ffmpeg/avfoundation)とライブ字幕(whisper-stream/SDL)の
+    g = ap.add_argument_group("デバイス")
+    # デバイス名は録音(ffmpeg/avfoundation)とライブ字幕(PortAudio)の
     # 両方に同じ名前で照合する。番号の体系は別だが名前は共通なのでこれで足りる。
     # 片方の API にしか出ない名前のデバイスを指すと、もう片方が外れる点に注意。
     g.add_argument("--self-device", default=SIDES["self"]["device"],
@@ -78,14 +74,8 @@ def build_parser():
     g.add_argument("--other-device", default=SIDES["other"]["device"],
                    help=f"相手の音声デバイス名。録音・字幕の両方に使う "
                         f"(既定: {SIDES['other']['device']})")
-    g.add_argument("--self-model", choices=list(MODELS), default=SIDES["self"]["model"],
-                   help=f"自分側の字幕モデル (既定: {SIDES['self']['model']})")
-    g.add_argument("--other-model", choices=list(MODELS), default=SIDES["other"]["model"],
-                   help=f"相手側の字幕モデル (既定: {SIDES['other']['model']})")
 
     g = ap.add_argument_group("字幕チューニング")
-    g.add_argument("--translate", action="store_true",
-                   help="相手の発言を英語にライブ翻訳(自分側には適用しない)")
     add_tuning_args(g)
 
     g = ap.add_argument_group("音声経路")
@@ -170,52 +160,26 @@ def wait_recorder(proc):
 
 
 def start_transcribers(args, sides, session_zero):
-    """指定サイドの whisper-stream を起動する。字幕の出力先も配線する。"""
+    """指定サイドのライブ字幕を開始する。字幕の出力先も配線する。"""
     log, on_utterance = open_live_log(args.no_save)
-
-    # デバイス列挙は whisper-stream を一瞬起動するので1回だけ行って使い回す
-    probe_model = resolve_model(SIDES[sides[0]]["model"], quiet=True)[1]
-    info("キャプチャデバイスを列挙中…")
-    devices = enumerate_capture_devices(probe_model)
-
+    devices = list_capture_devices()
     transcribers = []
     for side in sides:
-        cap_id, cap_name = resolve_or_report(
-            devices, getattr(args, f"{side}_device"), SIDES[side]["label"])
-        if cap_id is None:
-            warn(f"{SIDES[side]['label']}側の字幕は無効になります。")
-            continue
-        model_name, model_path = resolve_model(getattr(args, f"{side}_model"))
         tr = LiveTranscriber(
-            side, cap_id, model_path,
-            language=args.language, step=args.step, length=args.length,
-            vad_thold=args.vad_thold,
-            translate=args.translate and side == "other",
+            side, getattr(args, f"{side}_device"), vad_thold=args.vad_thold,
             on_utterance=on_utterance, session_zero=session_zero,
         )
-        info(f"{SIDES[side]['label']}: デバイス #{cap_id} ({cap_name}) / モデル {model_name}")
-        tr.start()
-        transcribers.append(tr)
-
-    # モデルロードを待って、起動できなかったサイドをその場で知らせる。
-    # 期限は全サイド共通にする(サイドごとに持つと待ちが本数分積み上がる)。
-    deadline = time.monotonic() + READY_TIMEOUT_SEC
-    alive = []
-    for tr in transcribers:
-        if tr.wait_ready(deadline):
-            alive.append(tr)
+        if tr.start(devices):
+            info(f"{SIDES[side]['label']}: {tr.opened_device}")
+            transcribers.append(tr)
         else:
-            warn(f"{tr.meta['label']}側の字幕を開始できませんでした。")
-            for line in list(tr.stderr_tail)[-5:]:
-                warn(f"  {line}")
-            tr.stop()
-    return alive, log
+            warn(f"{SIDES[side]['label']}側の字幕を開始できませんでした: {tr.error}")
+    return transcribers, log
 
 
 def show_devices(args):
-    probe_model = resolve_model(SIDES["other"]["model"], quiet=True)[1]
-    print("=== 字幕用(whisper-stream / SDL) ===")
-    print_capture_devices(enumerate_capture_devices(probe_model), args.other_device)
+    print("=== 字幕用(PortAudio) ===")
+    print_capture_devices(list_capture_devices(), args.other_device)
     print()
     print("=== 録音用(ffmpeg / avfoundation) ===")
     sys.stdout.flush()
@@ -284,7 +248,7 @@ def main():
 
         # 録音しているなら録音の終了に追従する。していないなら
         # 期限切れか、字幕が全部落ちたときに抜ける。
-        # 起点をここにするのは、モデルロード(turboは1.6GB)に数秒かかるため。
+        # 起点をここにするのは、字幕の準備(モデルロード)に時間がかかるため。
         # session_zero 起点にすると、その分だけ収録が短くなる。
         # 録音時は mtg-rec に --duration を渡してあり、ffmpeg の -t が
         # 録音開始から数えるので、そちらに合わせる意味でも起点は開始後でよい。
@@ -294,7 +258,7 @@ def main():
                 if rec_proc.poll() is not None:
                     break
             elif (deadline and time.monotonic() >= deadline) \
-                    or all(t.proc.poll() is not None for t in transcribers):
+                    or not any(t.alive() for t in transcribers):
                 break
             time.sleep(POLL_INTERVAL_SEC)
     except KeyboardInterrupt:

@@ -9,12 +9,10 @@ What is covered:
      surrogate pair puts mangled characters into the app.
   2. Which utterances are sent, and how they are joined. Nothing before the
      press, nothing after the release, and no separator before the first.
-  3. Device id caching and the check on what was actually opened.
-  4. Dropping whisper's set phrases for silence.
-  5. Pid file cleanup: a pid left by an unclean exit would read as "running"
+  3. Pid file cleanup: a pid left by an unclean exit would read as "running"
      and stop --toggle from starting anything.
 Anything needing hardware (capture, posting events) is out of scope here, as
-in test_parse.py.
+in test_live.py.
 """
 import importlib.machinery
 import importlib.util
@@ -40,22 +38,7 @@ def _load_voice_in():
 
 
 vi = _load_voice_in()
-import mtgcommon  # noqa: E402
 from textinject import _split_utf16  # noqa: E402
-
-
-class FakeStderrProc:
-    """Minimal fake process carrying only the stderr LiveTranscriber reads."""
-
-    def __init__(self, lines):
-        self.stderr = iter(line + "\n" for line in lines)
-
-
-class FakeStdoutProc:
-    """Minimal fake process carrying only the stdout LiveTranscriber reads."""
-
-    def __init__(self, lines):
-        self.stdout = iter(line + "\n" for line in lines)
 
 
 class FakeInjector:
@@ -145,16 +128,15 @@ def main():
     ok &= check(d4._failed and d4.count == 2, "送出失敗でも例外を出さず数え続ける")
 
     print("送出のゲート(常駐時):")
-    # whisper-stream keeps running while the daemon is stopped. Nothing spoken
+    # Recognition keeps running while the daemon is stopped. Nothing spoken
     # in that time may leak into the app.
     inj5 = FakeInjector()
     d5 = dictation(inj5)
     d5.on_utterance("self", 0.0, "押す前の独り言")
     ok &= check(inj5.sent == [], "開始前の発話は送らない")
 
-    # VAD mode re-reads the trailing --length on every detection, so the first
-    # finalization after the press carries what was said before it. Utterances
-    # that began before the arm are dropped.
+    # A sentence begun before the press finalizes after it. Utterances that
+    # began before the arm are dropped.
     inj6 = FakeInjector()
     session_zero = 1000.0
     d6 = dictation(inj6, session_zero=session_zero)
@@ -193,91 +175,6 @@ def main():
     ok &= check(not d7.settling and d7.settle_deadline() is None, "close で待ちが終わる")
     d7.on_utterance("self", 9.5, "閉じた後に遅れて届いた")
     ok &= check(len(inj7.sent) == 2, "窓を閉じたら何も通さない")
-
-    print("無音に対する幻聴の除去:")
-    # Given silence or a very quiet signal, whisper returns set phrases learned
-    # from YouTube subtitles. whisper-stream has neither whisper-cli's -sns nor
-    # silero VAD, so they are dropped on read - whole utterance only, since a
-    # substring match would also eat ordinary speech.
-    for text in ("ご視聴ありがとうございました", "ご視聴ありがとうございました。",
-                 "ご 視聴 ありがとうございました", "チャンネル登録お願いします"):
-        ok &= check(mtgcommon.is_hallucination(text), f"落とす: {text}")
-    for text in ("ありがとうございました", "本日はありがとうございました",
-                 "ありがとうございました。助かります",
-                 "資料をご視聴ありがとうございましたと書いておいて",
-                 "ご清聴ありがとうございました"):
-        ok &= check(not mtgcommon.is_hallucination(text), f"残す: {text}")
-
-    # And they must not surface when mixed into real whisper-stream output
-    tr_h = mtgcommon.LiveTranscriber("self", 0, "/dev/null")
-    got_h = []
-    tr_h.on_utterance = lambda side, t, text: got_h.append(text)
-    tr_h.proc = FakeStdoutProc([
-        "[Start speaking]",
-        "",
-        "### Transcription 1 START | t0 = 0 ms | t1 = 10000 ms",
-        "",
-        "[00:00:00.000 --> 00:00:04.000]  ご視聴ありがとうございました",
-        "### Transcription 1 END",
-        "",
-        "### Transcription 2 START | t0 = 10000 ms | t1 = 20000 ms",
-        "",
-        "[00:00:00.000 --> 00:00:03.000]  資料を先に送っておいて",
-        "### Transcription 2 END",
-    ])
-    tr_h._read_stdout()
-    ok &= check(got_h == ["資料を先に送っておいて"],
-                "幻聴だけのチャンクは発話として通知しない")
-
-    print("デバイス番号のキャッシュ:")
-    with tempfile.TemporaryDirectory() as tmp:
-        vi.STATE_DIR = Path(tmp)
-        vi.DEVICE_CACHE = Path(tmp) / "device.json"
-
-        ok &= check(vi.load_device_cache("BlackHole 2ch") is None,
-                    "キャッシュが無ければ None")
-        vi.save_device_cache("BlackHole 2ch", 3)
-        ok &= check(vi.load_device_cache("BlackHole 2ch") == 3, "保存した番号を引ける")
-        vi.save_device_cache("UAB-80", 1)
-        ok &= check(vi.load_device_cache("BlackHole 2ch") == 3
-                    and vi.load_device_cache("UAB-80") == 1,
-                    "別デバイスを足しても既存を消さない")
-        vi.DEVICE_CACHE.write_text("壊れたJSON{")
-        ok &= check(vi.load_device_cache("BlackHole 2ch") is None,
-                    "壊れたキャッシュで落ちない")
-        vi.save_device_cache("BlackHole 2ch", 2)
-        ok &= check(vi.load_device_cache("BlackHole 2ch") == 2,
-                    "壊れたキャッシュは書き直せる")
-
-    print("開いたデバイスの答え合わせ:")
-    # SDL ids shift as hardware comes and goes. Trusting the id alone opens a
-    # different device silently, so the name whisper-stream reports is checked.
-    # On the real thing stderr reads:
-    #   init: attempt to open capture device 3 : 'MacBook Proのマイク' ...
-    def transcriber_seeing(*stderr_lines):
-        tr = mtgcommon.LiveTranscriber("self", 0, "/dev/null")
-        tr.proc = FakeStderrProc(stderr_lines)
-        tr._read_stderr()
-        return tr
-
-    tr_ok = transcriber_seeing(
-        "init: found 4 capture devices:",
-        "init: attempt to open capture device 2 : 'BlackHole 2ch' ...")
-    ok &= check(tr_ok.opened_mismatch("BlackHole 2ch", timeout=0.1) is None,
-                "希望どおりのデバイスなら通す")
-
-    tr_ng = transcriber_seeing(
-        "init: attempt to open capture device 3 : 'MacBook Proのマイク' ...")
-    ok &= check(tr_ng.opened_mismatch("BlackHole 2ch", timeout=0.1) == "MacBook Proのマイク",
-                "違うデバイスが開いたら気付く")
-
-    # The listing line (Capture device #N: 'NAME') is not the opened report
-    tr_list = transcriber_seeing("init:    - Capture device #0: 'UAB-80'")
-    ok &= check(tr_list.opened_device is None, "一覧行は開いた報告として拾わない")
-
-    tr_quiet = transcriber_seeing("init: nothing interesting")
-    ok &= check(tr_quiet.opened_mismatch("BlackHole 2ch", timeout=0.1) is None,
-                "報告行を確認できなければ止めずに進む")
 
     print("pid ファイル:")
     with tempfile.TemporaryDirectory() as tmp:

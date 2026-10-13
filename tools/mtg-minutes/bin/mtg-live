@@ -9,14 +9,12 @@ mtg-live — 会議の「相手の声」をリアルタイム文字起こしし�
     通話アプリの出力 → 複数出力装置(ヘッドホン + BlackHole 16ch)
                               │(自分は普通に聞ける)
                               ▼
-                   BlackHole 16ch を whisper-stream が読む → 字幕
+                   BlackHole 16ch を sherpa-onnx が読む → 字幕
 
 使い方:
     mtg-live                         # 既定デバイス(BlackHole 16ch)で開始
     mtg-live --list                  # キャプチャデバイス一覧
     mtg-live --device "BlackHole 16ch"
-    mtg-live --model small           # 軽量(既定はturbo=高精度)
-    mtg-live --translate             # 相手の発言を英語にライブ翻訳
     mtg-live --no-save               # ログファイルへの保存をやめ、標準出力のみにする
 
 字幕は既定で ~/Documents/mtg-minutes/live/ にもファイル保存される

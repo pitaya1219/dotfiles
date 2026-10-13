@@ -3,18 +3,16 @@
 mtg / mtg-rec / mtg-live / mtg-self / mtg-minutes が共有する
   - ログ出力ヘルパ (info / warn / die)
   - 話者サイドの定義 (SIDES) と録音まわりの既定値
-  - whisper モデルの解決 (未DLモデルのフォールバック込み)
   - キャプチャデバイスの名前解決
-  - ライブ文字起こしプロセスの管理 (LiveTranscriber)
+  - ライブ文字起こし (LiveTranscriber。sherpa-onnx をこのプロセス内で回す)
   - 話者ラベル付き字幕の表示 (print_utterance) とログ保存 (LiveLog)
 をまとめる。bin/* は自分の ../lib を sys.path に足して import する
 (子プロセスとして呼ぶ claude CLI 等に影響させないため PYTHONPATH は使わない)。
 """
-import collections
 import datetime as dt
 import json
 import os
-import re
+import queue
 import signal
 import subprocess
 import sys
@@ -26,20 +24,27 @@ CONFIG_FILE = Path.home() / ".config/mtg-minutes/config.json"
 
 MODEL_DIR = Path.home() / ".cache/whisper-cpp/models"
 MODELS = {
-    "base":   MODEL_DIR / "ggml-base.bin",
-    "small":  MODEL_DIR / "ggml-small.bin",
     "turbo":  MODEL_DIR / "ggml-large-v3-turbo.bin",
 }
-# 指定モデルが未配置だったときに代わりに使う順序。
-# 「軽い順」ではなく「精度が高い順」なのは、代替は本来あるはずのモデルが
-# 無いという異常時の保険であり、そこでは軽さより結果が出ることを優先するため。
-# nix が turbo と small の両方を配置するので通常は到達しない。
-MODEL_FALLBACK = ["turbo", "small", "base"]
 
 # バッチ文字起こし用の VAD モデル(silero)。whisper-cli --vad に渡す。
 VAD_MODEL = MODEL_DIR / "ggml-silero-v5.1.2.bin"
 
-WHISPER_STREAM = "whisper-stream"
+# Live captions run ReazonSpeech (k2 Zipformer, int8) through sherpa-onnx, in
+# this process. nix places the files; see shared/programs/mtg-minutes.nix.
+LIVE_MODEL_DIR = Path.home() / ".cache/mtg-minutes/models"
+LIVE_ASR_DIR = LIVE_MODEL_DIR / "reazonspeech"
+LIVE_VAD_MODEL = LIVE_MODEL_DIR / "silero_vad.onnx"
+SAMPLE_RATE = 16000
+VAD_WINDOW = 512
+# 0.35s endpointing and a 12s cap are hayamimi's tuned values for broadcast
+# Japanese; a longer silence only delays the caption, a longer cap only delays
+# monologues.
+LIVE_MIN_SILENCE_SEC = 0.35
+LIVE_MAX_SPEECH_SEC = 12.0
+LIVE_VAD_THOLD = 0.5
+LIVE_ASR_THREADS = 4
+
 LIVE_LOG_DIR = Path.home() / "Documents/mtg-minutes/live"
 
 # 録音まわりの既定値。mtg と mtg-rec の両方が参照する。
@@ -47,9 +52,7 @@ OUT_DIR = Path.home() / "Movies"
 MEETING_OUTPUT_DEVICE = "会議用"
 LIVE_SILENCE_ALERT_SEC_DEFAULT = 120
 
-# モデルロード完了(収音開始)を待つ上限と、子プロセスの生死を見る間隔。
-# 間隔は会議のあいだ回り続けるので、細かくしても得がない。
-READY_TIMEOUT_SEC = 120
+# 字幕や録音の生死を見る間隔。会議のあいだ回り続けるので、細かくしても得がない。
 POLL_INTERVAL_SEC = 1.0
 
 
@@ -75,86 +78,16 @@ def _labels():
 
 
 # 話者サイドの定義。device は「録音(ffmpeg avfoundation)」と
-# 「ライブ字幕(whisper-stream/SDL)」で同じ物理デバイスを指す。
+# 「ライブ字幕(PortAudio)」で同じ物理デバイスを指す。
 # ただし両者はデバイス番号の体系が別なので、番号は各々で解決する。
 #   self  … 物理マイク → OBS(RNNoise) → BlackHole 2ch
 #   other … 通話アプリ → 複数出力装置 → BlackHole 16ch
-#
-# 両サイドとも turbo。当初は自分側を small にしてメモリと GPU を節約する
-# つもりだったが、実測すると 2本目の turbo はメモリをほとんど食わない:
-#   0本 6.25GB → 1本 7.17GB (+0.92) → 2本 7.13GB (±0.00)
-# モデルファイルのページが OS 側で共有されるため、重み(1.5GB)は1度しか
-# 載らず、プロセスごとに増えるのは計算バッファ分だけだった。
-# 残るコストは Metal の取り合い(発熱・バッテリー)だけで、turbo は単体で
-# 実時間の8.5倍あるため2本でも実時間には間に合う。
-# バッテリー優先で軽くしたいときは --self-model small のように個別に落とす。
 SIDES = {
-    "self":  dict(color="32", device="BlackHole 2ch",  model="turbo"),
-    "other": dict(color="36", device="BlackHole 16ch", model="turbo"),
+    "self":  dict(color="32", device="BlackHole 2ch"),
+    "other": dict(color="36", device="BlackHole 16ch"),
 }
 for _side, _label in _labels().items():
     SIDES[_side]["label"] = _label
-
-# whisper-stream の出力パース用
-ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-TRANS_START_RE = re.compile(r"^###\s+Transcription\s+\d+\s+START\s*\|\s*t0\s*=\s*(\d+)\s*ms")
-TRANS_END_RE = re.compile(r"^###\s+Transcription\s+\d+\s+END")
-# VADモードのセグメント行「[00:00:04.000 --> 00:00:10.000]  本文」。
-# stream.cpp は no_timestamps = !use_vad としているので、--step 0(VAD)では
-# タイムスタンプ付きで出る。-nt 相当のオプションは無いので出さない指定はできない。
-SEGMENT_RE = re.compile(
-    r"^\[(\d+:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d+:\d{2}:\d{2}\.\d{3})\]\s*(.*)$")
-SPEAKER_TURN_RE = re.compile(r"\s*\[SPEAKER_TURN\]\s*$")
-# 収音開始の合図。stream.cpp は printf なので stdout に出る(stderr ではない)
-START_SPEAKING = "[Start speaking]"
-# [BLANK_AUDIO] / (音楽) / 【拍手】 のような非発話マーカーは字幕から落とす
-NON_SPEECH_RE = re.compile(r"^[\[\(（【][^\]\)）】]*[\]\)）】]$")
-
-# Set phrases whisper returns for silence or a very quiet signal, learned from
-# YouTube subtitles. whisper-cli has -sns (--suppress-nst) and silero VAD;
-# whisper-stream has neither, and its built-in VAD only compares energy, so a
-# quiet monitor path slips silent chunks through. Dropped on read instead.
-#
-# Matched against the whole utterance only. A substring match would also eat
-# ordinary speech like "〜です。ありがとうございました".
-# Punctuation and spacing are normalised away by _norm.
-# Never add something that could plainly be said, e.g. "ありがとうございました".
-HALLUCINATIONS = (
-    "ご視聴ありがとうございました",
-    "ご視聴ありがとうございます",
-    "最後までご視聴いただきありがとうございました",
-    "ご視聴いただきありがとうございました",
-    "チャンネル登録よろしくお願いします",
-    "チャンネル登録お願いします",
-    "高評価とチャンネル登録よろしくお願いします",
-    "字幕視聴ありがとうございました",
-)
-# whisper-stream のキャプチャデバイス一覧行
-CAPTURE_DEV_RE = re.compile(r"Capture device #(\d+): '([^']*)'")
-# The line reporting which device was actually opened.
-# See LiveTranscriber.opened_device for why it matters.
-#   init: attempt to open capture device 3 : 'MacBook Proのマイク' ...
-OPENED_DEV_RE = re.compile(r"attempt to open capture device (\d+)\s*:\s*'([^']*)'")
-
-
-def ts_to_ms(s):
-    """'00:00:04.000' → 4000"""
-    hh, mm, rest = s.split(":")
-    ss, ms = rest.split(".")
-    return ((int(hh) * 60 + int(mm)) * 60 + int(ss)) * 1000 + int(ms)
-
-
-def _norm(text):
-    """Normalise for dedup: re-recognition varies the spacing, so drop it."""
-    return "".join(text.split())
-
-
-_HALLUCINATION_SET = frozenset(_norm(p).rstrip("。.") for p in HALLUCINATIONS)
-
-
-def is_hallucination(text):
-    """True for a set phrase whisper emits on silence. Whole utterance only."""
-    return _norm(text).rstrip("。.") in _HALLUCINATION_SET
 
 
 # ---------------------------------------------------------------------------
@@ -229,70 +162,22 @@ def print_utterance(t, meta, text):
 
 
 # ---------------------------------------------------------------------------
-# モデル / デバイス解決
+# デバイス解決
 # ---------------------------------------------------------------------------
-def resolve_model(name, quiet=False):
-    """モデル名 → (実際に使う名前, パス)。
+def list_capture_devices(refresh=False):
+    """PortAudio から入力デバイス一覧を得る [(idx, name), ...]
 
-    既定モデルが未配置でも即死しないよう turbo → small → base の順に代替する。
-    nix が配置するのは既定に使う turbo と small で、base だけ手動DL運用
-    (nix 管理下なら通常ここには来ない)。
+    PortAudio はデバイス一覧を初期化時に1度だけ取るので、後から挿した機器は
+    refresh=True で作り直さないと見えない。作り直すと開いているストリームが
+    壊れるので、ストリームを1本も開いていないときだけ使うこと。
     """
-    if MODELS[name].exists():
-        return name, MODELS[name]
-    for alt in MODEL_FALLBACK:
-        if MODELS[alt].exists():
-            if not quiet:
-                warn(f"モデル '{name}' が未配置のため '{alt}' で代替します "
-                     f"(欲しいなら {MODELS[name]} を手動DL)")
-            return alt, MODELS[alt]
-    die(f"whisperモデルが1つも見つかりません: {MODEL_DIR}")
+    import sounddevice as sd
 
-
-ENUMERATE_TIMEOUT_SEC = 15
-
-
-def enumerate_capture_devices(model):
-    """whisper-stream を一瞬だけ起動してキャプチャデバイス一覧を得る [(idx, name), ...]
-
-    SDL のデバイス列挙はモデルロードより前に走るので、'attempt to open' /
-    'obtained spec' が出た時点で打ち切れば 1.6GB のモデル読み込みは発生しない。
-
-    打ち切りの目印は whisper-stream の出力文言に依存している。whisper.cpp 側で
-    文言が変わると for ループが EOF まで返らず(このプロセスは自分から終わらない)、
-    裏でモデルが丸ごとロードされたまま無限に待つことになる。それを避けるため
-    タイマで打ち切る。
-    """
-    try:
-        proc = subprocess.Popen(
-            [WHISPER_STREAM, "-m", str(model), "-l", "ja", "-c", "-1"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
-        )
-    except FileNotFoundError:
-        die(f"{WHISPER_STREAM} が見つかりません(whisper-cpp が PATH にありますか?)")
-    devices = []
-    timed_out = threading.Event()
-
-    def give_up():
-        timed_out.set()
-        proc.send_signal(signal.SIGINT)     # stderr を閉じて読み側のループを抜けさせる
-
-    timer = threading.Timer(ENUMERATE_TIMEOUT_SEC, give_up)
-    timer.start()
-    try:
-        for line in proc.stderr:
-            m = CAPTURE_DEV_RE.search(line)
-            if m:
-                devices.append((int(m.group(1)), m.group(2)))
-            if "attempt to open" in line or "obtained spec" in line:
-                break
-    finally:
-        timer.cancel()
-        stop_process(proc)
-    if timed_out.is_set():
-        warn(f"デバイス列挙が {ENUMERATE_TIMEOUT_SEC} 秒で終わりませんでした"
-             f"({WHISPER_STREAM} の出力形式変更?)。--capture-id で番号を直接指定できます。")
-    return devices
+    if refresh:
+        sd._terminate()
+        sd._initialize()
+    return [(i, d["name"]) for i, d in enumerate(sd.query_devices())
+            if d["max_input_channels"] > 0]
 
 
 def get_audio_output():
@@ -403,218 +288,174 @@ def print_capture_devices(devices, wanted):
 # ---------------------------------------------------------------------------
 # ライブ文字起こし
 # ---------------------------------------------------------------------------
+# One recognizer serves every side in the process: the weights are loaded once
+# and decodes take turns under _decode_lock (100-300ms each on an M3, so two
+# sides never queue long enough to matter).
+_recognizer = None
+_recognizer_lock = threading.Lock()
+_decode_lock = threading.Lock()
+
+
+def load_recognizer():
+    global _recognizer
+    with _recognizer_lock:
+        if _recognizer is None:
+            import sherpa_onnx
+
+            _recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
+                encoder=str(LIVE_ASR_DIR / "encoder.int8.onnx"),
+                decoder=str(LIVE_ASR_DIR / "decoder.int8.onnx"),
+                joiner=str(LIVE_ASR_DIR / "joiner.int8.onnx"),
+                tokens=str(LIVE_ASR_DIR / "tokens.txt"),
+                num_threads=LIVE_ASR_THREADS,
+            )
+        return _recognizer
+
+
+def release_recognizer():
+    """Drop the weights. The next start() loads them again (under a second)."""
+    global _recognizer
+    with _recognizer_lock:
+        _recognizer = None
+
+
+def _build_vad(threshold):
+    import sherpa_onnx
+
+    cfg = sherpa_onnx.VadModelConfig(sample_rate=SAMPLE_RATE, num_threads=1)
+    cfg.silero_vad.model = str(LIVE_VAD_MODEL)
+    cfg.silero_vad.threshold = threshold
+    cfg.silero_vad.min_silence_duration = LIVE_MIN_SILENCE_SEC
+    cfg.silero_vad.min_speech_duration = 0.25
+    cfg.silero_vad.max_speech_duration = LIVE_MAX_SPEECH_SEC
+    cfg.silero_vad.window_size = VAD_WINDOW
+    return sherpa_onnx.VoiceActivityDetector(cfg, buffer_size_in_seconds=30)
+
+
 class LiveTranscriber:
-    """whisper-stream を1本起動し、VADモードの出力を発話単位で切り出して通知する。
+    """1デバイスを開き、発話が切れるたびに認識して on_utterance(side, t, text) を呼ぶ。
 
-    VADモード(--step 0)の stdout は
+    t はセッション開始(session_zero)からの秒で、発話の**開始**時刻。表示は
+    認識が終わった順になるが、ログは t で並べ直すので会話順に揃う。
+    時刻はストリームに流れたサンプル数から出すので、サイド間でずれない。
 
-        [Start speaking]
-        ### Transcription 3 START | t0 = 1234 ms | t1 = 5678 ms
-
-        [00:00:00.000 --> 00:00:04.000]  本文…
-        [00:00:04.000 --> 00:00:06.500]  本文の続き…
-        ### Transcription 3 END
-
-    という形。stream.cpp が no_timestamps = !use_vad としているため、VADでは
-    セグメントにタイムスタンプが付く(これを外すCLIオプションは無い)ので、
-    本文だけ取り出す。START 行の t0 はチャンク先頭の絶対ms、セグメントの
-    タイムスタンプはチャンク先頭からの相対なので、足すと発話の絶対時刻になる。
-
-    その t0 は whisper-stream 内部のメインループ開始からの相対msなので、
-    そのままでは2サイドの時刻を突き合わせられない。stdout に '[Start speaking]'
-    が出た時刻を原点として記録し、セッション開始からの絶対秒に直す
-    (printf で出るので stderr ではなく stdout にある)。
-
-    こうして発話開始時刻で揃えるのが重要なのは、表示が「文字起こしが終わった順」
-    になるため。自分側(small=速い)と相手側(turbo=遅い)ではチャンク処理の遅延が
-    違うので、到着順に並べると実際の会話順とずれる。
+    全チャンネルを開いて等倍で足す(mtg-rec と同じ扱い)。複数出力装置が
+    BlackHole 16ch のどのチャンネルに書くかは Audio MIDI 設定次第で、実機では
+    ch3 に乗っていた。平均すると 16 で割られて小声が VAD の閾値を割る。
     """
 
-    def __init__(self, side, capture_id, model_path, language="ja", step=0,
-                 length=10000, vad_thold=0.6, translate=False,
+    def __init__(self, side, device, vad_thold=LIVE_VAD_THOLD,
                  on_utterance=None, session_zero=None):
         self.side = side
         self.meta = SIDES[side]
+        self.device = device
+        self.vad_thold = vad_thold
         self.on_utterance = on_utterance
-        # Name of the device actually opened. Ids are positional in SDL's
-        # enumeration, so they shift when hardware comes and goes (BlackHole 2ch
-        # moving from #3 to #2, say) and can even shift between enumerating and
-        # start(). Recording the name lets a caller check what it really got.
-        # Read as it arrives: stderr_tail is a bounded deque and the model-load
-        # output evicts this line.
-        self.opened_device = None
-        self._opened = threading.Event()
         self.session_zero = time.monotonic() if session_zero is None else session_zero
-        self.t_zero = None      # '[Start speaking]' を観測した時刻(t0 の原点)
-        self.ready = False
-        self.proc = None
-        self._threads = []
-        self._last_end_ms = -1  # 既に字幕に出したセグメントの終端(重複除去用)
-        self._recent = collections.deque(maxlen=20)   # 直近に出した本文(同上)
-        # 起動に失敗したときに理由を出せるよう、stderr の末尾だけ手元に残す
-        self.stderr_tail = collections.deque(maxlen=40)
-        self.cmd = [
-            WHISPER_STREAM, "-m", str(model_path),
-            "-l", language,
-            "-c", str(capture_id),
-            "--step", str(step),
-            "--length", str(length),
-            "--vad-thold", str(vad_thold),
-            "-kc",                      # keep context(文脈保持で精度向上)
-        ]
-        if translate:
-            self.cmd.append("--translate")
+        self.opened_device = None
+        self.error = None
+        self._queue = queue.Queue()
+        self._stream = None
+        self._worker = None
+        self._t_zero = None
 
-    def start(self):
+    def start(self, devices=None):
+        """モデルを載せてデバイスを開く。失敗したら self.error に理由を入れて False。
+
+        devices を渡すと一覧を引き直さない(複数サイドで1回の列挙を使い回す)。
+        """
         try:
-            self.proc = subprocess.Popen(
-                self.cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, bufsize=1,
-            )
-        except FileNotFoundError:
-            warn(f"{WHISPER_STREAM} が見つかりません({self.meta['label']}側の字幕を無効化)")
-            return
-        self._threads = [
-            threading.Thread(target=self._read_stdout, daemon=True),
-            threading.Thread(target=self._read_stderr, daemon=True),
-        ]
-        for t in self._threads:
-            t.start()
+            import sounddevice as sd
 
-    def wait_ready(self, deadline):
-        """モデルロードが終わって収音が始まるまで待つ。準備できたら True。
-
-        deadline は絶対時刻(time.monotonic 基準)。複数サイドを起動するときに
-        同じ deadline を渡せば、待ち時間がサイド数だけ積み上がらない。
-        """
-        while time.monotonic() < deadline:
-            if self.ready:
-                return True
-            if self.proc is None or self.proc.poll() is not None:
+            if devices is None:
+                devices = list_capture_devices()
+            idx, name = resolve_device(devices, self.device)
+            if idx is None:
+                self.error = f"デバイス '{self.device}' が見つかりません"
                 return False
-            time.sleep(0.1)
-        return self.ready
+            recognizer = load_recognizer()
+            vad = _build_vad(self.vad_thold)
+            channels = sd.query_devices(idx)["max_input_channels"]
+            self._stream = sd.InputStream(
+                device=idx, samplerate=SAMPLE_RATE, channels=channels,
+                dtype="float32", blocksize=VAD_WINDOW, callback=self._on_audio)
+            self._worker = threading.Thread(
+                target=self._run, args=(recognizer, vad), daemon=True)
+            self._worker.start()
+            self._t_zero = time.monotonic()
+            self._stream.start()
+        except Exception as e:
+            self.error = f"{type(e).__name__}: {e}"
+            self.stop()
+            return False
+        self.opened_device = name
+        return True
 
-    def _mark_ready(self):
-        """収音開始を観測。ここが t0 の原点になる。"""
-        if self.t_zero is None:
-            self.t_zero = time.monotonic()
-        self.ready = True
+    def alive(self):
+        return (self._worker is not None and self._worker.is_alive()
+                and self._stream is not None and self._stream.active)
 
-    def _read_stdout(self):
-        chunk_t0, segs = None, []
-        for raw in self.proc.stdout:
-            # スライディングモード(--step > 0)は確定した行ではなく、同じ行を
-            # 上書きし続ける描画を吐く。改行は n_new_line 回に1度しか来ないので、
-            # 1回の readline に「\r + 空白詰め + 途中経過」が何度も連結されて入る。
-            # 上書きの最後が確定版なので、\r の後ろだけを採る。
-            # VADモード(既定)は \r を出さないのでこの処理は素通りする。
-            line = ANSI_RE.sub("", raw).rsplit("\r", 1)[-1].strip()
-            if not line:
-                continue
-            if START_SPEAKING in line:
-                self._mark_ready()
-                continue
-            m = TRANS_START_RE.match(line)
-            if m:
-                # 前チャンクが END を出さずに終わっていた場合の取りこぼしを防ぐ
-                self._flush(chunk_t0, segs)
-                # 本文が出ている以上、収音は始まっている
-                self._mark_ready()
-                chunk_t0, segs = int(m.group(1)), []
-                continue
-            if TRANS_END_RE.match(line):
-                self._flush(chunk_t0, segs)
-                chunk_t0, segs = None, []
-                continue
-            if line.startswith("###"):
-                continue
-            m = SEGMENT_RE.match(line)
-            if m:
-                text = SPEAKER_TURN_RE.sub("", m.group(3)).strip()
-                if text and not self._drop(text):
-                    segs.append((ts_to_ms(m.group(1)), ts_to_ms(m.group(2)), text))
-                continue
-            if self._drop(line):
-                continue
-            # タイムスタンプ無しの本文(--step > 0 のスライディングモードなど)
-            segs.append((None, None, line))
-        self._flush(chunk_t0, segs)
+    def _on_audio(self, indata, frames, time_info, status):
+        self._queue.put(indata.sum(axis=1))
 
-    @staticmethod
-    def _drop(text):
-        """Lines kept out of the subtitle: non-speech markers and silence phrases."""
-        return bool(NON_SPEECH_RE.match(text)) or is_hallucination(text)
+    def _run(self, recognizer, vad):
+        import numpy as np
 
-    def _read_stderr(self):
-        for raw in self.proc.stderr:
-            line = raw.rstrip()
-            self.stderr_tail.append(line)
-            if self.opened_device is None and (m := OPENED_DEV_RE.search(line)):
-                self.opened_device = m.group(2)
-                self._opened.set()
+        pending = np.zeros(0, dtype=np.float32)
+        try:
+            while True:
+                chunk = self._queue.get()
+                if chunk is None:
+                    break
+                # The VAD takes exactly one window per call; the device may hand
+                # over blocks of another size when it resamples.
+                pending = np.concatenate([pending, chunk])
+                while len(pending) >= VAD_WINDOW:
+                    vad.accept_waveform(pending[:VAD_WINDOW])
+                    pending = pending[VAD_WINDOW:]
+                    self._drain(recognizer, vad)
+            # Stopping mid-sentence still yields that sentence. voice-in relies
+            # on it for the words said just before the key came up.
+            vad.flush()
+            self._drain(recognizer, vad)
+        except Exception as e:
+            self.error = f"{type(e).__name__}: {e}"
 
-    def opened_mismatch(self, wanted, timeout=1.0):
-        """Name of the opened device if it is not the one wanted, else None.
-
-        Also None when the report line does not arrive within timeout, i.e.
-        carry on. Being unable to check - because whisper.cpp reworded the
-        line - is a worse reason to stop than the mismatch it guards against.
-        """
-        if not self._opened.wait(timeout):
-            return None
-        return None if wanted.lower() in self.opened_device.lower() else self.opened_device
-
-    def _flush(self, chunk_t0, segs):
-        if not segs or self.on_utterance is None:
-            return
-        # VADモードは発話を検知するたび直近 length_ms(既定10秒)を丸ごと読み直し、
-        # バッファを消さない(stream.cpp は VAD 経路で audio.clear() を呼ばない)。
-        # そのためチャンク同士が大きく重なり、同じ発言が何度も出てくる。
-        #
-        # 除去は2段構え。チャンクとセグメントの境界は揃わず、重なった音声は
-        # 毎回違う切り方で再認識されるので、時刻だけでは取り切れない。
-        #   1. 既に出した範囲に収まるセグメントは落とす(絶対時刻で判定)
-        #   2. 範囲を少しはみ出すだけで本文が既出と同一なら、再認識とみなして落とす
-        # 2 は「重なっている区間」に限定する。そうしないと、同じ相槌を
-        # 本当に繰り返したときにも消えてしまう。
-        kept, start_ms = [], None
-        for seg_t0, seg_t1, text in segs:
-            if chunk_t0 is not None and seg_t0 is not None:
-                abs_t0, abs_t1 = chunk_t0 + seg_t0, chunk_t0 + seg_t1
-                if abs_t1 <= self._last_end_ms:
-                    continue
-                if abs_t0 < self._last_end_ms and _norm(text) in self._recent:
-                    continue
-                self._last_end_ms = max(self._last_end_ms, abs_t1)
-                if start_ms is None:
-                    start_ms = abs_t0
-            self._recent.append(_norm(text))
-            kept.append(text)
-        text = " ".join(kept).strip()
-        if not text:
-            return
-        if start_ms is None:
-            start_ms = chunk_t0
-        if start_ms is not None and self.t_zero is not None:
-            t = (self.t_zero - self.session_zero) + start_ms / 1000.0
-        else:
-            # 原点が取れなかった場合は到着時刻で代用(順序はずれるが落とさない)
-            t = time.monotonic() - self.session_zero
-        self.on_utterance(self.side, t, text)
+    def _drain(self, recognizer, vad):
+        while not vad.empty():
+            seg = vad.front
+            samples, start = seg.samples, seg.start
+            vad.pop()
+            with _decode_lock:
+                stream = recognizer.create_stream()
+                stream.accept_waveform(SAMPLE_RATE, samples)
+                recognizer.decode_stream(stream)
+                text = stream.result.text.strip()
+            if text and self.on_utterance is not None:
+                t = (self._t_zero - self.session_zero) + start / SAMPLE_RATE
+                self.on_utterance(self.side, t, text)
 
     def signal_stop(self):
         """停止を指示するだけで待たない(複数サイドを同時に止めるため)。"""
-        if self.proc is not None and self.proc.poll() is None:
-            # stream.cpp は SIGINT でループを抜けて正常終了する
-            self.proc.send_signal(signal.SIGINT)
+        if self._stream is not None:
+            try:
+                self._stream.stop()
+            except Exception:
+                pass
+        if self._worker is not None:
+            self._queue.put(None)
 
     def stop(self):
-        if self.proc is None:
-            return
-        stop_process(self.proc)
-        for t in self._threads:
-            t.join(timeout=2)
+        self.signal_stop()
+        if self._worker is not None:
+            self._worker.join(timeout=5)
+            self._worker = None
+        if self._stream is not None:
+            try:
+                self._stream.close()
+            except Exception:
+                pass
+            self._stream = None
 
 
 def stop_all(transcribers):
@@ -695,43 +536,26 @@ def open_live_log(no_save):
 # ---------------------------------------------------------------------------
 # mtg-live / mtg-self が共有する単一サイド実行
 # ---------------------------------------------------------------------------
-def add_tuning_args(ap, sliding=True, save=True):
+def add_tuning_args(ap, save=True):
     """Live-transcription tuning options, shared by mtg, the per-side commands and voice-in.
 
-    sliding and save exist for voice-in: dictation cannot use sliding mode (it
-    emits no committed lines, so feeding another app would mean rewriting what
-    was already inserted) and keeps no subtitle log. The point is to hold the
-    defaults and help text in one place, so unwanted options are dropped by
+    save exists for voice-in, which keeps no subtitle log. The point is to hold
+    the defaults and help text in one place, so unwanted options are dropped by
     argument rather than by copying the rest.
     """
-    ap.add_argument("--language", default="ja")
-    if sliding:
-        ap.add_argument("--step", type=int, default=0,
-                        help="0=VAD(発話区切りで確定) / >0=スライディング(ms)")
-    ap.add_argument("--length", type=int, default=10000, help="1チャンクの最大長(ms)")
-    ap.add_argument("--vad-thold", type=float, default=0.6, help="VAD感度(0=厳しい〜1=緩い)")
+    ap.add_argument("--vad-thold", type=float, default=LIVE_VAD_THOLD,
+                    help=f"発話とみなす確率の閾値。下げるほど小声を拾う (既定: {LIVE_VAD_THOLD})")
     if save:
         ap.add_argument("--no-save", action="store_true",
                         help="字幕ログのファイル保存をしない(既定は保存する)")
 
 
 def add_device_args(ap, side):
-    """Capture device and model selection, shared by the live commands and voice-in."""
+    """Capture device selection, shared by the live commands and voice-in."""
     meta = SIDES[side]
     ap.add_argument("--list", action="store_true", help="キャプチャデバイス一覧を表示して終了")
     ap.add_argument("--device", default=meta["device"],
-                    help=f"キャプチャデバイス名 (既定: {meta['device']})")
-    ap.add_argument("--capture-id", type=int, default=None,
-                    help="デバイス番号を直接指定(--device より優先)")
-    ap.add_argument("--model", choices=list(MODELS), default=meta["model"],
-                    help=f"turbo=高精度 / small=軽量 / base=最軽量 (既定: {meta['model']})")
-
-
-def _add_live_args(ap, side):
-    """片側ライブ字幕コマンド (mtg-live / mtg-self) のオプション"""
-    add_device_args(ap, side)
-    ap.add_argument("--translate", action="store_true", help="英語にライブ翻訳")
-    add_tuning_args(ap)
+                    help=f"キャプチャデバイス名(部分一致) (既定: {meta['device']})")
 
 
 def live_main(prog, side, description=None):
@@ -747,51 +571,32 @@ def live_main(prog, side, description=None):
         # prog を明示するのは、nix の wrapProgram 経由だと argv[0] が
         # '.mtg-live-wrapped' になり usage 行がその名前で出てしまうため。
         prog=prog, description=description or f"{meta['label']}の声をリアルタイム文字起こし")
-    _add_live_args(ap, side)
+    add_device_args(ap, side)
+    add_tuning_args(ap)
     args = ap.parse_args()
 
-    model_name, model_path = resolve_model(args.model)
-
     if args.list:
-        info("キャプチャデバイスを列挙中…")
-        print_capture_devices(enumerate_capture_devices(model_path), args.device)
+        print_capture_devices(list_capture_devices(), args.device)
         return
-
-    if args.capture_id is not None:
-        # 列挙は whisper-stream を一瞬起動するので、番号直指定のときは省く
-        cap_id, cap_name = args.capture_id, "(手動指定)"
-    else:
-        info("キャプチャデバイスを列挙中…")
-        cap_id, cap_name = resolve_or_report(
-            enumerate_capture_devices(model_path), args.device, meta["label"],
-            hint="--list で確認するか --capture-id で指定してください。")
-        if cap_id is None:
-            die("中止しました。")
 
     session_zero = time.monotonic()
     log, on_utterance = open_live_log(args.no_save)
 
-    tr = LiveTranscriber(
-        side, cap_id, model_path,
-        language=args.language, step=args.step, length=args.length,
-        vad_thold=args.vad_thold, translate=args.translate,
-        on_utterance=on_utterance, session_zero=session_zero,
-    )
+    tr = LiveTranscriber(side, args.device, vad_thold=args.vad_thold,
+                         on_utterance=on_utterance, session_zero=session_zero)
+    if not tr.start():
+        die(f"{meta['label']}側の字幕を開始できませんでした: {tr.error}")
 
-    info(f"{meta['label']}: デバイス #{cap_id} ({cap_name}) / モデル {model_name}")
+    info(f"{meta['label']}: {tr.opened_device}")
     if log:
         info(f"ログ保存先: {log.path}")
     info("Ctrl-C で終了")
     hr()
 
-    tr.start()
     try:
-        if not tr.wait_ready(time.monotonic() + READY_TIMEOUT_SEC):
-            for line in list(tr.stderr_tail)[-5:]:
-                warn(f"  {line}")
-            die(f"{meta['label']}側の whisper-stream を開始できませんでした。")
-        while tr.proc.poll() is None:
+        while tr.alive():
             time.sleep(POLL_INTERVAL_SEC)
+        warn(f"{meta['label']}側の字幕が止まりました: {tr.error or 'デバイスが閉じられました'}")
     except KeyboardInterrupt:
         pass
     finally:

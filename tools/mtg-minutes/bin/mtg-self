@@ -9,14 +9,13 @@ mtg-live の自分側。言い間違いや言った/言わないの確認、自�
     物理マイク → OBS(RNNoise) → BlackHole 2ch
                                       │
                                       ▼
-                     BlackHole 2ch を whisper-stream が読む → 字幕
+                     BlackHole 2ch を sherpa-onnx が読む → 字幕
 
 OBS を使わず生マイクで拾うなら --device "UAB-80" のように上書きする。
 
 使い方:
     mtg-self                         # 既定デバイス(BlackHole 2ch)で開始
     mtg-self --list                  # キャプチャデバイス一覧
-    mtg-self --model small           # 軽量(バッテリー優先)
     mtg-self --no-save               # ログファイルへの保存をやめ、標準出力のみにする
 
 Ctrl-C で終了。

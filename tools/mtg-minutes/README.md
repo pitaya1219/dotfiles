@@ -3,7 +3,7 @@
 会議を録音し、**話者ラベル付き文字起こし** と **議事録** を生成して Logseq に会議ページを
 自動作成するローカルツール群。会議中は自分/相手の発言をライブ字幕として画面に流せる。
 
-- **音声処理は全てローカル**(ffmpeg + whisper.cpp / Apple Silicon Metal)。Claudeに渡すのは最終テキストのみ。
+- **音声処理は全てローカル**。録音の文字起こしは whisper.cpp(Metal)、ライブ字幕は sherpa-onnx(CPU)。Claudeに渡すのは最終テキストのみ。
 - 既存のノイズキャンセリング構成([[Macでノイズキャンセリング環境を構築する]])をそのまま録音機として活用。
 
 ## コマンド一覧
@@ -25,10 +25,10 @@
 
 ```
         ┌ BlackHole 2ch (自分) ┬─ ffmpeg ─────┐
-mtg ────┤                      └─ whisper-stream ─ 字幕(自分)
+mtg ────┤                      └─ sherpa-onnx ─ 字幕(自分)
         │                                     ├─ 2トラック .mkv ─ mtg-minutes ─┬ transcript.txt
-        └ BlackHole 16ch (相手)┬─ ffmpeg ─────┘                                ├ minutes.md
-                               └─ whisper-stream ─ 字幕(相手)                  └ Logseq 会議ページ
+        └ BlackHole 16ch (相手)┬─ ffmpeg ─────┘   (whisper.cpp)                ├ minutes.md
+                               └─ sherpa-onnx ─ 字幕(相手)                     └ Logseq 会議ページ
 ```
 
 ```
@@ -49,20 +49,20 @@ OBS の2トラック録音(§2)を録音元にすることもできるが、`mtg
 | ツール | 用途 | 確認 |
 |--------|------|------|
 | ffmpeg | 音声抽出・変換 | `which ffmpeg`（home-manager 管理） |
-| whisper-cpp | 文字起こし | `which whisper-cli`（home-manager 管理） |
+| whisper-cpp | 録音の文字起こし | `which whisper-cli`（home-manager 管理） |
+| sherpa-onnx / sounddevice | ライブ字幕 | スクリプト用 Python に同梱（home-manager 管理） |
 | claude (CLI) | 議事録生成 | `which claude`（別管理・ambient） |
-| whisperモデル(turbo / small) | `~/.cache/whisper-cpp/models/` | switch で自動取得(約1.6GB + 約0.5GB) |
 
 ### モデルについて
 
-`shared/programs/mtg-minutes.nix` が `fetchurl` で取得し、`home-manager switch` で
-`~/.cache/whisper-cpp/models/` に配置される（手動DL不要）。
+`shared/programs/mtg-minutes.nix` が取得し、`home-manager switch` で配置する（手動DL不要）。
 
-| モデル | 用途 |
-|--------|------|
-| **turbo** (large-v3-turbo) | 既定。バッチ文字起こしもライブ字幕(両サイド)もこれ |
-| **small** | バッテリー優先で軽くしたいとき用(`--self-model small` など) |
-| **silero VAD** (約0.9MB) | `mtg-minutes` が発話区間の切り出しに使う(下記) |
+| モデル | 置き場所 | 用途 |
+|--------|----------|------|
+| **whisper large-v3-turbo** (約1.6GB) | `~/.cache/whisper-cpp/models/` | `mtg-minutes` の文字起こし |
+| **silero VAD** (ggml, 約0.9MB) | 同上 | `mtg-minutes` が発話区間の切り出しに使う(下記) |
+| **ReazonSpeech** (k2 Zipformer int8, 約73MB) | `~/.cache/mtg-minutes/models/reazonspeech/` | ライブ字幕(`mtg` / `mtg-live` / `mtg-self` / `voice-in`) |
+| **silero VAD** (onnx) | `~/.cache/mtg-minutes/models/` | ライブ字幕の発話区切り |
 
 ### 録音からの文字起こしで VAD と正規化を使う理由
 
@@ -71,8 +71,7 @@ OBS の2トラック録音(§2)を録音元にすることもできるが、`mtg
 録音レベルが低くなりがちで、実機では自分側が -48dB だった。
 
 そこで `mtg-minutes` は抽出時に **loudnorm でラウドネス正規化**し、
-文字起こしに **`--vad`(silero)と `-sns`** を渡す。ライブ字幕(whisper-stream)が
-VADモードで安定しているのと同じ土俵に乗せる、という考え方。
+文字起こしに **`--vad`(silero)と `-sns`** を渡す。
 
 実機の同一録音での比較:
 
@@ -81,27 +80,6 @@ VADモードで安定しているのと同じ土俵に乗せる、という考�
 | 対処前 | 8行(全て幻聴) | 19行 |
 | 対処後 | 30行(実内容) | 124行 |
 | ライブ字幕(参考) | 41行 | 34行 |
-
-`base` を使いたい場合だけ **手動DL** が必要:
-
-```bash
-M=~/.cache/whisper-cpp/models
-curl -L -o "$M/ggml-base.bin" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
-```
-
-> 手動DL済みの実ファイルが同じパスにある場合、home-manager は
-> `cmp` で中身を比較し、**同一なら警告を出して symlink 作成をスキップする**
-> (`Existing file ... will be skipped since they are the same`)。
-> switch は失敗しないが、実ファイルが残るので store のコピーと二重に容量を食う。
-> symlink に寄せて容量を返すなら、switch 前に消しておく:
-> ```bash
-> rm -f ~/.cache/whisper-cpp/models/ggml-large-v3-turbo.bin \
->       ~/.cache/whisper-cpp/models/ggml-small.bin
-> ```
-> 中身が違う場合のみ collision エラーになるが、その判定は実際のファイル配置
-> (`writeBoundary`)より前に走るので、失敗しても何も変更されない。
-
-指定したモデルが未配置でも即死はせず、turbo → small → base の順に代替して警告を出す。
 
 ## 2. OBS の設定(初回のみ・GUI操作)
 
@@ -162,7 +140,8 @@ mtg-minutes RECORDING.mkv --self-track 1 --other-track 0
 ## 4. インストール(PATHに通す)
 
 home-manager で管理する。`shared/programs/mtg-minutes.nix` が `bin/*` を nix パッケージ化し、
-`ffmpeg` / `whisper-cpp`(whisper-cli・whisper-stream)を runtimeInputs として固定する。
+`ffmpeg` / `whisper-cpp`(whisper-cli)を runtimeInputs として固定し、ライブ字幕用の
+`sherpa-onnx` / `sounddevice` はスクリプトの Python 環境に入れる。
 r-shibuya プロファイルの imports に組み込み済みなので、switch すれば
 `mtg` / `mtg-rec` / `mtg-live` / `mtg-self` / `mtg-minutes` が PATH に入る。
 
@@ -174,7 +153,7 @@ r-shibuya プロファイルの imports に組み込み済みなので、switch 
 home-manager switch --flake .#r-shibuya
 ```
 
-`claude` CLI は別管理(ambient PATH)。turbo モデルも switch で自動配置される(§1 参照)。
+`claude` CLI は別管理(ambient PATH)。モデルも switch で自動配置される(§1 参照)。
 
 ## 5. 設定の上書き
 
@@ -232,35 +211,18 @@ mtg --list                   # デバイス一覧(録音用 / 字幕用の両方
 
 - `mtg-setup` 相当の点検を回し、必要なら OBS を起動する(§前提の点検)
 - `mtg-rec` をサブプロセスとして起動し、2トラック `.mkv` を `~/Movies` に録音
-- `whisper-stream` を2本(BlackHole 2ch / 16ch)このプロセス内で回してライブ字幕
+- BlackHole 2ch / 16ch をこのプロセス内で開き、sherpa-onnx(ReazonSpeech)でライブ字幕
 - Ctrl-C で全部止め、`--minutes` があれば `mtg-minutes` に引き渡す
 - 点検で OBS を起動していたら、最後に OBS を終了する
 
 ### 表示と保存
 
-字幕は **文字起こしが終わった順** に表示され、**発話開始時刻順** に保存される。
-whisper-stream の VAD 出力に含まれる `t0`(発話開始時刻)を拾い、
-`[Start speaking]` を観測した時刻を原点に絶対時刻へ直しているので、
-サイドごとにモデルや発話長が違って処理遅延がずれても時刻は揃う。
+字幕は **認識が終わった順** に表示され、**発話開始時刻順** に保存される。
+発話の時刻はデバイスから流れてきたサンプル数で数えているので、両サイドで揃う。
 
-whisper-stream の出力を読むうえで実機依存の癖が3つある(`stream.cpp` 準拠、
-回帰テストは `tests/test_parse.py`):
-
-- `[Start speaking]` は `printf` なので **stdout** に出る。stderr を見ても来ない
-- `no_timestamps = !use_vad` なので、`--step 0`(VAD)ではセグメントに
-  `[00:00:04.000 --> 00:00:10.000]` が付く。これを外すCLIオプションは無いので、
-  読む側で剥がす。チャンク先頭の `t0` に足すと発話の絶対時刻になる
-- VAD経路は `audio.clear()` を呼ばず直近10秒を読み直すため、チャンク同士が
-  大きく重なり同じ発言が繰り返し出る。絶対時刻で既出範囲を落とし、
-  重なった区間で本文が既出と同一なら再認識とみなして落とす
-
-> **既知の制限**: 重複除去は完全ではない。重なった音声は認識のたびに文字列も
-> セグメントの切れ目も変わるため(「コードアウトアウトアウトして」と
-> 「コードアウトアウンラップして」のように)、時刻でも本文一致でも捕まらない
-> 取りこぼしが残る。気になるなら `--length` を短くしてチャンクの重なり自体を
-> 減らすと軽減する(そのぶん文の途中で切れやすくなる)。
-> 議事録は録音からのバッチ文字起こしで作られるので、この影響を受けるのは
-> ライブ表示と、録音が無いときの `--transcript` 経由だけ。
+0.35 秒の無音で発話を区切り、区切れた発話をその場で認識する。話し終えてから
+字幕が出るまでは 1 秒弱(M3 で認識 0.1〜0.5 秒)。一息が 12 秒を超えると、
+そこで区切って先に出す。
 
 保存先は `~/Documents/mtg-minutes/live/live_<日時>.txt`。到着した順にその場で
 追記し(途中で落ちても記録が残るように)、終了時に発話順へ並べ替えて書き直す。
@@ -274,25 +236,21 @@ mtg-minutes --transcript ~/Documents/mtg-minutes/live/live_20260731_100000.txt -
 `mtg --minutes` は録音があればそちら(バッチ文字起こしなので高精度)を使い、
 録音が無い/空なら自動でライブ字幕ログにフォールバックする。
 
-### モデル
+### エンジン
 
-既定は **両サイドとも turbo**。
+ライブ字幕は whisper ではなく **sherpa-onnx + ReazonSpeech(int8)** で回す。
+whisper-stream と比べて(M3・同じ会議音声での実測):
 
-当初は自分側を small にしてメモリと GPU を節約するつもりだったが、実測すると
-**2本目の turbo はメモリをほとんど食わない**:
-
-| | 使用メモリ | 増分 |
+| | whisper-stream (turbo) | sherpa-onnx (ReazonSpeech) |
 |---|---|---|
-| 0本 | 6.25 GB | — |
-| turbo 1本 | 7.17 GB | +0.92 GB |
-| turbo 2本 | 7.13 GB | **±0.00 GB** |
+| 話し終えてから字幕まで | 約 5 秒(1 秒の無音待ち + 10 秒窓の推論 3.6〜4.9 秒) | 1 秒弱 |
+| 同じ発言の重複 | 10 秒窓を読み直すので出る | 出ない(区切った発話を1度だけ認識) |
+| 無音への幻聴 | 「ご視聴ありがとうございました」等 | 出ない |
+| 両サイド分の常駐 | 約 1 GB(GPU) | 約 260 MB(CPU。認識器は両サイドで1つを共有) |
 
-モデルファイルのページが OS 側で共有されるため、重み(1.5GB)は1度しか載らず、
-プロセスごとに増えるのは計算バッファ分だけだった。`whisper-server` を1本立てて
-両サイドから叩くような「1インスタンス共有」の作り替えは、メモリ目的なら意味がない。
-
-残るコストは Metal の取り合い(発熱・バッテリー)だけ。turbo は単体で実時間の
-8.5倍あるため2本でも実時間には間に合う。軽くしたいなら `--self-model small`。
+精度は whisper turbo とおおむね同等で、細部の拾いは turbo がやや上。
+議事録は録音からの whisper 文字起こしで作るので、ライブ字幕の精度は表示と、
+録音が無いときの `--transcript` 経由にしか効かない。
 
 ### 停止まわり
 
@@ -448,7 +406,7 @@ mtg-rec --list                # 録音デバイス一覧
     「録音は成功しているのに中身はノイズだけ」という気付きにくい失敗をする
     (whisper がノイズに対して「ご視聴ありがとうございました」を延々と
     出力する形で表面化した)
-  - ライブ字幕が無事だったのは、whisper-stream(SDL)がモノラルを要求し
+  - 当時のライブ字幕が無事だったのは、whisper-stream(SDL)がモノラルを要求し
     CoreAudio が全チャンネルをダウンミックスするため。録音側だけが壊れていた
   - ffmpeg 標準のダウンミックス(`-ac 1`)でも拾えるが、レイアウト上の役割ごとに
     係数がかかって 17dB ほど痩せるため、等倍で足している
@@ -469,26 +427,28 @@ mtg-rec --list                # 録音デバイス一覧
 会議中に発言をリアルタイム文字起こししてターミナルに表示する。
 **録音しながら両サイド出したいなら `mtg` を使う**(こちらはその片側だけを単体で回すもの)。
 
-| コマンド | 対象 | デバイス | 既定モデル |
-|----------|------|----------|-----------|
-| `mtg-live` | 相手の声 | BlackHole 16ch | turbo |
-| `mtg-self` | 自分の声 | BlackHole 2ch | turbo |
+| コマンド | 対象 | デバイス |
+|----------|------|----------|
+| `mtg-live` | 相手の声 | BlackHole 16ch |
+| `mtg-self` | 自分の声 | BlackHole 2ch |
 
 ```
 通話アプリの出力 → 複数出力装置(ヘッドホン + BlackHole 16ch)
                          │(自分は普通に聞ける)
                          ▼
-              BlackHole 16ch を whisper-stream が読む → ターミナルに字幕   … mtg-live
+              BlackHole 16ch を sherpa-onnx が読む → ターミナルに字幕   … mtg-live
 
 物理マイク → OBS(RNNoise) → BlackHole 2ch
                                   │
                                   ▼
-              BlackHole 2ch を whisper-stream が読む → ターミナルに字幕    … mtg-self
+              BlackHole 2ch を sherpa-onnx が読む → ターミナルに字幕    … mtg-self
 ```
 
 `mtg-self` は `mtg-rec` の自分側と同じ経路をそのまま使う。OBS を使わず生マイクで
-拾うなら `mtg-self --device "UAB-80"` のように上書きする。単体で使うなら
-`--model small` にするとバッテリー消費を抑えられる。
+拾うなら `mtg-self --device "UAB-80"` のように上書きする。
+
+デバイスは全チャンネルを開いて足し合わせる。複数出力装置が BlackHole 16ch の
+どのチャンネルに書くかは Audio MIDI 設定次第で、実機では ch3 に乗っていた。
 
 字幕は `[時刻] ラベル: 本文` の形で表示・保存される。
 
@@ -514,47 +474,34 @@ brew install --cask blackhole-16ch
 - **Google Meet(ブラウザ)**: システム設定 → サウンド → 出力 → 複数出力装置
   (※ ブラウザは個別指定不可なのでシステム出力を切替)
 
-> これで「自分はヘッドホンで聞ける」かつ「whisper-stream が BlackHole 16ch から相手の声を読める」。
+> これで「自分はヘッドホンで聞ける」かつ「ライブ字幕が BlackHole 16ch から相手の声を読める」。
 
 ## 使い方
 
 ```bash
-# 既定(BlackHole 16ch・turboモデル・高精度・VADモード)で開始
+# 既定(BlackHole 16ch)で開始
 mtg-live
 
 # 自分側(BlackHole 2ch)
 mtg-self
-mtg-self --model small    # バッテリー優先で軽くする
 
-# デバイス一覧(番号確認用)
+# デバイス一覧
 mtg-live --list
-
-# 軽くしたい(バッテリー優先など)
-mtg-live --model small    # 14倍速・良好
-mtg-live --model base     # 22倍速・最軽量(手動DLが必要)
-
-# 相手の発言を英語にライブ翻訳
-mtg-live --translate
 
 # 字幕ログのファイル保存をしない(既定は ~/Documents/mtg-minutes/live/ に保存される)
 mtg-live --no-save
 
-# デバイスを名前/番号で明示
+# デバイスを名前(部分一致)で明示
 mtg-live --device "BlackHole 16ch"
-mtg-live --capture-id 2
 ```
 
 Ctrl-C で終了。
 
 ## チューニング
-- `--step 0`(既定)= VADモード。発話の区切りで確定表示(自然な文・低負荷)。
-- `--step 700` 等にするとスライディング表示(より即時だが断片的・高負荷)。
-- `--vad-thold`(既定0.6)= 小さいほど厳しく拾う。雑音が多ければ上げる。
-- `mtg-live` の既定はturbo(M3で8.5倍速・最高精度でライブに十分間に合う)。バッテリー優先なら `--model small`。
-  - 参考実測(M3・日本語30秒): base 22倍速/粗い, small 14倍速/良好, turbo 8.5倍速/最良。medium は遅い上に精度も劣るため非採用。
-- `mtg` は両サイドとも turbo。2本目のモデルはページが共有されメモリをほとんど食わない
-  (実測 ±0.00GB)ので、節約する意味が薄い。残るのは Metal の取り合いだけなので、
-  発熱・バッテリーが気になるときだけ `mtg --self-model small` で落とす。
+- `--vad-thold`(既定 0.5)= 発話とみなす確率の閾値。小声を取りこぼすなら下げ、
+  雑音を拾うなら上げる。
+- 発話の区切り(無音 0.35 秒)と一息の上限(12 秒)は `lib/mtgcommon.py` の
+  `LIVE_MIN_SILENCE_SEC` / `LIVE_MAX_SPEECH_SEC`。
 
 ---
 
@@ -570,7 +517,7 @@ macOS の音声入力は音声を Apple のサーバへ送り、Claude の音声
 物理マイク → OBS(RNNoise) → BlackHole 2ch
                                   │
                                   ▼
-                 whisper-stream(VAD・ローカル) → 確定テキスト
+                 sherpa-onnx(VAD・ローカル) → 確定テキスト
                                   │
                                   ▼
                  CGEvent の Unicode キー入力 → フォーカス中のアプリ
@@ -578,31 +525,27 @@ macOS の音声入力は音声を Apple のサーバへ送り、Claude の音声
 
 ## 常駐させると押した瞬間に始まる
 
-一発モードは押されてから whisper-stream を起動するので、収音が始まるまで待たされる。
+一発モードは押されてからモデルを読むので、収音が始まるまで少し待たされる。
 常駐(`--daemon`)させておくとそのコストを先に払っておけるので、押した瞬間に送出が始まる。
 `--toggle` は常駐が居ればそこへ繋ぎ、居なければ一発で動くので、ホットキー側の設定は同じ。
 
 | | 押してから収音が始まるまで(実測・M3) |
 |---|---|
-| 常駐あり(温まっている) | **0.06 秒** |
-| 常駐あり(冷えている・`--warm-idle` 経過後の初回) | 1.20 秒 |
-| 常駐なし(デバイス番号のキャッシュあり) | 1.20 秒 + プロセス起動 |
-| 常駐なし(キャッシュなし) | 2.62 秒 |
+| 常駐あり(温まっている) | **0.09 秒** |
+| 常駐あり(冷えている・`--warm-idle` 経過後の初回) | 0.94 秒 |
+| 常駐なし | 1.09 秒(プロセス起動込み) |
 
-内訳はデバイス列挙 1.0〜1.6 秒 + モデルロード 1.7 秒。列挙は SDL の初期化待ちで、
-一度引けた番号は `~/.cache/voice-in/device.json` に覚えて次から省く。
-番号は機器の抜き差しでずれる(実際に `BlackHole 2ch` が `#3` → `#2` に動いた)ので、
-覚えた番号で開いたあと whisper-stream が報告するデバイス名で答え合わせし、
-違っていれば列挙し直す。
+デバイスは PortAudio に名前で問い合わせて開くので、番号のずれ
+(`BlackHole 2ch` が `#3` → `#2` に動くなど)の影響を受けない。冷えた常駐は
+開くたびにデバイス一覧を取り直すので、後から挿した機器も見える。
 
 温めっぱなしは「近くで喋った内容を一日中ローカルで文字起こしし続ける」ことになり
-GPU と電池を食うので、使われないまま `--warm-idle`(既定 900 秒)が過ぎたら
-whisper-stream を落とす。次に押されたときに読み直す。
+CPU と電池を食うので、使われないまま `--warm-idle`(既定 900 秒)が過ぎたら
+収音を止めてモデルを解放する。次に押されたときに読み直す。
 
-**送出していない間の発話はアプリへ入らない。** 常駐中は disarm でも whisper-stream は
-回り続けるが、VAD モードは発話検知のたびに直近 `--length`(10秒)を遡って読むため、
-そのままだと「押す直前に喋っていた内容」が最初の確定に混ざる。開始時刻より前に
-始まった発話は捨てている。
+**送出していない間の発話はアプリへ入らない。** 常駐中は disarm でも認識は
+回り続けるので、押す直前に言い始めた文が押した後に確定すると最初の送出に混ざる。
+開始時刻より前に始まった発話は捨てている。
 
 ログイン時から常駐させるなら:
 
@@ -627,17 +570,14 @@ voice-in --daemon        # iTerm の許可がそのまま効く
 
 ## 粒度 — なぜ「発話の区切りごと」なのか
 
-whisper-stream を VAD モード(`--step 0`)で回し、**一息ぶんが途切れた時点でその文を確定して送る**。
-喋り終えて無音になってから 1 秒前後で入る(turbo。モデルロードは別途 1.7 秒)。
+**一息ぶんが途切れた時点(無音 0.35 秒)でその文を確定して送る**。
+喋り終えてから 1 秒弱で入る。
 
-単語単位で流れ続ける表示にはしていない。スライディングモード(`--step > 0`)は確定行を
-吐かず、同じ行を `\r` で上書きし続ける描画を出すだけなので、他アプリへ反映するには
-「さっき入れた分を消してから書き直す」ことになる。途中でフォーカスが移ったり自分で
-キーを打つと壊れるため、入力手段としては採らない。
+単語単位で流れ続ける形にはしていない。途中経過を他アプリへ反映するには
+「さっき入れた分を消してから書き直す」ことになり、途中でフォーカスが移ったり
+自分でキーを打つと壊れるため、入力手段としては採らない。
 
-確定単位の切り出しと重複除去は `mtgcommon.LiveTranscriber` をそのまま使っている
-(VAD モードはバッファを消さず直近 `--length` を読み直すのでチャンクが大きく重なる。
-その除去は `mtg` / `mtg-self` で実会議に揉まれた実装)。
+収音と確定単位の切り出しは `mtgcommon.LiveTranscriber` を `mtg` / `mtg-self` と共有している。
 
 ## なぜクリップボード + Cmd+V ではないのか
 
@@ -750,9 +690,8 @@ voice-in --stop             # 停止(押しっぱなしホットキーが離し�
 voice-in --status           # 状態を表示(daemon armed warm など)
 voice-in --quit-daemon      # 常駐を終了させる
 voice-in --no-insert        # アプリへ入れず画面に出すだけ(動作確認用)
-voice-in --list             # キャプチャデバイス一覧(ついでに番号をキャッシュする)
+voice-in --list             # キャプチャデバイス一覧
 voice-in --device UAB-80    # OBS を経由せず生マイクから拾う
-voice-in --language en      # 英語(発話の区切りに半角スペースが入る)
 ```
 
 **収音が始まった時点で音が鳴る**(`--no-sound` で無効)ので、鳴ってから喋る。
@@ -792,15 +731,9 @@ voice-in --language en      # 英語(発話の区切りに半角スペースが�
 - **ログに本文は残さない**。裏で動かしたときのログは文字数だけを記録する。
   喋った内容が平文でディスクに溜まるのを既定にしないため。追う必要があるときだけ
   `--log-text`。
-- **一息が `--length`(既定 10 秒)を超えると頭が落ちる**。VAD モードは区切りの時点から
-  遡って `--length` ぶんを読むため。長く喋りたいなら伸ばす。
-- **「ご視聴ありがとうございました」が入る**のは whisper の幻聴。無音や極小音量を
-  渡されると学習元の YouTube 字幕由来の定型文を返す。`whisper-cli` なら `-sns` と
-  silero VAD で抑えられるが、`whisper-stream` はどちらも持たず、内蔵 VAD が
-  エネルギー比較だけなのでモニタ経路のような低レベル入力では無音チャンクを投げてしまう。
-  読む側で落としている(`mtgcommon.HALLUCINATIONS`)。**発話まるごとが一致したときだけ**
-  落とすので、「ありがとうございました」のような普通の発言は残る。別の定型文が出たら
-  そのリストに足す。
+- **一息が 12 秒を超えるとそこで区切って送る**。長く喋っても落ちはしないが、
+  文の途中で区切れる。
+- **日本語専用**。モデル(ReazonSpeech)が日本語向けなので、英語を喋っても崩れる。
 
 ---
 
