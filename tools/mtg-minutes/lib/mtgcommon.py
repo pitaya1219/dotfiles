@@ -24,7 +24,7 @@ CONFIG_FILE = Path.home() / ".config/mtg-minutes/config.json"
 
 MODEL_DIR = Path.home() / ".cache/whisper-cpp/models"
 MODELS = {
-    "turbo":  MODEL_DIR / "ggml-large-v3-turbo.bin",
+    "turbo":  MODEL_DIR / "ggml-large-v3-turbo-q4_k.bin",
 }
 
 # バッチ文字起こし用の VAD モデル(silero)。whisper-cli --vad に渡す。

@@ -31,11 +31,19 @@ let
 
   # バッチ文字起こし(mtg-minutes)のモデルを nix で固定取得する。
   # スクリプトは config ではなく ~/.cache の各 ggml-*.bin を直接見る。
+  #
+  # turbo is quantized to q4_k at build time; upstream ships no q4_k. Going
+  # lower (q4_0, q3_k) garbled proper nouns on recorded meetings - README §1.
   whisperModels = {
-    "ggml-large-v3-turbo.bin" = pkgs.fetchurl {
-      url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin";
-      hash = "sha256-H8cPd0046xaZk6w5Huo1fvR8iHV+9y7llDh5t+jivGk=";
-    };
+    "ggml-large-v3-turbo-q4_k.bin" = pkgs.runCommand "ggml-large-v3-turbo-q4_k.bin" {
+      nativeBuildInputs = [ pkgs.whisper-cpp ];
+      src = pkgs.fetchurl {
+        url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin";
+        hash = "sha256-H8cPd0046xaZk6w5Huo1fvR8iHV+9y7llDh5t+jivGk=";
+      };
+    } ''
+      whisper-quantize $src $out q4_k
+    '';
     # whisper-cli --vad 用の silero VAD モデル(約0.9MB)。長い無音を含む録音を
     # そのまま渡すと whisper が幻聴を返すため、発話区間だけを切り出すのに使う。
     "ggml-silero-v5.1.2.bin" = pkgs.fetchurl {

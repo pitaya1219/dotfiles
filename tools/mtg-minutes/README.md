@@ -59,10 +59,28 @@ OBS の2トラック録音(§2)を録音元にすることもできるが、`mtg
 
 | モデル | 置き場所 | 用途 |
 |--------|----------|------|
-| **whisper large-v3-turbo** (約1.6GB) | `~/.cache/whisper-cpp/models/` | `mtg-minutes` の文字起こし |
+| **whisper large-v3-turbo q4_k** (約450MB) | `~/.cache/whisper-cpp/models/` | `mtg-minutes` の文字起こし |
 | **silero VAD** (ggml, 約0.9MB) | 同上 | `mtg-minutes` が発話区間の切り出しに使う(下記) |
 | **ReazonSpeech** (k2 Zipformer int8, 約73MB) | `~/.cache/mtg-minutes/models/reazonspeech/` | ライブ字幕(`mtg` / `mtg-live` / `mtg-self` / `voice-in`) |
 | **silero VAD** (onnx) | `~/.cache/mtg-minutes/models/` | ライブ字幕の発話区切り |
+
+### 録音の文字起こしを q4_k にしている理由
+
+配布されている fp16 の turbo を nix のビルド時に `whisper-quantize` で q4_k に落としている
+(q4_k は配布が無いため)。会議1件(28分×2トラック、M3)での実測:
+
+| 量子化 | ピークメモリ | fp16 との文字差 自分 / 相手 | 読んだ印象 |
+|---|---|---|---|
+| fp16 | 2.0 GB | - | 基準 |
+| q8_0 | 1.3 GB | 3.1% / 4.9% | fp16 と同等(この差が揺らぎの下限) |
+| q5_k | 1.0 GB | 2.6% / 7.6% | 同等 |
+| **q4_k** | **0.9 GB** | 4.0% / 7.7% | 同等 |
+| q4_0 | 0.9 GB | 8.8% / 9.0% | 固有名詞を崩す(「TGリップハブ」) |
+| q3_k | 0.8 GB | 17% / 23% | 誤変換が目に見えて増える |
+| q2_k | 0.7 GB | 99% | 壊れる |
+
+処理時間はどれも fp16 と同程度(28分で 1〜2 分)。ピークのうち約 450MB は重み以外
+(計算バッファ・Metal)なので、q4_k より下げても縮み方は小さい。
 
 ### 録音からの文字起こしで VAD と正規化を使う理由
 
