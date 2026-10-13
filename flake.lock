@@ -68,11 +68,11 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1791854738,
-        "narHash": "sha256-hGBBskOq1YwMgr2aC3eLuscQSTnLCZ9Ll7J45Z8xUT8=",
+        "lastModified": 1791919474,
+        "narHash": "sha256-zTn+nM2JTXwlqZ4TxwYnkuvRAAbUpPYu7dSP+WzSRbg=",
         "owner": "herdrdev",
         "repo": "herdr",
-        "rev": "241b99cd397bb642eaabcfee1647bcecffb26be1",
+        "rev": "87e5c13c6028df72405f63388dde585212ad3019",
         "type": "github"
       },
       "original": {
@@ -96,11 +96,11 @@
         "uv2nix": "uv2nix"
       },
       "locked": {
-        "lastModified": 1791893429,
-        "narHash": "sha256-xK+MLEFp49mb1GXFdun2DNirKhf8ixpIZ2/H8y7NEKg=",
+        "lastModified": 1791929223,
+        "narHash": "sha256-DwhYZdJd/owksuEY/ko1eu1TvQO7HlzlsdGfyF1/r0I=",
         "owner": "NousResearch",
         "repo": "hermes-agent",
-        "rev": "c70332f88886932337619a1e57029bd885c28b9d",
+        "rev": "e06df9c2eae6901f4c88f464e0ae6e753c0428b8",
         "type": "github"
       },
       "original": {
@@ -181,11 +181,11 @@
         "uv2nix": "uv2nix_3"
       },
       "locked": {
-        "lastModified": 1791860505,
-        "narHash": "sha256-SmQj6Fjv1x4+ZnplUkDJY+DrZIpO102rHadBHvtRhWI=",
+        "lastModified": 1791929270,
+        "narHash": "sha256-r0Nhy6DaGPMMlSPojwoThSbzkPYFC6a+lNSLwvFXf5E=",
         "ref": "main",
-        "rev": "e50858bbf9f938534dd5824b4b2593a8cb280710",
-        "revCount": 41,
+        "rev": "91a77136c1169e49d8ed7f0e2cd10d059210924c",
+        "revCount": 42,
         "type": "git",
         "url": "https://git.pitaya.f5.si/pitaya1219/mistral-vibe-nix.git"
       },
