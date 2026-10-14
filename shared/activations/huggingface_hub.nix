@@ -3,7 +3,7 @@
 {
   home.activation.installHuggingFaceHub = lib.hm.dag.entryAfter ["writeBoundary"] ''
     export PATH="$HOME/.local/bin:$PATH"
-    if ! command -v huggingface-hub &> /dev/null; then
+    if ! command -v hf &> /dev/null; then
       echo "Installing huggingface_hub via pipx..."
       ${pkgs.pipx}/bin/pipx install -f huggingface_hub[cli]
     else
