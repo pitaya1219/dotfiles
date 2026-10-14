@@ -135,15 +135,17 @@
       },
       "locked": {
         "lastModified": 1791889576,
-        "narHash": "sha256-zPv3qCojblhKOyg1BbRkyx7+n0Mch1VdwUSZ1BcGfd8=",
+        "narHash": "sha256-BnwNU91GA4u7FJv02+uLJkE5HWxJCs20s8vWSr5UI0o=",
         "ref": "main",
         "rev": "b6d2ab951bbfb03fc4908249aa672930a383a93a",
         "revCount": 846,
+        "submodules": true,
         "type": "git",
         "url": "https://git.pitaya.f5.si/pitaya1219/homelab.git"
       },
       "original": {
         "ref": "main",
+        "submodules": true,
         "type": "git",
         "url": "https://git.pitaya.f5.si/pitaya1219/homelab.git"
       }

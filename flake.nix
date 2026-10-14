@@ -19,7 +19,7 @@
       url = "git+https://git.pitaya.f5.si/pitaya1219/mistral-vibe-nix.git?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    homelab.url = "git+https://git.pitaya.f5.si/pitaya1219/homelab.git?ref=main";
+    homelab.url = "git+https://git.pitaya.f5.si/pitaya1219/homelab.git?ref=main&submodules=1";
     logseq-view = {
       url = "git+https://git.pitaya.f5.si/pitaya1219/logseq-view.git?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
