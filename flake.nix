@@ -75,11 +75,6 @@
         # neovim is built against). Apply after mistral-vibe in the overlay list.
         fix-neovim-lua-passthru = final: prev: {
           neovim-unwrapped = prev.neovim-unwrapped // { lua = final.luajit; };
-          # wrapper.nix reads lua from whatever package is passed as neovim-unwrapped.
-          # When programs.neovim.package = pkgs.neovim (the wrapped package), home-manager
-          # calls wrapNeovimUnstable pkgs.neovim {...} and wrapper.nix does neovim-unwrapped.lua.
-          # pkgs.neovim doesn't expose lua in passthru, so we add it here.
-          neovim = prev.neovim // { lua = final.luajit; };
         };
 
       };
