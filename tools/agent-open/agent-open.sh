@@ -595,7 +595,31 @@ open_new() {
   fi
 
   [ -n "$cwd" ] && [ -d "$cwd" ] || cwd="$PWD"
+  cwd=$(pick_new_cwd "$cwd") || exit 0
   open_in_herdr "$cwd" "$(tab_label_for "$cwd")" "$agent" "$workspace"
+}
+
+# ~/agent-sessions itself is where agents are meant to start: its
+# SessionStart hook hands each one an isolated session directory. Anywhere
+# else is either a project checkout the agent would edit in place or another
+# session's directory, whose boundary hook would then deny the new agent its
+# own cwd, so ask instead of following the pane silently. Hosts without the
+# workspace, and runs with no terminal for fzf, keep the pane's directory.
+pick_new_cwd() {
+  local cwd="$1" sessions="$HOME/agent-sessions" choice
+  if [ "${cwd%/}" = "$sessions" ]; then
+    printf '%s' "$cwd"
+    return 0
+  fi
+  if [ ! -d "$sessions" ] || [ ! -t 0 ]; then
+    printf '%s' "$cwd"
+    return 0
+  fi
+  choice=$(printf '%s\t%s\n' "$sessions" "agent-sessions  $sessions" "$cwd" "here            $cwd" |
+    fzf --prompt='cwd > ' --header='not in agent-sessions — start where?' --no-info \
+      --delimiter="$TAB" --with-nth=2) || return 1
+  [ -n "$choice" ] || return 1
+  printf '%s' "${choice%%"$TAB"*}"
 }
 
 # The workspace of the pane the picker was opened from, so a local resume lands
