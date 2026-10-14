@@ -4,7 +4,7 @@
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
     pkgs = import nixpkgs {
       system = "x86_64-linux";
-      overlays = [ overlays.neovim-nightly overlays.mistral-vibe overlays.logseq-view overlays.nix-claude-code overlays.herdr ];
+      overlays = [ overlays.typescript-language-server-pnpm-hash overlays.neovim-nightly overlays.mistral-vibe overlays.logseq-view overlays.nix-claude-code overlays.herdr ];
     };
     modules = [
       ({ config, pkgs, lib, ... }: {

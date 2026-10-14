@@ -20,6 +20,7 @@ let
   };
 
   darwinOverlays = [
+    overlays.typescript-language-server-pnpm-hash
     overlays.neovim-nightly
     overlays.mistral-vibe
     overlays.fix-neovim-lua-passthru
