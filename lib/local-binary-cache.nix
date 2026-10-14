@@ -37,10 +37,14 @@ let
   # written is either misconfigured -- which the check below catches at switch
   # time, where it belongs -- or out of disk, and breaking every build until
   # someone frees space turns a caching problem into an outage.
+  #
+  # The hook blocks the build that triggered it, and the file store's default
+  # xz kept a large output like neovim compressing at full CPU long after it
+  # had been built.
   pushHook = pkgs.writeShellScript "push-to-local-binary-cache" ''
     set -u
     export IFS=' '
-    ${nix} copy --to "file://${cacheDir}" $OUT_PATHS \
+    ${nix} copy --to "file://${cacheDir}?compression=zstd" $OUT_PATHS \
       || echo "warning: could not push to ${cacheDir}; build kept, cache stale" >&2
   '';
 
