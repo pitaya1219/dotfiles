@@ -1,0 +1,17 @@
+version: '3'
+
+tasks:
+  connect-my-lecture-vm:
+    desc: "Connect to my personal lecture VM via SSM"
+    silent: true
+    ignore_error: true
+    vars:
+      PROFILE:
+        sh: 'passage show dd-aws/profile'
+      INSTANCE_ID:
+        sh: 'passage show dd-aws/my-lecture-vm/instance-id'
+    cmds:
+      - |
+        aws ssm start-session \
+         --target "{{.INSTANCE_ID}}" \
+         --profile "{{.PROFILE}}"
