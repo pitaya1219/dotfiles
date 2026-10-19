@@ -7,7 +7,7 @@ format = """$nix_shell$container\n\
 $git_branch $git_commit $git_state $git_status $git_metrics\n\
 $shlvl $cmd_duration $status\
 $fill$fill$fill$fill$fill$fill$fill$fill$fill$fill\
-$memory_usage$fill\n\
+$memory_usage$time$fill\n\
 $directory
 $username[@](dimmed white)$hostname $localip\n\
 $character
@@ -95,7 +95,7 @@ disabled = false
 [time]
 disabled = false
 format = "[ $time]($style)"
-time_format = "%R"
+time_format = "%T%.3f"
 utc_time_offset = "local"
 style = "italic dimmed white"
 
