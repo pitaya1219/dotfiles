@@ -27,6 +27,7 @@ let
     overlays.logseq-view
     overlays.nix-claude-code
     overlays.herdr
+    overlays.fix-passage-platform-path
   ];
 
   # Shared home-manager modules used by both mkHomeConfiguration and mkDarwinConfiguration

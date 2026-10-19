@@ -77,6 +77,21 @@
           neovim-unwrapped = prev.neovim-unwrapped // { lua = final.luajit; };
         };
 
+        # nixpkgs a0bcb472f0 moved the install dir from lib/passage to
+        # lib/password-store but left the sourced platform.sh path alone, so on
+        # darwin passage sources a nonexistent file and loses its macOS clip()
+        # and getopt. Drop once nixpkgs rewrites that source line itself; the
+        # --replace-fail breaks the build when it does.
+        fix-passage-platform-path = final: prev: {
+          passage = prev.passage.overrideAttrs (old: {
+            postPatch = (old.postPatch or "") + ''
+              substituteInPlace Makefile \
+                --replace-fail 'source "$(LIBDIR)/passage/platform.sh"' \
+                               'source "$(LIBDIR)/password-store/platform.sh"'
+            '';
+          });
+        };
+
       };
       
       # hermes-agent ships its own home-manager module, and its default package
