@@ -29,6 +29,10 @@ vars:
   # so overriding HOME alone leaves a sandbox talking to the live herdr session
   # and resolving the live profiles.
   #
+  # __HM_SESS_VARS_SOURCED makes hm-session-vars.sh return early, so an
+  # inherited one leaves the sandbox shell with the live session variables,
+  # such as STARSHIP_CONFIG pointing at the real home's starship.toml.
+  #
   # PASSAGE_DIR and PASSAGE_IDENTITIES_FILE go the other way: passage
   # (lib/passage-secrets.nix) resolves both relative to $HOME by default, and
   # a throwaway sandbox home never has a store or identity under it, so any
@@ -40,7 +44,7 @@ vars:
   # symlinks $HOME/dotfiles back to the checkout under test rather than
   # leaving it absent.
   SANDBOX_ENV: >-
-    env -u HERDR_SOCKET_PATH -u HERDR_ENV -u NIX_PROFILES
+    env -u HERDR_SOCKET_PATH -u HERDR_ENV -u NIX_PROFILES -u __HM_SESS_VARS_SOURCED
     PASSAGE_DIR="${PASSAGE_DIR:-$HOME/.passage/store}"
     PASSAGE_IDENTITIES_FILE="${PASSAGE_IDENTITIES_FILE:-$HOME/.passage/identities}"
 
