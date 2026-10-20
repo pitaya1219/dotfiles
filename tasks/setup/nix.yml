@@ -79,7 +79,18 @@ tasks:
             # there, and home-manager refuses to clobber a file it does not
             # own. This renames it to nix.conf.backup instead of stopping the
             # switch. It is a no-op once nothing is in the way.
-            nix run home-manager/master -- switch -b backup --flake .#"${profile}"
+            #
+            # droid: the Android Linux Terminal VM is killed when every core
+            # stays busy for long, which a cold build of herdr or
+            # mistral-vibe does. Two cores at low priority keep it alive; the
+            # build only gets slower. NIX_CONFIG also caps cargo's -j via
+            # NIX_BUILD_CORES.
+            limit=()
+            if [[ "${profile}" == "droid" ]] && command -v taskset >/dev/null; then
+              limit=(taskset -c 0,1 nice -n 10)
+              export NIX_CONFIG="${NIX_CONFIG:+${NIX_CONFIG}$'\n'}max-jobs = 1"$'\n'"cores = 2"
+            fi
+            "${limit[@]}" nix run home-manager/master -- switch -b backup --flake .#"${profile}"
           fi
         fi
 
