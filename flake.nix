@@ -54,8 +54,16 @@
           logseq-view = logseq-view.packages.${final.stdenv.hostPlatform.system}.logseq-view;
         };
 
+        # binutils 2.46's ld.bfd rejects the libghostty_vt archive zig builds
+        # ("refers to overlapping FDEs"); lld links it fine. Drop once ld.bfd
+        # accepts it.
         herdr = final: prev: {
-          herdr = herdr.packages.${final.stdenv.hostPlatform.system}.default;
+          herdr = herdr.packages.${final.stdenv.hostPlatform.system}.default.overrideAttrs (old: {
+            nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ final.lld ];
+            env = (old.env or { }) // {
+              RUSTFLAGS = "-C link-arg=-fuse-ld=lld";
+            };
+          });
         };
 
         # nixpkgs pins a pnpmDeps hash for typescript-language-server that no
