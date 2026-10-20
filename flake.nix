@@ -66,6 +66,26 @@
           });
         };
 
+        # cache.nixos.org has no aarch64-linux duckdb for this nixpkgs, and the
+        # C++ build takes the Android Linux Terminal VM down. Drop once Hydra
+        # serves it. The hash is pinned to nixpkgs' duckdb version, so a bump
+        # there fails here until the hash is refreshed.
+        duckdb-prebuilt = final: prev: {
+          duckdb = final.stdenv.mkDerivation rec {
+            pname = "duckdb";
+            inherit (prev.duckdb) version;
+            src = final.fetchurl {
+              url = "https://github.com/duckdb/duckdb/releases/download/v${version}/duckdb_cli-linux-arm64.zip";
+              hash = "sha256-AhYxlwJ6QhSRRzZNMfpnysghCFF6S+QzBKHMIm6u8Ho=";
+            };
+            nativeBuildInputs = [ final.unzip final.autoPatchelfHook ];
+            buildInputs = [ final.stdenv.cc.cc.lib ];
+            sourceRoot = ".";
+            installPhase = "install -Dm755 duckdb $out/bin/duckdb";
+            meta.mainProgram = "duckdb";
+          };
+        };
+
         # nixpkgs pins a pnpmDeps hash for typescript-language-server that no
         # longer matches what fetchPnpmDeps produces, so the fixed-output build
         # fails. Drop once the hash in pkgs/by-name/ty/typescript-language-server
