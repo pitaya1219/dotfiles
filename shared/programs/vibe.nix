@@ -6,7 +6,7 @@ let
   # Remote HTTP MCP servers from the shared dotfiles.httpMcpServers option.
   # Entries listed for another client only (see `clients` there) are skipped.
   # `url` (e.g. Windmill's issued MCP URL, token and all) contains the
-  # `${WINDMILL_MCP_URL}`-style placeholder from mcp-servers.nix; it's
+  # `${WINDMILL_LOKI_MCP_URL}`-style placeholder from mcp-servers.nix; it's
   # resolved below via envsubst at activation time (see installVibeConfig) —
   # Vibe has no runtime env expansion for `url`, unlike Claude Code.
   generatedMcpServers = lib.mapAttrsToList (name: srv: {
@@ -60,8 +60,8 @@ in
 
   # Copy vibe config to home directory (writable copy with envsubst).
   # Static config.toml (theme, gitea stdio entry) plus generated http
-  # mcp_servers entries (e.g. windmill) are concatenated, then envsubst
-  # resolves the `${WINDMILL_MCP_URL}`-style placeholder in `url` fields,
+  # mcp_servers entries (e.g. loki) are concatenated, then envsubst
+  # resolves the `${WINDMILL_LOKI_MCP_URL}`-style placeholder in `url` fields,
   # since Vibe has no runtime env expansion there (unlike Claude Code).
   #
   # hooks.toml is installed the same way (plain writable copy, not a

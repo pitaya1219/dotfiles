@@ -31,6 +31,7 @@
   #   at a different time).
   config.dotfiles.httpMcpServers.windmill = {
     url = "\${WINDMILL_MCP_URL}";
+    clients = [ "claude" ];
   };
 
   # u/Ryu/logseq_query + logseq_write and u/Ryu/dufs_manage, each its own MCP
