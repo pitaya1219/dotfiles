@@ -68,11 +68,11 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1793216654,
-        "narHash": "sha256-LSuQhQdhHvvBwDYy2cdBxrpKXzC6uM6gsPU1wqZtHp8=",
+        "lastModified": 1793278609,
+        "narHash": "sha256-0B58jR/v1vxbK7cwoq++SnOCsED0sHDkgqVMvsrjezE=",
         "owner": "herdrdev",
         "repo": "herdr",
-        "rev": "bc8c28988f75c538d4ca058b702f5adbea30566e",
+        "rev": "ee5bfb5041bb3e4a49d591c72308aae3c81ecdde",
         "type": "github"
       },
       "original": {
@@ -96,11 +96,11 @@
         "uv2nix": "uv2nix"
       },
       "locked": {
-        "lastModified": 1793242408,
-        "narHash": "sha256-iFTzgstNO4fI7zAPaYdTTc/y55sms2r37tTIhrAjsC4=",
+        "lastModified": 1793305799,
+        "narHash": "sha256-kQw9pjvLfQn9zi/TOCBV+WrM26mQIEeLdmzxMzAgkz4=",
         "owner": "NousResearch",
         "repo": "hermes-agent",
-        "rev": "01dfee9a413545b79cef55f77fd1a3a22aeac3c7",
+        "rev": "088f657ecf77674c7b8e2ededf4e3576d82e042c",
         "type": "github"
       },
       "original": {
@@ -134,11 +134,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1793193675,
-        "narHash": "sha256-rX5DEk+6LT+r37arJ7SGNycHCzvK6yiuDKv7SSB7G8U=",
+        "lastModified": 1793280460,
+        "narHash": "sha256-Ir3jtevdbLpumBffOedY0Rt/gnbsPHj6Yc4ETStOtCs=",
         "ref": "main",
-        "rev": "23104ea54ebc8e8cf71bac65375d3c9789ad021e",
-        "revCount": 956,
+        "rev": "ed5df070bddda60d6cb37525cdac737b06f842cd",
+        "revCount": 958,
         "submodules": true,
         "type": "git",
         "url": "https://git.pitaya.f5.si/pitaya1219/homelab.git"
@@ -183,11 +183,11 @@
         "uv2nix": "uv2nix_3"
       },
       "locked": {
-        "lastModified": 1793070245,
-        "narHash": "sha256-WsakMbY+l53YHK7HghJ2UuAhon9h9EtXVUGd98ksqz8=",
+        "lastModified": 1793312744,
+        "narHash": "sha256-Wc65u+rfIV/C9qaJPk97UZuahImDVh0iceEhUFjPRXE=",
         "ref": "main",
-        "rev": "caa722acec7c9740a717d7b673a697be2c8a970a",
-        "revCount": 43,
+        "rev": "03fc680693d4c78c1c20e242c84770a5356ccfce",
+        "revCount": 45,
         "type": "git",
         "url": "https://git.pitaya.f5.si/pitaya1219/mistral-vibe-nix.git"
       },
