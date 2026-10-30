@@ -38,9 +38,16 @@ let
     substitute ${../../tools/herdr-vibe-resume/herdr-plugin.toml} "$out/herdr-plugin.toml" \
       --subst-var-by python3 ${pkgs.python3}/bin/python3
   '';
+
+  # The theme picker saves by editing config.toml in place, which a read-only
+  # store symlink refuses. Merged in instead of linked, so whatever herdr
+  # writes back survives a rebuild; see lib/merged-config.nix.
+  mergedConfig = import ../../lib/merged-config.nix { inherit config lib pkgs; };
 in
 {
   home.packages = [ direnvShell tabName ];
+
+  xdg.configFile."herdr/config.toml".enable = lib.mkForce false;
 
   programs.herdr = {
     enable = true;
@@ -49,9 +56,6 @@ in
     # terminal-session-stream API (2026-06-30+).
     package = pkgs.herdr;
     settings = {
-      # Onboarding asks for the theme and notification choices this file
-      # already makes, and it cannot persist an answer: config.toml is a
-      # read-only symlink into the Nix store.
       onboarding = false;
 
       # Must live under [terminal]: a top-level default_shell is silently
@@ -226,4 +230,10 @@ in
     herdr plugin link ${vibeResumePlugin} >/dev/null ||
       echo "herdr vibe-resume plugin link failed, continuing"
   '';
+
+  home.activation.installHerdrConfig = mergedConfig.activation {
+    format = "toml";
+    target = "${config.xdg.configHome}/herdr/config.toml";
+    generated = config.xdg.configFile."herdr/config.toml".source;
+  };
 }
