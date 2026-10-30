@@ -86,6 +86,15 @@
           };
         };
 
+        # The quic package's datagram test hangs until go test's 10m timeout
+        # inside the nix build sandbox on the Android Linux Terminal VM, which
+        # fails the whole build. Drop once the test passes there.
+        cloudflared-skip-tests = final: prev: {
+          cloudflared = prev.cloudflared.overrideAttrs (_: {
+            doCheck = false;
+          });
+        };
+
         # nixpkgs pins a pnpmDeps hash for typescript-language-server that no
         # longer matches what fetchPnpmDeps produces, so the fixed-output build
         # fails. Drop once the hash in pkgs/by-name/ty/typescript-language-server
