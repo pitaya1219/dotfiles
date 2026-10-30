@@ -1,10 +1,13 @@
-# Usage: config-merge <toml|json|yaml> <generated> <target> <state>
+# Usage: config-merge <toml|json|yaml> <generated> <target> [<state>]
 #
 # Three-way merge of a Nix-generated config into a file the application also
 # writes to. <state> holds the previous generation: keys it has that the new
 # one lacks were dropped from Nix and are removed from <target>; keys in the
 # new generation overwrite; every other key was added by the application and
 # is left alone. Arrays and scalars are leaves, so an array is replaced whole.
+#
+# Without <state> it is a two-way merge: nothing is ever removed, so a key
+# dropped from Nix stays in <target> until it is deleted by hand.
 #
 # The first run has no <state>, so nothing can be recognised as dropped yet.
 # <target> is rewritten from scratch each time: comments and key order do not
@@ -13,11 +16,11 @@
 format=$1
 generated=$2
 target=$3
-state=$4
+state=${4:-}
 
 new=$(yq -p "$format" -o json . "$generated")
 old='{}'
-[ -f "$state" ] && old=$(yq -p "$format" -o json . "$state")
+[ -n "$state" ] && [ -f "$state" ] && old=$(yq -p "$format" -o json . "$state")
 cur='{}'
 if [ -f "$target" ] && [ ! -L "$target" ]; then
   cur=$(yq -p "$format" -o json . "$target")
@@ -33,11 +36,14 @@ merged=$(jq -n \
   | [$old | leaves | select(. as $p | $kept | index([$p]) | not)] as $gone
   | ($cur | delpaths($gone)) * $new')
 
-mkdir -p "$(dirname "$target")" "$(dirname "$state")"
+mkdir -p "$(dirname "$target")"
 tmp=$(mktemp "$target.XXXXXX")
 printf '%s\n' "$merged" | yq -p json -o "$format" . > "$tmp"
 chmod 644 "$tmp"
 rm -f "$target"
 mv "$tmp" "$target"
-rm -f "$state"
-cp --no-preserve=mode "$generated" "$state"
+if [ -n "$state" ]; then
+  mkdir -p "$(dirname "$state")"
+  rm -f "$state"
+  cp --no-preserve=mode "$generated" "$state"
+fi

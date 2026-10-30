@@ -21,6 +21,7 @@
   };
 
   config = let
+    mergedConfig = import ../../lib/merged-config.nix { inherit config lib pkgs; };
     nixClaudeJson = pkgs.writeText "claude-json-nix" (builtins.toJSON config.dotfiles.claudeJson);
   in {
     # bubblewrap is Claude Code's OS-level sandbox backend on Linux
@@ -83,6 +84,16 @@
     home.file.".claude/hooks" = {
       source = ./claude-code/hooks;
       recursive = true;
+    };
+
+    # Merged in rather than linked: Claude Code writes back into settings.json
+    # (`/config`, "always allow"), which a store symlink refuses.
+    home.file.".claude/settings.json".enable = lib.mkForce false;
+    home.activation.claudeSettings = mergedConfig.activation {
+      format = "json";
+      target = "${config.home.homeDirectory}/.claude/settings.json";
+      generated = config.home.file.".claude/settings.json".source;
+      threeWay = false;
     };
 
     home.file.".claude/settings.json".text = builtins.toJSON {
@@ -192,17 +203,13 @@
     # Symlink to the Nix store — inspect this file to see what Nix contributes.
     home.file.".claude.json.nix".source = nixClaudeJson;
 
-    # Deep-merge Nix config into ~/.claude.json on every home-manager switch.
-    # References the Nix store path directly so it is available before home.file links are created.
-    home.activation.claudeJson = lib.hm.dag.entryAfter ["writeBoundary"] ''
-      claude_json="$HOME/.claude.json"
-      tmp=$(mktemp)
-      if [ -f "$claude_json" ]; then
-        ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "$claude_json" "${nixClaudeJson}" > "$tmp"
-      else
-        cp "${nixClaudeJson}" "$tmp"
-      fi
-      mv "$tmp" "$claude_json"
-    '';
+    # Merged into ~/.claude.json on every home-manager switch. References the
+    # Nix store path directly so it is available before home.file links are created.
+    home.activation.claudeJson = mergedConfig.activation {
+      format = "json";
+      target = "${config.home.homeDirectory}/.claude.json";
+      generated = nixClaudeJson;
+      threeWay = false;
+    };
   };
 }

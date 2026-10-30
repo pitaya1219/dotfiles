@@ -1,5 +1,8 @@
 { config, pkgs, lib, ... }:
 
+let
+  mergedConfig = import ../../lib/merged-config.nix { inherit config lib pkgs; };
+in
 {
   imports = [ ./agent.nix ];  # Agent directories are managed in agent.nix
 
@@ -9,6 +12,16 @@
   # Global config (`opencode debug paths` reports ~/.config/opencode as the
   # config dir). instructions takes a list, so the shared conventions are
   # referenced by path and further instruction files can just be appended.
+  #
+  # Merged in rather than linked so what opencode writes back survives.
+  home.file.".config/opencode/opencode.json".enable = lib.mkForce false;
+  home.activation.opencodeConfig = mergedConfig.activation {
+    format = "json";
+    target = "${config.xdg.configHome}/opencode/opencode.json";
+    generated = config.home.file.".config/opencode/opencode.json".source;
+    threeWay = false;
+  };
+
   home.file.".config/opencode/opencode.json".text = builtins.toJSON {
     "$schema" = "https://opencode.ai/config.json";
     instructions = [ "${config.home.homeDirectory}/.agent/conventions.md" ];

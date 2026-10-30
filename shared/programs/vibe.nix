@@ -18,6 +18,7 @@ let
   generatedMcpConfig = tomlFormat.generate "vibe-mcp-servers.toml" {
     mcp_servers = generatedMcpServers;
   };
+  mergedConfig = import ../../lib/merged-config.nix { inherit config lib pkgs; };
 in
 {
   imports = [ ./agent.nix ./mcp-servers.nix ];  # Agent directories are managed in agent.nix
@@ -58,22 +59,25 @@ in
     executable = true;
   };
 
-  # Copy vibe config to home directory (writable copy with envsubst).
   # Static config.toml (theme, gitea stdio entry) plus generated http
   # mcp_servers entries (e.g. loki) are concatenated, then envsubst
   # resolves the `${WINDMILL_LOKI_MCP_URL}`-style placeholder in `url` fields,
   # since Vibe has no runtime env expansion there (unlike Claude Code).
   #
-  # hooks.toml is installed the same way (plain writable copy, not a
-  # home.file symlink) because Vibe itself writes back into ~/.vibe/*.toml
-  # (e.g. on `/model` switches) — a Nix-store symlink there makes those
-  # writes fail. Re-running `home-manager switch` still overwrites it with
-  # the repo's current contents, same as config.toml.
+  # Both files are merged in rather than linked: Vibe itself writes back into
+  # ~/.vibe/*.toml (e.g. on `/model` switches), which a Nix-store symlink
+  # refuses, and a plain overwrite would drop what it wrote.
   home.activation.installVibeConfig = lib.hm.dag.entryAfter ["writeBoundary"] ''
-    mkdir -p "$HOME/.vibe"
-    cat "${./vibe/config.toml}" "${generatedMcpConfig}" | envsubst > "$HOME/.vibe/config.toml"
-    chmod 644 "$HOME/.vibe/config.toml"
-    cp "${./vibe/hooks.toml}" "$HOME/.vibe/hooks.toml"
-    chmod 644 "$HOME/.vibe/hooks.toml"
+    generated="$(mktemp)"
+    cat "${./vibe/config.toml}" "${generatedMcpConfig}" | envsubst > "$generated"
+    run ${mergedConfig.merge}/bin/config-merge toml "$generated" "$HOME/.vibe/config.toml"
+    rm -f "$generated"
   '';
+
+  home.activation.installVibeHooks = mergedConfig.activation {
+    format = "toml";
+    target = "${config.home.homeDirectory}/.vibe/hooks.toml";
+    generated = "${./vibe/hooks.toml}";
+    threeWay = false;
+  };
 }
