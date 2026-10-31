@@ -211,6 +211,14 @@
           };
         };
 
+        services.dtrack-scan = {
+          main = {
+            enable = true;
+            homelabRoot = "/home/rose/homelab";
+            onCalendar = "Fri *-*-* 05:30:00";
+          };
+        };
+
         home = {
           username = "rose";
           homeDirectory = "/home/rose";

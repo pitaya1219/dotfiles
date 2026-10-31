@@ -148,6 +148,7 @@
           homelab.homeManagerModules.dufs-backup
           homelab.homeManagerModules.grist-backup
           homelab.homeManagerModules.windmill-backup
+          homelab.homeManagerModules.dtrack-scan
         ];
         r-shibuya = hermesModules;
         droid = hermesModules;
