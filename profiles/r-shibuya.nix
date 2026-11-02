@@ -64,6 +64,11 @@ let
       programs.mtg-minutes = {
         enable = true;
         logseqTokenCommand = "passage show logseq/http-api/claude-code/token";
+        settings = {
+          nextcloud_url_cmd = "passage show logseq-assets/nextcloud/host";
+          nextcloud_user_cmd = "passage show logseq-assets/nextcloud/ryu/id";
+          nextcloud_password_cmd = "passage show logseq-assets/nextcloud/ryu/password";
+        };
 
         # 右Command 単独押しで voice-in をトグルする Karabiner ルールを配置する
         # (置くだけでは効かない。Karabiner の GUI で一度だけ有効化する)。

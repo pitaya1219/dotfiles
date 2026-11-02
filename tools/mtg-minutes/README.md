@@ -150,7 +150,8 @@ mtg-minutes RECORDING.mkv --self-track 1 --other-track 0
 - `~/Documents/mtg-minutes/<日時>/transcript.txt` … 話者ラベル付き全文
 - `~/Documents/mtg-minutes/<日時>/minutes.md` … 議事録
 - Logseqページ「会議録 YYYY-MM-DD <title>」(議事録 + 録音プレーヤー + 文字起こし全文リンク)
-  - 録音は全トラックを1本にミックスして `m4a` に変換し、グラフの `assets/` に配置 → `![録音](../assets/...)` で再生可能
+  - 録音は全トラックを1本にミックスして `m4a` に変換し、Nextcloud の `logseq-assets/` に配置 → `[録音](<url>/f/<id>)` でリンク(`nextcloud_*_cmd` を設定した場合)
+  - 未設定またはアップロード失敗時はグラフの `assets/` に配置 → `![録音](../assets/...)` で再生可能
   - 既定で添付ON。`--no-attach-audio` または config の `attach_audio: false` でOFF
   - **文字起こし全文は `assets/transcript_<日時>.txt` に置き、ページからはリンク参照**(長文でページが重くならないように)。assetsが解決できない時のみページ内に埋め込み
   - 議事録本文は logseq-write 規約で変換(`## 見出し`=トップレベル / 箇条書きは個別の子ブロック / `- [ ]`→`TODO`)
@@ -194,7 +195,8 @@ programs.mtg-minutes = {
 書ける主なキー(未指定はスクリプト DEFAULTS が適用):
 `model` / `whisper_bin` / `language` / `self_label` / `other_label` /
 `logseq_url` / `logseq_page_prefix` / `output_dir` / `attach_audio` /
-`audio_bitrate` / `logseq_assets_dir`。
+`audio_bitrate` / `logseq_assets_dir` / `nextcloud_url_cmd` / `nextcloud_user_cmd` /
+`nextcloud_password_cmd`。
 
 ### Logseq トークン
 
@@ -203,6 +205,9 @@ programs.mtg-minutes = {
 **実行時に評価**してトークンを得る(passage 運用にそのまま乗る)。
 
 解決順: `logseq_token`(明示) → `logseq_token_cmd`(コマンド) → `configs.edn` 自動取得。
+
+Nextcloud の接続情報も同じく `nextcloud_url_cmd` / `nextcloud_user_cmd` / `nextcloud_password_cmd` に
+取得コマンドを書く。
 環境変数 `MTG_MODEL` / `MTG_LOGSEQ_TOKEN` 等でも一時上書き可。
 
 > 既に手書きの `~/.config/mtg-minutes/config.json` があると switch が衝突する。
