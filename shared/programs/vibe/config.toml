@@ -1,5 +1,9 @@
 textual_theme = "catppuccin-mocha"
 
+# Pin the session's default model to Mistral Large 4. Unset, Vibe falls back
+# to its built-in default (mistral-vibe-cli-latest / Mistral Medium 3.5).
+active_model = "mistral-large-4-0-3"
+
 # Start every session in smart-approve instead of the built-in accept-edits
 # default: a classifier clears routine tool calls while risky ones (see
 # sensitive_patterns below) still stop for a human.
@@ -153,6 +157,12 @@ cached_input_price = 0.119
 thinking = "max"
 auto_compact_threshold = 1000000
 supports_images = false
+
+# Catalog model pinned by active_model above; the alias-only entry restates
+# its thinking level so /model switches keep it.
+[[models]]
+thinking = "high"
+alias = "mistral-large-4-0-3"
 
 [[mcp_servers]]
 name = "gitea"
