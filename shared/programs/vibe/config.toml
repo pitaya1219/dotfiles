@@ -1,5 +1,10 @@
 textual_theme = "catppuccin-mocha"
 
+# Start every session in smart-approve instead of the built-in accept-edits
+# default: a classifier clears routine tool calls while risky ones (see
+# sensitive_patterns below) still stop for a human.
+default_agent = "smart-approve"
+
 # Enable experimental hooks for Matrix notifications
 enable_experimental_hooks = true
 
