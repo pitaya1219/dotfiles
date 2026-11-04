@@ -127,6 +127,7 @@ let
         ../shared/programs/bare.nix
         ../shared/programs/logseq-view.nix
         ./r-shibuya/logseq-sync.nix
+        ./r-shibuya/logseq-desktop.nix
         ./r-shibuya/llama.nix
         ../shared/programs/mtg-minutes.nix
         ../shared/programs/browse.nix
