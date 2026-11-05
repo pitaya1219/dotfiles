@@ -143,6 +143,7 @@
           homelab.homeManagerModules.nextcloud-backup
           homelab.homeManagerModules.budget-book-backup
           homelab.homeManagerModules.gitea-backup
+          homelab.homeManagerModules.logseq-sync-backup
           homelab.homeManagerModules.identity-backup
           homelab.homeManagerModules.tuwunel-backup
           homelab.homeManagerModules.dufs-backup

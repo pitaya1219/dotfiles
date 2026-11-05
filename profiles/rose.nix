@@ -138,6 +138,20 @@
           };
         };
 
+        services.logseq-sync-backup = {
+          main = {
+            enable = true;
+            homelabRoot = "/home/rose/homelab";
+            dumpDir = "/media/backup/logseq-sync";
+            keep = 5;
+            encrypted = true;
+            parentDir = "backup";
+            encryptSubdir = "logseq-sync";
+            onCalendar = "*-*-* 04:30:00";
+            onBootDelay = "5h 30min";
+          };
+        };
+
         services.identity-backup = {
           main = {
             enable = true;
