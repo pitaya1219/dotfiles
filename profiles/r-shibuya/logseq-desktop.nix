@@ -8,7 +8,7 @@
 # never replaces one; its desktop job prints the url and hash to put here.
 
 let
-  version = "2.0.2-s43bx2h4";
+  version = "2.0.2-b9yqa0nd";
 
   app = pkgs.stdenvNoCC.mkDerivation {
     pname = "logseq-db";
@@ -16,7 +16,7 @@ let
 
     src = pkgs.fetchurl {
       url = "https://git.pitaya.f5.si/api/packages/pitaya1219/generic/logseq-desktop/${version}/Logseq-DB-darwin-arm64.zip";
-      hash = "sha256-25APMVHGSJz/quLPApzNGiceCQUqaHAmlO3xT4xm6Bw=";
+      hash = "sha256-8H5oHxrGXfcgjFAodX10PumzPFxhs7Ee7TfxDrOSGZw=";
     };
 
     nativeBuildInputs = [ pkgs.unzip ];
