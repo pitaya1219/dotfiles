@@ -4,7 +4,7 @@
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
     pkgs = import nixpkgs {
       system = "x86_64-linux";
-      overlays = [ overlays.typescript-language-server-pnpm-hash overlays.neovim-nightly overlays.mistral-vibe overlays.logseq-view overlays.nix-claude-code overlays.herdr ];
+      overlays = [ overlays.typescript-language-server-pnpm-hash overlays.neovim-nightly overlays.mistral-vibe overlays.logseq-view overlays.logseq-cli overlays.nix-claude-code overlays.herdr ];
     };
     modules = [
       ({ config, pkgs, lib, ... }: {
@@ -14,12 +14,13 @@
           endpoint = "pitaya";
         };
 
-        dotfiles.agent.logseq = {
-          url = { command = "passage show logseq/http-api/host"; };
-          token = { command = "passage show logseq/http-api/claude-code/token"; };
+        programs.logseq-db = {
+          enable = true;
+          cliPackage = pkgs.logseq-cli;
         };
 
         imports = [
+          ../shared/programs/logseq-db.nix
           ../lib/passage-secrets.nix
           ../shared/activations/proton-pass.nix
           ((import ../lib/taskfile-overrides.nix { inherit lib pkgs; }).forProfile "aviateur")

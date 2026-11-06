@@ -20,6 +20,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     homelab.url = "git+https://git.pitaya.f5.si/pitaya1219/homelab.git?ref=main&submodules=1";
+    # The Logseq clients are a flake of their own inside homelab. Its CI builds
+    # the CLI for x86_64-linux and pushes it to the Attic cache; nothing
+    # follows our nixpkgs, so the store paths stay the ones CI built.
+    logseq-clients.url = "git+https://git.pitaya.f5.si/pitaya1219/homelab.git?ref=main&dir=apps/knowledge/logseq";
     logseq-view = {
       url = "git+https://git.pitaya.f5.si/pitaya1219/logseq-view.git?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -42,7 +46,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, home-manager, nix-darwin, neovim-nightly-overlay, mistral-vibe, homelab, logseq-view, nix-claude-code, herdr, hermes-agent }:
+  outputs = { self, nixpkgs, home-manager, nix-darwin, neovim-nightly-overlay, mistral-vibe, homelab, logseq-clients, logseq-view, nix-claude-code, herdr, hermes-agent }:
     let
       profileLib = import ./lib/profiles.nix { inherit (nixpkgs) lib; };
 
@@ -52,6 +56,9 @@
         nix-claude-code = nix-claude-code.overlays.default;
         logseq-view = final: prev: {
           logseq-view = logseq-view.packages.${final.stdenv.hostPlatform.system}.logseq-view;
+        };
+        logseq-cli = final: prev: {
+          logseq-cli = logseq-clients.packages.${final.stdenv.hostPlatform.system}.cli;
         };
 
         # binutils 2.46's ld.bfd rejects the libghostty_vt archive zig builds

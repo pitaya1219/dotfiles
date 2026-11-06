@@ -39,11 +39,6 @@ let
 
       dotfiles.claude-code.model = "opus";
 
-      dotfiles.agent.logseq = {
-        url = "http://localhost:12315";
-        token = { command = "passage show logseq/http-api/claude-code/token"; };
-      };
-
       # This is the only profile signed in to the work Asana and Gitea, so it is
       # the only one that takes the skills excluded by default in agent.nix.
       dotfiles.agent.skills.exclude = [];
@@ -63,7 +58,6 @@ let
 
       programs.mtg-minutes = {
         enable = true;
-        logseqTokenCommand = "passage show logseq/http-api/claude-code/token";
         settings = {
           nextcloud_url_cmd = "passage show logseq-assets/nextcloud/host";
           nextcloud_user_cmd = "passage show logseq-assets/nextcloud/ryu/id";

@@ -52,9 +52,25 @@ let
     syncUrl = "https://logseq-sync.pitaya.f5.si";
   };
   clientIdPassage = "homelab/zitadel/apps/logseq/client/id";
+
+  # The app's bundled CLI, which matches its db-worker-node's revision; one
+  # that does not stops the app's worker and takes the graph over.
+  cli = pkgs.writeShellScriptBin "logseq-cli" ''
+    contents="${app}/Applications/Logseq DB.app/Contents"
+    NODE_OPTIONS= ELECTRON_RUN_AS_NODE=1 exec "$contents/MacOS/Logseq" \
+      "$contents/Resources/app.asar/js/logseq-cli.js" "$@"
+  '';
 in
 {
-  home.packages = [ app ];
+  imports = [ ../../shared/programs/logseq-db.nix ];
+
+  home.packages = [ app cli ];
+
+  programs.logseq-db = {
+    enable = true;
+    desktop = true;
+    cliPackage = cli;
+  };
 
   # Read once at start-up: restart Logseq DB after a change.
   home.activation.logseqDbSelfHosting = lib.hm.dag.entryAfter [ "writeBoundary" ] ''

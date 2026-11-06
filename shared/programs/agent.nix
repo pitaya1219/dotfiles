@@ -52,7 +52,7 @@ in
   options.dotfiles.agent.logseq = lib.mkOption {
     type = lib.types.attrsOf lib.types.anything;
     default = {};
-    description = "Logseq HTTP API connection config written to ~/.agent/logseq.json. url and token each accept a string, { file } or { command }.";
+    description = "Logseq DB graph access written to ~/.agent/logseq.json; set through programs.logseq-db (shared/programs/logseq-db.nix), which documents its keys.";
   };
 
   options.dotfiles.agent.asana = lib.mkOption {

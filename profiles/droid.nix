@@ -80,11 +80,6 @@
           };
         };
 
-        dotfiles.agent.logseq = {
-          url = { command = "passage show logseq/http-api/host"; };
-          token = { command = "passage show logseq/http-api/claude-code/token"; };
-        };
-
         imports = [
           ../shared/programs/bare.nix
           ../shared/programs/logseq-view.nix

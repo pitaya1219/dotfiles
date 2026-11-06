@@ -4,7 +4,7 @@
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
     pkgs = import nixpkgs {
       system = "x86_64-linux";
-      overlays = [ overlays.typescript-language-server-pnpm-hash overlays.neovim-nightly overlays.mistral-vibe overlays.logseq-view overlays.nix-claude-code overlays.herdr ];
+      overlays = [ overlays.typescript-language-server-pnpm-hash overlays.neovim-nightly overlays.mistral-vibe overlays.logseq-view overlays.logseq-cli overlays.nix-claude-code overlays.herdr ];
     };
     modules = extraModules ++ [
       ({ config, pkgs, lib, ... }: {
@@ -14,9 +14,9 @@
           endpoint = "pitaya";
         };
 
-        dotfiles.agent.logseq = {
-          url = { command = "passage show logseq/http-api/host"; };
-          token = { command = "passage show logseq/http-api/claude-code/token"; };
+        programs.logseq-db = {
+          enable = true;
+          cliPackage = pkgs.logseq-cli;
         };
 
         # u/Ryu/loki_query as its own MCP connection, carrying a token scoped
@@ -24,13 +24,13 @@
         # permissions) to just that script's path -- distinct from the broad
         # `windmill` connection in shared/programs/mcp-servers.nix. rose-only,
         # unlike logseq/dufs (also in the personal workspace, but shared
-        # across profiles there since every profile already shares the same
-        # Logseq HTTP API credential via dotfiles.agent.logseq above).
+        # across profiles in shared/programs/mcp-servers.nix).
         dotfiles.httpMcpServers.loki = {
           url = "\${WINDMILL_LOKI_MCP_URL}";
         };
 
         imports = [
+          ../shared/programs/logseq-db.nix
           ../lib/passage-secrets.nix
           ../shared/activations/huggingface_hub.nix
           ../shared/activations/rootless-docker.nix

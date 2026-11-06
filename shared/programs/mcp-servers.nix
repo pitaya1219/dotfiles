@@ -37,8 +37,7 @@
   # u/Ryu/logseq_query + logseq_write and u/Ryu/dufs_manage, each its own MCP
   # connection carrying a token scoped to just that script's path -- shared
   # across every profile here (unlike loki, which is rose-only; see
-  # profiles/rose.nix) because every profile already shares the same Logseq
-  # HTTP API credential via dotfiles.agent.logseq. Claude-only: Vibe reaches
+  # profiles/rose.nix). Claude-only: Vibe reaches
   # Logseq and Dufs through connectors registered per project in .vibe/config.toml
   # instead, so generating an entry there would only duplicate them.
   config.dotfiles.httpMcpServers.logseq = {
