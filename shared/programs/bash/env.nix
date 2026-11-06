@@ -9,6 +9,7 @@
     # ~ doesn't expand inside double quotes — only $HOME does, even quoted.
     PATH = "$HOME/dotfiles/scripts:$HOME/.nix-profile/bin:$HOME/.local/bin:$PATH";
     PYTHONDONTWRITEBYTECODE = 1;
+    WINDMILL_MCP_URL = "$(passage show homelab/windmill/mcp/url)";
     WINDMILL_LOGSEQ_MCP_URL = "$(passage show homelab/windmill/mcp/logseq/url)";
     WINDMILL_DUFS_MCP_URL = "$(passage show homelab/windmill/mcp/dufs/url)";
 }
