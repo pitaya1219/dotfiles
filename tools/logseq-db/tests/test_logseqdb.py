@@ -29,6 +29,20 @@ class RefsTest(unittest.TestCase):
         self.assertIsNone(logseqdb.DATE.match("2026-07-01 to 2026-07-04"))
 
 
+class EscapeTest(unittest.TestCase):
+    def test_numbers_escaped(self):
+        self.assertEqual(logseqdb.escape_number_tags("PR #400 and (#12)"), "PR \\#400 and (\\#12)")
+
+    def test_left_alone(self):
+        for text in ["#homelab", "already \\#400", "`#400`", "```\n#400\n```",
+                     "https://x/pulls/400#issuecomment-1", "&#400;", "a#400"]:
+            self.assertEqual(logseqdb.escape_number_tags(text), text, text)
+
+    def test_tree(self):
+        tree = logseqdb.escape_tree([{"content": "#1", "children": [{"content": "#2"}]}])
+        self.assertEqual(tree[0]["children"][0]["content"], "\\#2")
+
+
 class BlocksTest(unittest.TestCase):
     def test_markdown_and_verbatim(self):
         blocks = [{"content": "**Overview**", "children": [

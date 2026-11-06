@@ -315,6 +315,8 @@ class Graph:
             return float(raw) if "." in raw else int(raw)
         if ptype == "checkbox":
             return raw.strip().lower() in ("true", "yes", "1")
+        if ptype == "default":
+            return escape_number_tags(raw)
         return raw
 
     def properties(self, props):
@@ -346,6 +348,23 @@ class Graph:
 # --blocks-file. Neither can a multi-line block. Such blocks are inserted as a
 # placeholder and their text set afterwards with --content, which takes any
 # text.
+# `#400` in text (a PR or issue number) reads as a tag once the block is
+# edited in the app and creates a page "400". `\#400` displays the same and
+# stays text. Code spans and fences are left as written.
+CODE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
+NUMBER_TAG = re.compile(r"(?<![\\\w&/#])#(\d+)")
+
+
+def escape_number_tags(text):
+    out, last = [], 0
+    for m in CODE.finditer(text):
+        out.append(NUMBER_TAG.sub(r"\\#\1", text[last:m.start()]))
+        out.append(m.group(0))
+        last = m.end()
+    out.append(NUMBER_TAG.sub(r"\\#\1", text[last:]))
+    return "".join(out)
+
+
 # A file graph's `TODO text` is plain text to a DB graph; a task is a block
 # with the #Task tag and a status.
 TASK_MARKER = re.compile(r"^(TODO|LATER|DOING|NOW|DONE|CANCELED|CANCELLED)\s+")
@@ -374,6 +393,12 @@ def blocks_markdown(blocks, token):
     return "\n".join(lines) + "\n", verbatim
 
 
+def escape_tree(blocks):
+    return [dict(node, content=escape_number_tags(node.get("content") or ""),
+                 children=escape_tree(node.get("children") or []))
+            for node in blocks]
+
+
 def preorder(blocks):
     for node in blocks:
         yield node
@@ -383,7 +408,7 @@ def preorder(blocks):
 def write(cfg, page, properties=None, blocks=None):
     """Upsert `page`, set its properties, append `blocks` (a tree of
     {content, children?, tags?, properties?}). Returns (page id, block count)."""
-    blocks = blocks or []
+    blocks = escape_tree(blocks or [])
     with session(cfg) as cli:
         graph = Graph(cli)
         page_id = graph.page(page)

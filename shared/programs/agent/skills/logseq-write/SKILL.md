@@ -57,6 +57,11 @@ combined string.
 | plain paragraph | leaf block under the current context |
 | blank line | ignored |
 | inline `**bold**`, `[[link]]`, `` `code` `` | passed through unchanged |
+| `#400` (a number after `#`, outside code) | `\#400` — still shows `#400`, but stays text instead of becoming a page "400" |
+
+Tags and properties are metadata, never content: give them with `--tag` or
+`--prop tags=…` / `--prop key=value`, and do not write `#tag` or `key:: value`
+into the content to tag or describe a block.
 
 ### Result
 
