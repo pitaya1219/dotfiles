@@ -13,7 +13,8 @@ includes:
   nix: ./tasks/nix.yml
   sync: ./tasks/sync.yml
   secrets: ./tasks/secrets.yml
- 
+  logseq: ./tasks/logseq.yml
+
 tasks:
   default:
     cmds:

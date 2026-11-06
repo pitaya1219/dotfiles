@@ -1,0 +1,18 @@
+version: '3'
+
+# Sets up a CLI-only machine for the Logseq DB graph (programs.logseq-db with
+# desktop = false). Run login first, then download; after that the agent tools
+# sync on every write. Not for a machine running the desktop app, which signs
+# in by itself.
+
+tasks:
+  login:
+    desc: "Sign the Logseq CLI in through Zitadel (w3m here, or paste the callback URL)"
+    interactive: true
+    cmds:
+      - logseq-db login {{.CLI_ARGS}}
+
+  download:
+    desc: "Fetch the Logseq DB graph from the sync server for the first time"
+    cmds:
+      - logseq-db download

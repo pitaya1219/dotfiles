@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Logseq DB graph access for the agent tools (logseq-write, mtg-minutes,
+daily-report). See lib/logseqdb.py for how writes are synced.
+
+  logseq-db status                 exit 0 when the graph is usable here
+  logseq-db write < spec.json      {"page", "properties"?, "blocks"?}
+  logseq-db query '<datascript>'   print the result as JSON
+  logseq-db pages --date D --tag T...
+  logseq-db login [--no-browser]   CLI-only machines: sign in
+  logseq-db download               CLI-only machines: fetch the graph
+"""
+import argparse
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+import logseqdb  # noqa: E402
+
+
+def main(argv):
+    p = argparse.ArgumentParser(prog="logseq-db")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("status")
+    sub.add_parser("write")
+    q = sub.add_parser("query")
+    q.add_argument("query")
+    pg = sub.add_parser("pages")
+    pg.add_argument("--date", required=True)
+    pg.add_argument("--tag", action="append", required=True)
+    lg = sub.add_parser("login")
+    lg.add_argument("--no-browser", action="store_true")
+    sub.add_parser("download")
+    args = p.parse_args(argv)
+
+    try:
+        cfg = logseqdb.load_config()
+    except logseqdb.LogseqError as e:
+        if args.cmd == "status":
+            return 1
+        print(e, file=sys.stderr)
+        return 1
+
+    try:
+        if args.cmd == "status":
+            return 0 if logseqdb.available(cfg) else 1
+        if args.cmd == "write":
+            spec = json.load(sys.stdin)
+            page_id, count = logseqdb.write(cfg, spec["page"], spec.get("properties"), spec.get("blocks"))
+            print(json.dumps({"page": spec["page"], "id": page_id, "blocks": count}, ensure_ascii=False))
+        elif args.cmd == "query":
+            print(json.dumps(logseqdb.query(cfg, args.query), ensure_ascii=False))
+        elif args.cmd == "pages":
+            print(json.dumps(logseqdb.find_pages(cfg, args.date, args.tag), ensure_ascii=False))
+        elif args.cmd == "login":
+            data = logseqdb.login(cfg, use_browser=not args.no_browser)
+            print(f"Signed in as {data.get('email') or data.get('sub') or '?'}")
+        elif args.cmd == "download":
+            logseqdb.download(cfg)
+            print(f"Downloaded {cfg.graph}")
+    except logseqdb.LogseqError as e:
+        print(e, file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
