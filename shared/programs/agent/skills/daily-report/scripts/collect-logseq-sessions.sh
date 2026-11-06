@@ -5,76 +5,27 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$DIR/lib.sh"
 
-CFG="$HOME/.agent/logseq.json"
-[ -f "$CFG" ] || exit 0
-
-resolve_val() {
-  local KEY="$1"
-  local TYPE; TYPE=$(jq -r "$KEY | type" "$CFG")
-  case "$TYPE" in
-    string) jq -r "$KEY" "$CFG" ;;
-    object)
-      local SUBKEY; SUBKEY=$(jq -r "$KEY | keys[0]" "$CFG")
-      case "$SUBKEY" in
-        file)    cat "$(jq -r "$KEY.file" "$CFG" | sed "s|~|$HOME|")" 2>/dev/null ;;
-        command) eval "$(jq -r "$KEY.command" "$CFG")" 2>/dev/null ;;
-      esac ;;
-  esac
-}
-
-URL=$(resolve_val '.url')
-TOK=$(resolve_val '.token')
-
-curl -sf --max-time 3 \
-  -H "Authorization: Bearer $TOK" \
-  -H "Content-Type: application/json" \
-  -d '{"method":"logseq.App.getUserConfigs","args":[]}' \
-  "$URL/api" > /dev/null 2>&1 || exit 0
+command -v logseq-db >/dev/null 2>&1 || exit 0
+logseq-db status || exit 0
 
 DATE=$(report_date) || exit 1
 
-# Pull every session page together with its properties in one datascript query.
-#
-# Deliberately NOT filtered on :block/created-at: that timestamp reflects when
-# the page entered the *local* graph database, so a re-index (or a fresh clone
-# on another device) rewrites it to the re-index time for every page at once.
-# A whole day of sessions then silently drops out of the report. The `date::`
-# property is written by session-save and stays put, so it is the only
-# trustworthy notion of "which day did this session happen" — and the only one
-# that still answers correctly for a past date.
-QUERY='[:find (pull ?p [:block/name :block/original-name :block/properties]) :where [?p :block/name ?name] [(clojure.string/starts-with? ?name "session/")] [?p :block/properties _]]'
-
-PAGES=$(curl -sf \
-  -H "Authorization: Bearer $TOK" \
-  -H "Content-Type: application/json" \
-  -d "$(jq -n --arg q "$QUERY" '{method: "logseq.DB.datascriptQuery", args: [$q]}')" \
-  "$URL/api" 2>/dev/null)
+# Matched on the `date` property, which session-save writes and which stays
+# put, rather than on when the page entered the local database: a fresh
+# download of the graph rewrites that for every page at once.
+PAGES=$(logseq-db pages --date "$DATE" --tag claude-code-session --tag vibe-session --tag unknown-session 2>/dev/null)
 
 [ -z "$PAGES" ] && exit 0
 
-# Property keys come back in their on-disk kebab-case form here (git-branch),
-# unlike logseq.Editor.getPage which camel-cases them (gitBranch).
-#
-# `date` may be an array ["2026-06-15"], a plain string, or a page ref
-# "[[2026-06-15]]"; stringifying the whole value covers all three.
-echo "$PAGES" | jq -r --arg day "$DATE" '
-  def one(v): if (v | type) == "array" then (v[0] // "") else (v // "") end;
-
-  [ .[][] | select((.properties.date | tostring) | contains($day)) ]
-  | sort_by(.name)
+echo "$PAGES" | jq -r '
+  sort_by(.title)
   | .[]
-  | (.["original-name"] // .name) as $name
-  | one(.properties.objective)    as $objective
-  | one(.properties.repository)   as $repo
-  | one(.properties["git-branch"]) as $branch
-  | one(.properties.pr)           as $pr
-  | one(.properties.status)       as $status
-  | one(.properties.model)        as $model
-  | "=== \($name) ===",
-    (if $objective != "" then "  Objective : \($objective)" else empty end),
-    (if $repo != "" then "  Repository: \($repo)\(if $branch != "" then " @ \($branch)" else "" end)" else empty end),
-    (if $pr != "" then "  PR        : \($pr)" else empty end),
-    (if $status != "" then "  Status    : \($status)" else empty end),
-    (if $model != "" then "  Model     : \($model)" else empty end),
+  | .properties as $p
+  | "=== \(.title) ===",
+    (if $p.objective then "  Objective : \($p.objective)" else empty end),
+    (if $p.repository then "  Repository: \($p.repository)\(if $p["git-branch"] then " @ \($p["git-branch"])" else "" end)" else empty end),
+    (if $p.pr then "  PR        : \($p.pr)" else empty end),
+    (if $p.status then "  Status    : \($p.status)" else empty end),
+    (if $p.model then "  Model     : \($p.model)" else empty end),
     ""
 ' 2>/dev/null

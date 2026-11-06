@@ -13,7 +13,7 @@ mtg-minutes — OBS録音から「話者ラベル付き文字起こし」と「�
     - ffmpeg (brew)
     - whisper-cli (brew install whisper-cpp)
     - claude CLI (議事録生成。--no-minutes でスキップ可)
-    - Logseq HTTP API (任意。--no-logseq でスキップ)
+    - logseq-db (任意。--no-logseq でスキップ)
 
 OBS の 2トラック録音(Track1=自分のマイク / Track2=相手のアプリ音声)を想定。
 トラックが1つしか無い場合は話者ラベルなしで処理する。
@@ -27,8 +27,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import urllib.request
-import urllib.error
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
@@ -48,16 +46,12 @@ DEFAULTS = {
     # 同じ会議なのに録音経由と --transcript 経由で話者名が変わってしまう。
     "self_label": SIDES["self"]["label"],
     "other_label": SIDES["other"]["label"],
-    "logseq_url": "http://127.0.0.1:12315/api",
-    "logseq_token": "",          # configs.edn の :server/tokens から取得しても良い
-    "logseq_token_cmd": "",      # トークン取得コマンド(例: passage show ...)。logseq_token 未設定時に実行
     "logseq_page_prefix": "会議録",
     "claude_bin": "claude",
     "output_dir": str(Path.home() / "Documents/mtg-minutes"),
     "attach_audio": True,            # 録音音声をLogseqに添付するか
     "audio_bitrate": "96k",          # 添付音声(m4a)のビットレート
-    "logseq_assets_dir": "",         # 空ならLogseq APIで現在のグラフから自動取得
-    # 3つとも設定すると録音音声を Nextcloud に置く。未設定か失敗時は assets に置く
+    # 3つとも設定すると録音音声と文字起こし全文を Nextcloud に置く
     "nextcloud_url_cmd": "",
     "nextcloud_user_cmd": "",
     "nextcloud_password_cmd": "",
@@ -71,16 +65,11 @@ def load_config():
             cfg.update(json.loads(CONFIG_FILE.read_text()))
         except Exception as e:
             warn(f"config.json の読み込みに失敗: {e}")
-    # 環境変数 (MTG_MODEL, MTG_LOGSEQ_TOKEN, ...) で上書き
+    # 環境変数 (MTG_MODEL, ...) で上書き
     for k in cfg:
         env = os.environ.get("MTG_" + k.upper())
         if env:
             cfg[k] = env
-    # Logseq トークン解決順: 明示設定(config/env) > 取得コマンド > configs.edn
-    if not cfg["logseq_token"] and cfg["logseq_token_cmd"]:
-        cfg["logseq_token"] = resolve_cmd("logseq_token_cmd", cfg["logseq_token_cmd"])
-    if not cfg["logseq_token"]:
-        cfg["logseq_token"] = read_logseq_token()
     return cfg
 
 
@@ -95,14 +84,6 @@ def resolve_cmd(key, cmd):
         warn(f"{key} が異常終了 (rc={res.returncode}): {res.stderr.strip()[:200]}")
         return ""
     return res.stdout.strip()
-
-
-def read_logseq_token():
-    edn = Path.home() / "Library/Application Support/Logseq/configs.edn"
-    if not edn.exists():
-        return ""
-    m = re.search(r':server/tokens\s*\[\{:value\s*"([^"]+)"', edn.read_text())
-    return m.group(1) if m else ""
 
 
 # ---------------------------------------------------------------------------
@@ -247,19 +228,6 @@ def generate_minutes(transcript, cfg):
 # ---------------------------------------------------------------------------
 # Logseq 書き込み
 # ---------------------------------------------------------------------------
-def get_assets_dir(cfg):
-    """Logseqの現在グラフから assets ディレクトリを解決(config優先)"""
-    if cfg["logseq_assets_dir"]:
-        return Path(cfg["logseq_assets_dir"]).expanduser()
-    try:
-        g = logseq_call(cfg, "logseq.App.getCurrentGraph", [])
-        if g and g.get("path"):
-            return Path(g["path"]) / "assets"
-    except Exception as e:
-        warn(f"グラフパス取得に失敗: {e}")
-    return None
-
-
 def make_audio_asset(src, n_tracks, dst, bitrate):
     """録音の全トラックを1本にミックスして m4a (AAC) に変換"""
     if n_tracks >= 2:
@@ -283,8 +251,8 @@ def nextcloud_credentials(cfg):
     return values if all(values) else None
 
 
-def attach_audio(cfg, src, n_tracks, name, assets):
-    """録音を m4a にして Nextcloud か assets に置き、ページに書く Markdown を返す"""
+def attach_audio(cfg, src, n_tracks, name):
+    """録音を m4a にして Nextcloud に置き、ページに書く Markdown を返す"""
     with tempfile.TemporaryDirectory() as tmp:
         m4a = Path(tmp) / name
         try:
@@ -292,31 +260,20 @@ def attach_audio(cfg, src, n_tracks, name, assets):
         except subprocess.CalledProcessError as e:
             warn(f"音声変換に失敗、添付をスキップ: {e}")
             return None
-        credentials = nextcloud_credentials(cfg)
-        if credentials:
-            try:
-                return f"[録音]({nextcloud.upload(m4a, name, *credentials)})"
-            except nextcloud.UploadError as e:
-                warn(f"Nextcloud へのアップロードに失敗、assets に置きます: {e}")
-        if assets is None:
-            warn("音声の置き場所が無いため添付をスキップ")
-            return None
-        shutil.move(m4a, assets / name)
-        return f"![録音](../assets/{name})"
+        return upload_to_nextcloud(cfg, m4a, name, "録音")
 
 
-def logseq_call(cfg, method, args):
-    body = json.dumps({"method": method, "args": args}).encode()
-    req = urllib.request.Request(
-        cfg["logseq_url"], data=body,
-        headers={
-            "Authorization": f"Bearer {cfg['logseq_token']}",
-            "Content-Type": "application/json",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=10) as r:
-        raw = r.read().decode()
-        return json.loads(raw) if raw else None
+def upload_to_nextcloud(cfg, path, name, label):
+    """path を Nextcloud に置いてリンクの Markdown を返す。置けなければ None"""
+    credentials = nextcloud_credentials(cfg)
+    if not credentials:
+        warn(f"Nextcloud が未設定のため{label}の添付をスキップ")
+        return None
+    try:
+        return f"[{label}]({nextcloud.upload(path, name, *credentials)})"
+    except nextcloud.UploadError as e:
+        warn(f"Nextcloud へのアップロードに失敗、{label}の添付をスキップ: {e}")
+        return None
 
 
 def md_to_blocks(md):
@@ -361,7 +318,7 @@ def md_to_blocks(md):
 
 
 def _clean_tree(nodes):
-    """children が空のキーを除去(insertBatchBlock 用に整形)"""
+    """children が空のキーを除去"""
     out = []
     for n in nodes:
         node = {"content": n["content"]}
@@ -372,49 +329,31 @@ def _clean_tree(nodes):
     return out
 
 
-def append_tree(cfg, page_name, tree):
-    """トップレベルブロックを appendBlockInPage で作り、子は insertBatchBlock でツリー挿入"""
-    for blk in _clean_tree(tree):
-        res = logseq_call(cfg, "logseq.Editor.appendBlockInPage", [page_name, blk["content"]])
-        uuid = res.get("uuid") if isinstance(res, dict) else None
-        if blk.get("children") and uuid:
-            logseq_call(cfg, "logseq.Editor.insertBatchBlock",
-                        [uuid, blk["children"], {"sibling": False}])
-
-
 def write_to_logseq(cfg, page_name, minutes_md, transcript, meta,
-                    audio_md=None, transcript_rel=None):
-    if not cfg["logseq_token"]:
-        warn("Logseq トークンが無いため Logseq 書き込みをスキップ")
-        return False
+                    audio_md=None, transcript_md=None):
+    tree = []
+    if audio_md:
+        tree.append({"content": "## 録音", "children": [{"content": audio_md}]})
+    if minutes_md:
+        tree.extend(md_to_blocks(minutes_md))
+    # 全文は長く、ページに埋めると重くなるので、置けたらリンクにする
+    tree.append({"content": "## 文字起こし全文",
+                 "children": [{"content": transcript_md or transcript}]})
+    spec = {
+        "page": page_name,
+        "properties": {"type": "meeting", "date": f"[[{meta['date']}]]", "source": meta["source"]},
+        "blocks": _clean_tree(tree),
+    }
     try:
-        logseq_call(cfg, "logseq.Editor.createPage",
-                    [page_name, {}, {"createFirstBlock": False, "redirect": False}])
-        # メタ情報(date はジャーナルへリンク。ページプロパティとして先頭ブロックに)
-        logseq_call(cfg, "logseq.Editor.appendBlockInPage",
-                    [page_name, f"type:: meeting\ndate:: [[{meta['date']}]]\nsource:: {meta['source']}"])
-
-        tree = []
-        # 録音音声(見出し + 再生プレーヤーまたはリンク)
-        if audio_md:
-            tree.append({"content": "## 録音",
-                         "children": [{"content": audio_md}]})
-        # 議事録本文(Markdown → ツリー)
-        if minutes_md:
-            tree.extend(md_to_blocks(minutes_md))
-        # 文字起こし全文: assets にあればリンク参照(長文でページが重くならない)、無ければ本文埋め込み
-        if transcript_rel:
-            tree.append({"content": "## 文字起こし全文",
-                         "children": [{"content": f"[文字起こし全文を開く]({transcript_rel})"}]})
-        else:
-            tree.append({"content": "## 文字起こし全文",
-                         "children": [{"content": transcript}]})
-
-        append_tree(cfg, page_name, tree)
-        return True
-    except urllib.error.URLError as e:
-        warn(f"Logseq 書き込み失敗: {e}")
+        res = subprocess.run(["logseq-db", "write"], input=json.dumps(spec, ensure_ascii=False),
+                             capture_output=True, text=True)
+    except OSError as e:
+        warn(f"logseq-db が無いため Logseq 書き込みをスキップ: {e}")
         return False
+    if res.returncode != 0:
+        warn(f"Logseq 書き込み失敗: {res.stderr.strip()}")
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -514,27 +453,21 @@ def main():
         page_name = f"{cfg['logseq_page_prefix']} {now.strftime('%Y-%m-%d')} {title}".strip()
         ts = now.strftime("%Y%m%d_%H%M%S")
         audio_md = None
-        transcript_rel = None
-        assets = get_assets_dir(cfg)
-        if assets:
-            assets.mkdir(parents=True, exist_ok=True)
-            # 文字起こし全文は assets にファイルとして置きリンク参照(長文でページが重くならないように)
-            tr_name = f"transcript_{ts}.txt"
-            (assets / tr_name).write_text(transcript)
-            transcript_rel = f"../assets/{tr_name}"
-        else:
-            warn("assetsディレクトリを解決できず、文字起こしはページ内に記載")
+        with tempfile.TemporaryDirectory() as tmp:
+            tr_path = Path(tmp) / f"transcript_{ts}.txt"
+            tr_path.write_text(transcript)
+            transcript_md = upload_to_nextcloud(cfg, tr_path, tr_path.name, "文字起こし全文")
         # 録音音声の添付(--transcript モードでは元音声が無いのでスキップ)
         attach = cfg["attach_audio"] if args.attach_audio is None else args.attach_audio
         if attach and src is not None:
             asset_name = f"mtg_{ts}.m4a"
             info(f"録音音声を変換・添付中… ({asset_name})")
-            audio_md = attach_audio(cfg, src, n_tracks, asset_name, assets)
+            audio_md = attach_audio(cfg, src, n_tracks, asset_name)
         info(f"Logseqページ作成中: {page_name}")
         ok = write_to_logseq(cfg, page_name,
                              minutes_md, transcript,
                              {"date": now.strftime("%Y-%m-%d"), "source": source_name},
-                             audio_md=audio_md, transcript_rel=transcript_rel)
+                             audio_md=audio_md, transcript_md=transcript_md)
         if ok:
             info(f"Logseq書き込み完了: 「{page_name}」")
 

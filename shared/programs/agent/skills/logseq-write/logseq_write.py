@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Append content to a Logseq page, or create a new page with properties.
 
-This is the full implementation behind the logseq-write skill: config
-resolution, Markdown/native-outline -> block-tree conversion, optional page
-creation, optional Nextcloud asset upload, and the Logseq API calls. The
-skill's SKILL.md only tells the calling agent how to invoke this script —
-none of the API/JSON plumbing is left for the agent to hand-write, which is
-the actual fix for the instability that motivated this rewrite (weaker
-models were inconsistently reproducing multi-step curl/jq chains and
-hand-built nested JSON block trees).
+This is the full implementation behind the logseq-write skill:
+Markdown/native-outline -> block-tree conversion and optional Nextcloud asset
+upload. The write itself goes through `logseq-db write` (tools/logseq-db),
+which owns the Logseq CLI, property types and sync. The skill's SKILL.md only
+tells the calling agent how to invoke this script, so no plumbing is left for
+the agent to hand-write.
 
 Usage:
     logseq_write.py <page> [--format markdown|logseq] [--title T] [--tag TAG]
@@ -16,18 +14,15 @@ Usage:
     Content is read from stdin (may be empty when --asset alone supplies content).
 
     logseq_write.py --check
-    Prints nothing; exits 0 if Logseq is reachable, 1 otherwise. (Prefer
-    logseq_status.py for this — kept here too since --check is cheap and some
-    callers already have this script's path handy.)
+    Prints nothing; exits 0 if Logseq can be written here, 1 otherwise.
 """
 import argparse
-import json
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from logseq_common import ConfigError, call_api, is_available, load_config  # noqa: E402
+from logseq_common import LogseqError, available, write  # noqa: E402
 import nextcloud_asset  # noqa: E402
 
 
@@ -158,162 +153,19 @@ def convert_logseq_native(text):
     return _build_indented_tree(events())
 
 
-# --- Logseq API operations -----------------------------------------------------
-
-
-def _parse_json(body):
-    try:
-        return json.loads(body) if body else {}
-    except json.JSONDecodeError:
-        return {}
-
-
-def create_page(url, token, page):
-    status, body = call_api(url, token, "logseq.Editor.createPage", [page, {}, {"redirect": False}])
-    result = _parse_json(body)
-    if status != 200 or "uuid" not in result:
-        print(f"createPage failed (HTTP {status}): {body}", file=sys.stderr)
-        sys.exit(1)
-
-
-def get_page_blocks_tree(url, token, page):
-    status, body = call_api(url, token, "logseq.Editor.getPageBlocksTree", [page])
-    if status != 200:
-        print(f"getPageBlocksTree failed (HTTP {status}): {body}", file=sys.stderr)
-        sys.exit(1)
-    return _parse_json(body) or []
-
-
-def insert_block(url, token, sibling_uuid, content, before):
-    status, body = call_api(
-        url, token, "logseq.Editor.insertBlock",
-        [sibling_uuid, content, {"before": before, "sibling": True}],
-    )
-    if status != 200:
-        print(f"insertBlock failed (HTTP {status}): {body}", file=sys.stderr)
-        sys.exit(1)
-
-
-def update_block(url, token, block_uuid, content):
-    status, body = call_api(url, token, "logseq.Editor.updateBlock", [block_uuid, content])
-    if status != 200:
-        print(f"updateBlock failed (HTTP {status}): {body}", file=sys.stderr)
-        sys.exit(1)
-
-
-def upsert_block_property(url, token, block_uuid, key, value):
-    status, body = call_api(
-        url, token, "logseq.Editor.upsertBlockProperty", [block_uuid, key, value]
-    )
-    if status != 200:
-        print(f"upsertBlockProperty failed (HTTP {status}): {body}", file=sys.stderr)
-        sys.exit(1)
-
-
-def apply_page_properties(url, token, page, props):
-    """Write page properties, whether or not the page already existed.
-
-    createPage takes a properties argument but drops it when the page is
-    already there, and a page is already there more often than it looks: a
-    `[[Wiki link]]` from any other page materializes an empty one. Writing a
-    two-page set where the first links to the second therefore silently lost
-    every property on the second. So properties are never left to createPage;
-    they are always written here, against the page's own first block.
-
-    Existing properties are updated key by key rather than replaced wholesale,
-    so a property added by hand on a page this script rewrites survives.
-    """
-    if not props:
-        return
-
-    blocks = get_page_blocks_tree(url, token, page)
-    first = blocks[0] if blocks else None
-
-    if first and (first.get("properties") or {}):
-        for key, value in props.items():
-            upsert_block_property(url, token, first["uuid"], key, value)
-        return
-
-    content = "\n".join(f"{key}:: {value}" for key, value in props.items())
-    if first is None:
-        append_block_in_page(url, token, page, content)
-    elif not (first.get("content") or "").strip():
-        # createPage leaves one empty placeholder block behind. Fill that block
-        # instead of inserting before it, or the page keeps a blank block
-        # wedged between its properties and its content.
-        update_block(url, token, first["uuid"], content)
-    else:
-        insert_block(url, token, first["uuid"], content, before=True)
-
-
-def append_block_in_page(url, token, page, content):
-    status, body = call_api(url, token, "logseq.Editor.appendBlockInPage", [page, content])
-    result = _parse_json(body)
-    uuid = result.get("uuid") or (result.get("result") or {}).get("uuid")
-    if status != 200 or not uuid:
-        print(f"appendBlockInPage failed (HTTP {status}): {body}", file=sys.stderr)
-        sys.exit(1)
-    return uuid
-
-
-def insert_batch_block(url, token, parent_uuid, blocks, sibling):
-    status, body = call_api(
-        url, token, "logseq.Editor.insertBatchBlock", [parent_uuid, blocks, {"sibling": sibling}]
-    )
-    if status != 200:
-        print(f"insertBatchBlock failed (HTTP {status}): {body}", file=sys.stderr)
-        sys.exit(1)
-
-
 def count_blocks(blocks):
-    total = 0
-    for b in blocks:
-        total += 1 + count_blocks(b.get("children") or [])
-    return total
-
-
-def insert_tree(url, token, page, tree):
-    """Insert a top-level block tree into `page`.
-
-    appendBlockInPage only ever creates a single block, so the first
-    top-level entry becomes the anchor: its own children go in as
-    sibling=false (nested under it), and any further top-level entries go in
-    as sibling=true against that same anchor (siblings at the page's root
-    level). This generalizes the two cases the original prose only partially
-    specified: a single --title-wrapped tree (children of one root block —
-    the common case) and multiple untitled top-level blocks (real page-root
-    siblings, previously left to each agent's own interpretation).
-    """
-    if not tree:
-        return 0
-    first, rest = tree[0], tree[1:]
-    anchor = append_block_in_page(url, token, page, first["content"])
-    total = 1
-    children = first.get("children") or []
-    if children:
-        insert_batch_block(url, token, anchor, children, sibling=False)
-        total += count_blocks(children)
-    if rest:
-        insert_batch_block(url, token, anchor, rest, sibling=True)
-        total += count_blocks(rest)
-    return total
+    return sum(1 + count_blocks(b.get("children") or []) for b in blocks)
 
 
 def main():
     args = parse_args(sys.argv[1:])
 
-    try:
-        url, token = load_config()
-    except ConfigError as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
-
     if args.check:
-        sys.exit(0 if is_available(url, token) else 1)
+        sys.exit(0 if available() else 1)
 
-    if args.create_page:
-        create_page(url, token, args.page)
-        apply_page_properties(url, token, args.page, dict(kv.split("=", 1) for kv in args.prop))
+    if "/" in args.page:
+        print(f"Logseq DB page names cannot contain '/': {args.page!r}", file=sys.stderr)
+        sys.exit(1)
 
     asset_blocks = []
     for spec in args.asset:
@@ -333,15 +185,20 @@ def main():
     content_tree += asset_blocks
 
     if args.title:
-        title_content = args.title
+        title_block = {"content": args.title, "children": content_tree}
         if args.tag:
-            title_content += f"\ntags:: #{args.tag}"
-        root_tree = [{"content": title_content, "children": content_tree}]
+            title_block["tags"] = [args.tag]
+        root_tree = [title_block]
     else:
         root_tree = content_tree
 
-    inserted = insert_tree(url, token, args.page, root_tree)
-    print(f"Page: {args.page}, {inserted} block(s) inserted")
+    properties = dict(kv.split("=", 1) for kv in args.prop) if args.create_page else {}
+    try:
+        write(args.page, properties, root_tree)
+    except LogseqError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+    print(f"Page: {args.page}, {count_blocks(root_tree)} block(s) inserted")
 
 
 if __name__ == "__main__":

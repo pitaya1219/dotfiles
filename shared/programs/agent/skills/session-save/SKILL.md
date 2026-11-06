@@ -154,13 +154,13 @@ piping its generated summary in via stdin. Across a multi-topic session:
   page (one session, one transcript asset shared by all pages).
 - Set `objective`, `status`, and the page content **per topic**.
 - In each page's **References** section, cross-link the sibling topic pages with
-  `[[Session/<YYYY-MM-DD> <other-slug>]]` so the split session stays navigable.
+  `[[<YYYY-MM-DD> <other-slug>]]` so the split session stays navigable.
 
 Per-topic create-page invocation:
 
 ```bash
 python3 "$HOME/.agent/skills/logseq-write/logseq_write.py" \
-  "Session/<YYYY-MM-DD> <topic-slug>" --create-page --format markdown \
+  "<YYYY-MM-DD> <topic-slug>" --create-page --format markdown \
   --prop "tags=#<agent-type>-session" \
   --prop "date=[[<YYYY-MM-DD>]]" \
   --prop "repository=<repo-name-or-empty>" \

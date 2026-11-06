@@ -123,12 +123,6 @@ let
     };
   };
 
-  # logseq_token_cmd を設定に注入(コマンド文字列のみ。トークン実体は store に焼かない)。
-  settings = cfg.settings
-    // lib.optionalAttrs (cfg.logseqTokenCommand != null) {
-      logseq_token_cmd = cfg.logseqTokenCommand;
-    };
-
   # The Karabiner rule that drives voice-in from a chord.
   #
   # Bound to a combination of modifiers so no ordinary key is taken: it only
@@ -187,30 +181,19 @@ in
   options.programs.mtg-minutes = {
     enable = lib.mkEnableOption "mtg-minutes meeting transcription & minutes toolkit (macOS)";
 
-    logseqTokenCommand = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      example = "passage show logseq/http-api/claude-code/token";
-      description = ''
-        Logseq HTTP API トークンを取得するコマンド。config.json の `logseq_token_cmd`
-        に書き込まれ、mtg-minutes 実行時に評価される。トークン実体は nix store にも
-        config ファイルにも残らない。null なら書き込まない(configs.edn から自動取得)。
-      '';
-    };
-
     settings = lib.mkOption {
       type = jsonFormat.type;
       default = { };
       example = lib.literalExpression ''{ output_dir = "~/Documents/mtg"; self_label = "自分"; }'';
       description = ''
         `~/.config/mtg-minutes/config.json` に書き込む設定。スクリプト側 DEFAULTS を
-        上書きする。`logseq_token` はここに書かず `logseqTokenCommand` を使うこと。
+        上書きする。Logseq への書き込みは logseq-db(programs.logseq-db)が担う。
       '';
     };
 
     # Settings for voice-in (local dictation). It is a separate command from
     # the meeting tools, so it is kept out of the toolkit-wide options above
-    # (logseqTokenCommand / settings). The command itself always ships with the
+    # (settings). The command itself always ships with the
     # package; what lives here is only "take over a hotkey" and "run from
     # login" - things that should not happen merely because the module is
     # enabled - so everything defaults to off.
@@ -319,9 +302,9 @@ in
         jsonFormat.generate "karabiner-voice-in.json" karabinerRule;
     };
 
-    # config.json を宣言管理(read-only symlink)。token はコマンド経由なので秘密は含まない。
+    # config.json を宣言管理(read-only symlink)。秘密はコマンド経由なので含まない。
     xdg.configFile."mtg-minutes/config.json".source =
-      jsonFormat.generate "mtg-minutes-config.json" settings;
+      jsonFormat.generate "mtg-minutes-config.json" cfg.settings;
 
     # The voice-in daemon. KeepAlive brings it back so the hotkey always has
     # something to talk to. It does not exit when the grant is missing (exiting

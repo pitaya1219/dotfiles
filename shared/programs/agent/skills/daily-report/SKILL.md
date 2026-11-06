@@ -39,7 +39,7 @@ For each **enabled** source, run its collector. Skip any source whose config key
 
 **Sessions collection note:**
 `collect-sessions.sh` lists local session directories whose mtime falls on the report date (requires `sources.sessions.dir`).
-`collect-logseq-sessions.sh` queries Logseq for `Session/*` pages whose `date::` property is the report date (requires `sources.logseq = true`); exits silently if `~/.agent/logseq.json` is absent or Logseq is unreachable.
+`collect-logseq-sessions.sh` asks `logseq-db` for the pages tagged `#claude-code-session` / `#vibe-session` whose `date` property is the report date (requires `sources.logseq = true`); exits silently if `~/.agent/logseq.json` is absent or Logseq is unreachable.
 When both produce output, **prefer the Logseq data** for the session summary (it contains the full narrative written by `session-save`); use the local directory listing only to note any sessions not yet saved to Logseq.
 
 **Past dates:** the collectors bound the day in local time, so they return that day rather than everything since. Two sources still degrade with distance:
