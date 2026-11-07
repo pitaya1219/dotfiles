@@ -153,9 +153,9 @@ class Cli:
         """Apply raw datoms through the worker's outliner, so they sync like an
         edit made in the app. The CLI has no command for some attributes (a
         page's :block/parent). `tx` is a list of [entity id, attribute, value]
-        additions; the worker has to be running, which any query ensures."""
-        datoms = [["~:db/add", e, "~:" + a.lstrip(":"), v] for e, a, v in tx]
-        self._outliner([["~:transact", [datoms, ["^ "]]]])
+        additions, where an int value is an entity id too; the worker has to
+        be running, which any query ensures."""
+        self._outliner([["~:transact", [self._datoms(tx), ["^ "]]]])
 
     def save_block(self, block_id, title, ref_uuids):
         """Save the block's title with :block/refs to `ref_uuids` plus its
@@ -169,13 +169,27 @@ class Cli:
         block = ["^ ", "~:block/uuid", "~u" + uuid_, "~:block/title", title, "~:block/refs", refs]
         ops = [["~:save-block", [block, ["^ "]]]]
         if refs:
-            # By uuid, not db id: ops made offline are replayed after the
-            # remote txs, where a db id can name another entity, and the sync
-            # then drops the whole insert as a conflicting upsert.
-            me = ["~:block/uuid", "~u" + uuid_]
-            datoms = [["~:db/add", me, "~:block/refs", ref] for ref in refs]
-            ops.append(["~:transact", [datoms, ["^ "]]])
+            ops.append(["~:transact", [self._datoms([[block_id, "block/refs", r] for r in refs]), ["^ "]]])
         self._outliner(ops)
+
+    def _datoms(self, tx):
+        """Transit :db/add datoms naming entities by uuid, not db id: ops made
+        offline are replayed after the remote txs, where a db id can name
+        another entity, and the sync then drops the whole tx as a conflicting
+        upsert."""
+        ids = sorted({x for e, _, v in tx for x in (e, v) if isinstance(x, int) and not isinstance(x, bool)})
+        rows = self.query("[:find ?e ?u :in $ [?e ...] :where [?e :block/uuid ?u]]", [ids]) if ids else []
+        uuids = dict(rows or [])
+        missing = [i for i in ids if i not in uuids]
+        if missing:
+            raise LogseqError(f"no uuid for entities {missing}")
+
+        def ref(x):
+            if isinstance(x, int) and not isinstance(x, bool):
+                return ["~:block/uuid", "~u" + uuids[x]]
+            return x
+
+        return [["~:db/add", ref(e), "~:" + a.lstrip(":"), ref(v)] for e, a, v in tx]
 
     def _outliner(self, ops):
         server = worker(self)
