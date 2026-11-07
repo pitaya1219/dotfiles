@@ -93,7 +93,7 @@ in
   config = lib.mkIf cfg.enable {
     # w3m completes Zitadel's server-rendered login, TOTP included, from a
     # terminal on this machine, so `task logseq:login` needs no forwarding.
-    home.packages = [ logseq-db ] ++ lib.optional (!cfg.desktop) pkgs.w3m;
+    home.packages = [ logseq-db cfg.cliPackage ] ++ lib.optional (!cfg.desktop) pkgs.w3m;
 
     dotfiles.agent.logseq = {
       inherit (cfg) graph desktop;

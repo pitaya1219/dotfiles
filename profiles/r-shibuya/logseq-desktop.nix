@@ -64,7 +64,7 @@ in
 {
   imports = [ ../../shared/programs/logseq-db.nix ];
 
-  home.packages = [ app cli ];
+  home.packages = [ app ];
 
   programs.logseq-db = {
     enable = true;
