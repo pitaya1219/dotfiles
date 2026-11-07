@@ -570,6 +570,9 @@ def login(cfg, use_browser=True, out=sys.stdout, inp=sys.stdin):
         if use_browser and w3m and inp.isatty():
             print("Sign in with w3m. Once it shows the callback page, quit with q.", file=out)
             subprocess.run([w3m, url])
+            # The CLI answers the callback before it exchanges the code for tokens.
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=30)
         if proc.poll() is None:
             print(f"Open this URL in a browser and sign in:\n\n{url}\n", file=out)
             print("Paste the URL the browser ends on (http://localhost:8765/auth/callback?...):", file=out)
