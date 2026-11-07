@@ -13,7 +13,4 @@ rec {
   CPPFLAGS = "-I/opt/homebrew/opt/mysql-client/include";
   PKG_CONFIG_PATH = "/opt/homebrew/opt/mysql-client/lib/pkgconfig";
   NODE_OPTIONS = "--openssl-legacy-provider";
-  LOGSEQ_REMOTE = "app/logseq";
-  LOGSEQ_LOCAL = "\${HOME}/personal/app/logseq";
-  LOGSEQ_SYNC_INTERVAL = 600;
 }

@@ -1,14 +1,12 @@
 { config, pkgs, lib, ... }:
 
 let
-  # Same incus-exec-from-host pattern as ./logseq-sync.nix, reused for the
-  # same reason: touching the container's files directly from the host runs
-  # into the raw.idmap/ACL mismatch that file's comment describes. The host
-  # only triggers the sync and injects pCloud secrets; the actual staging
-  # and upload run inside the container as its own user, via `task
-  # sync:hermes` from the same sparse dotfiles checkout logseq-sync already
-  # relies on (homelab's spaces/template/configuration.nix dotfiles-sync-clone
-  # service keeps tasks/sync.yml + tasks/sync/* fresh there).
+  # Touching the container's files directly from the host runs into a
+  # raw.idmap/ACL mismatch, so the host only triggers the sync and injects
+  # pCloud secrets; the actual staging and upload run inside the container
+  # as its own user, via `task sync:hermes` from a sparse dotfiles checkout
+  # (homelab's spaces/template/configuration.nix dotfiles-sync-clone service
+  # keeps tasks/sync.yml + tasks/sync/* fresh there).
   logDir = "${config.home.homeDirectory}/homelab/core/monitoring/logs/spaces";
 
   mkHermesBackup = { containerUser, onCalendar }:
@@ -57,10 +55,9 @@ let
         Timer = {
           OnCalendar = onCalendar;
           AccuracySec = "5min";
-          # Safe here unlike logseq-sync's timer, which deliberately leaves
-          # this unset: this is a single-writer, one-way push (the container
+          # Safe because this is a single-writer, one-way push (the container
           # is the only source), so a catch-up run after downtime can't
-          # collide with a peer the way a missed Logseq bisync slot could.
+          # collide with a peer the way a two-way bisync could.
           Persistent = true;
         };
         Install = {

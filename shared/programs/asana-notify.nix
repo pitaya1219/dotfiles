@@ -98,7 +98,6 @@ in
           # launchd hands an agent only /usr/bin:/bin:/usr/sbin:/sbin — where
           # nothing installed through home.packages is visible. Without this the
           # agent resolves an empty token and exits 2 every interval forever.
-          # Same list, and same reason, as profiles/r-shibuya/logseq-sync.nix.
           PATH = lib.concatStringsSep ":" [
             "${config.home.homeDirectory}/.nix-profile/bin"
             "/etc/profiles/per-user/${config.home.username}/bin"
