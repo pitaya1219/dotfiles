@@ -3,7 +3,7 @@
 daily-report). See lib/logseqdb.py for how writes are synced.
 
   logseq-db status                 exit 0 when the graph is usable here
-  logseq-db write < spec.json      {"page", "properties"?, "blocks"?}
+  logseq-db write < spec.json      {"page", "parent"?, "properties"?, "blocks"?}
   logseq-db query '<datascript>'   print the result as JSON
   logseq-db pages --date D --tag T...
   logseq-db login [--no-browser]   CLI-only machines: sign in
@@ -46,7 +46,8 @@ def main(argv):
             return 0 if logseqdb.available(cfg) else 1
         if args.cmd == "write":
             spec = json.load(sys.stdin)
-            page_id, count = logseqdb.write(cfg, spec["page"], spec.get("properties"), spec.get("blocks"))
+            page_id, count = logseqdb.write(cfg, spec["page"], spec.get("properties"), spec.get("blocks"),
+                                            spec.get("parent"))
             print(json.dumps({"page": spec["page"], "id": page_id, "blocks": count}, ensure_ascii=False))
         elif args.cmd == "query":
             print(json.dumps(logseqdb.query(cfg, args.query), ensure_ascii=False))

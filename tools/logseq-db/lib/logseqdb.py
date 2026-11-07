@@ -37,6 +37,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -144,8 +145,30 @@ class Cli:
             raise LogseqError(f"logseq {' '.join(args[:2])} failed: {message or out or proc.stderr.strip()}")
         return body.get("data")
 
-    def query(self, q):
-        return (self.run("query", "--query", q) or {}).get("result")
+    def query(self, q, inputs=None):
+        args = ["query", "--query", q] + (["--inputs", edn(inputs)] if inputs is not None else [])
+        return (self.run(*args) or {}).get("result")
+
+    def transact(self, tx):
+        """Apply raw datoms through the worker's outliner, so they sync like an
+        edit made in the app. The CLI has no command for some attributes (a
+        page's :block/parent). `tx` is a list of [entity id, attribute, value]
+        additions; the worker has to be running, which any query ensures."""
+        server = worker(self)
+        if not server:
+            raise LogseqError(f"no worker is serving {self.cfg.graph}")
+        datoms = [["~:db/add", e, "~:" + a.lstrip(":"), v] for e, a, v in tx]
+        args = [server["repo"], [["~:transact", [datoms, ["^ "]]]], ["^ "]]
+        body = json.dumps({"method": "thread-api/apply-outliner-ops", "argsTransit": json.dumps(args)})
+        req = urllib.request.Request(server["base-url"] + "/v1/invoke", data=body.encode(), method="POST",
+                                     headers={"Content-Type": "application/json", "Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                result = json.loads(resp.read() or b"{}")
+        except (urllib.error.URLError, json.JSONDecodeError) as e:
+            raise LogseqError(f"transact on {self.cfg.graph} failed: {e}")
+        if not result.get("ok"):
+            raise LogseqError(f"transact on {self.cfg.graph} failed: {result}")
 
 
 def write_cli_config(cfg):
@@ -295,6 +318,18 @@ class Graph:
     def page(self, title):
         return self.cli.run("upsert", "page", "--page", title)["result"][0]
 
+    def set_parent(self, page_id, parent):
+        """Put the page under `parent` (a namespace page such as Session), last
+        among its siblings. `upsert page` refuses names with "/", so this is the
+        CLI-side equivalent of creating "Parent/title"."""
+        parent_id = self.page(parent)
+        if self.cli.query("[:find ?x . :in $ ?p :where [?p :block/parent ?x]]", [page_id]) == parent_id:
+            return
+        last = self.cli.query(
+            "[:find (max ?o) . :in $ ?s :where [?c :block/parent ?s] [?c :block/name] [?c :block/order ?o]]",
+            [parent_id])
+        self.cli.transact([[page_id, "block/parent", parent_id], [page_id, "block/order", order_after(last)]])
+
     def tag(self, name):
         q = f"[:find [?id ...] :where [?c :block/name {edn(name.lower())}] [?c :block/tags :logseq.class/Tag] [?c :db/ident ?id]]"
         found = self.cli.query(q)
@@ -409,13 +444,50 @@ def preorder(blocks):
         yield from preorder(node.get("children") or [])
 
 
-def write(cfg, page, properties=None, blocks=None):
-    """Upsert `page`, set its properties, append `blocks` (a tree of
-    {content, children?, tags?, properties?}). Returns (page id, block count)."""
+ORDER_DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+
+def order_after(key):
+    """The :block/order key right after `key` (None: the first key).
+
+    Logseq orders siblings by fractional-indexing keys: a head character that
+    gives the length of an integer part in base 62 ("a" one digit, "b" two),
+    then an optional fraction. Incrementing the integer part sorts after any
+    fraction of the same integer."""
+    if not key:
+        return "a0"
+    head = key[0]
+    if "a" <= head <= "z":
+        length = ord(head) - ord("a") + 2
+    elif "A" <= head <= "Z":
+        length = ord("Z") - ord(head) + 2
+    else:
+        raise LogseqError(f"not an order key: {key!r}")
+    digits = list(key[1:length])
+    for i in reversed(range(len(digits))):
+        n = ORDER_DIGITS.index(digits[i]) + 1
+        if n < len(ORDER_DIGITS):
+            digits[i] = ORDER_DIGITS[n]
+            return head + "".join(digits)
+        digits[i] = "0"
+    if head == "Z":
+        return "a0"
+    if head == "z":
+        raise LogseqError(f"no order key after {key!r}")
+    head = chr(ord(head) + 1)
+    return head + "".join(digits + ["0"] if head > "a" else digits[1:])
+
+
+def write(cfg, page, properties=None, blocks=None, parent=None):
+    """Upsert `page` (under the namespace page `parent`, if given), set its
+    properties, append `blocks` (a tree of {content, children?, tags?,
+    properties?}). Returns (page id, block count)."""
     blocks = escape_tree(blocks or [])
     with session(cfg) as cli:
         graph = Graph(cli)
         page_id = graph.page(page)
+        if parent:
+            graph.set_parent(page_id, parent)
         values, tags = graph.properties(properties or {})
         args = []
         if values:

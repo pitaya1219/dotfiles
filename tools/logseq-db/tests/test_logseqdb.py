@@ -65,5 +65,19 @@ class BlocksTest(unittest.TestCase):
         self.assertIsNone(logseqdb.TASK_MARKER.match("TODOS are not tasks"))
 
 
+class OrderTest(unittest.TestCase):
+    def test_after(self):
+        self.assertEqual(logseqdb.order_after(None), "a0")
+        self.assertEqual(logseqdb.order_after("bCz"), "bD0")
+        self.assertEqual(logseqdb.order_after("b1X"), "b1Y")
+        self.assertEqual(logseqdb.order_after("a6G"), "a7")
+        self.assertEqual(logseqdb.order_after("az"), "b00")
+        self.assertEqual(logseqdb.order_after("Zz"), "a0")
+
+    def test_sorts_after(self):
+        for key in ["a0", "a6G", "az", "bCz", "bzz", "Zz"]:
+            self.assertGreater(logseqdb.order_after(key), key)
+
+
 if __name__ == "__main__":
     unittest.main()

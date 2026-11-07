@@ -163,8 +163,9 @@ def main():
     if args.check:
         sys.exit(0 if available() else 1)
 
-    if "/" in args.page:
-        print(f"Logseq DB page names cannot contain '/': {args.page!r}", file=sys.stderr)
+    parent, _, page = args.page.rpartition("/")
+    if "/" in parent:
+        print(f"Only one namespace level is supported: {args.page!r}", file=sys.stderr)
         sys.exit(1)
 
     asset_blocks = []
@@ -194,7 +195,7 @@ def main():
 
     properties = dict(kv.split("=", 1) for kv in args.prop) if args.create_page else {}
     try:
-        write(args.page, properties, root_tree)
+        write(page, properties, root_tree, parent or None)
     except LogseqError as e:
         print(str(e), file=sys.stderr)
         sys.exit(1)

@@ -16,7 +16,7 @@ ambiguous, read the script rather than improvising shell around it.
 
 `$ARGUMENTS` format: `<page> [--format markdown|logseq] [--title "..."] [--tag tag-name] [--create-page] [--prop key=value]... [--asset path[:name]]...`
 
-- `page` — Logseq page name (e.g. `2026-06-08` for today's journal, or `2026-06-08 fix-bug` for a new page). A DB graph page name cannot contain `/`, so there are no `Namespace/` pages
+- `page` — Logseq page name (e.g. `2026-06-08` for today's journal, or `2026-06-08 fix-bug` for a new page). `Session/2026-06-08 fix-bug` creates `2026-06-08 fix-bug` under the namespace page `Session` (one level only); the title itself has no `/`
 - `--format` — `markdown` (default) converts Markdown; `logseq` uses native outline as-is (2-space indent = 1 level)
 - `--title` — parent block heading; all content becomes its children (append mode only)
 - `--tag` — tags the title block with `#<tag>` (requires `--title`, append mode only)

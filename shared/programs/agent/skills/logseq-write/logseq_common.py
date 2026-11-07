@@ -26,10 +26,11 @@ def available():
         return False
 
 
-def write(page, properties=None, blocks=None):
-    """Upsert `page` with `properties` and append `blocks`, a tree of
-    {"content", "children"?, "tags"?}. Returns logseq-db's result."""
-    spec = {"page": page, "properties": properties or {}, "blocks": blocks or []}
+def write(page, properties=None, blocks=None, parent=None):
+    """Upsert `page` (under the namespace page `parent`, if given) with
+    `properties` and append `blocks`, a tree of {"content", "children"?,
+    "tags"?}. Returns logseq-db's result."""
+    spec = {"page": page, "parent": parent, "properties": properties or {}, "blocks": blocks or []}
     try:
         proc = subprocess.run(["logseq-db", "write"], input=json.dumps(spec, ensure_ascii=False),
                               capture_output=True, text=True)

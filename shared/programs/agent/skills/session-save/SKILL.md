@@ -160,7 +160,7 @@ Per-topic create-page invocation:
 
 ```bash
 python3 "$HOME/.agent/skills/logseq-write/logseq_write.py" \
-  "<YYYY-MM-DD> <topic-slug>" --create-page --format markdown \
+  "Session/<YYYY-MM-DD> <topic-slug>" --create-page --format markdown \
   --prop "tags=#<agent-type>-session" \
   --prop "date=[[<YYYY-MM-DD>]]" \
   --prop "repository=<repo-name-or-empty>" \
