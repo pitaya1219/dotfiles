@@ -169,6 +169,9 @@ class Cli:
         block = ["^ ", "~:block/uuid", "~u" + uuid_, "~:block/title", title, "~:block/refs", refs]
         ops = [["~:save-block", [block, ["^ "]]]]
         if refs:
+            # By uuid, not db id: ops made offline are replayed after the
+            # remote txs, where a db id can name another entity, and the sync
+            # then drops the whole insert as a conflicting upsert.
             me = ["~:block/uuid", "~u" + uuid_]
             datoms = [["~:db/add", me, "~:block/refs", ref] for ref in refs]
             ops.append(["~:transact", [datoms, ["^ "]]])
