@@ -154,11 +154,31 @@ class Cli:
         edit made in the app. The CLI has no command for some attributes (a
         page's :block/parent). `tx` is a list of [entity id, attribute, value]
         additions; the worker has to be running, which any query ensures."""
+        datoms = [["~:db/add", e, "~:" + a.lstrip(":"), v] for e, a, v in tx]
+        self._outliner([["~:transact", [datoms, ["^ "]]]])
+
+    def save_block(self, block_id, title, ref_uuids):
+        """Save the block's title with :block/refs to `ref_uuids` plus its
+        tags, as the editor does. `upsert block --content` saves the title
+        alone and `--update-tags` drops the refs a block has, so either leaves
+        its [[links]] pointing nowhere. save-block keeps the refs of an
+        unchanged title, so they also go in as plain datoms."""
+        uuid_ = self.query("[:find ?u . :in $ ?e :where [?e :block/uuid ?u]]", [block_id])
+        tags = self.query("[:find [?u ...] :in $ ?e :where [?e :block/tags ?t] [?t :block/uuid ?u]]", [block_id]) or []
+        refs = [["~:block/uuid", "~u" + u] for u in dict.fromkeys(list(ref_uuids) + tags)]
+        block = ["^ ", "~:block/uuid", "~u" + uuid_, "~:block/title", title, "~:block/refs", refs]
+        ops = [["~:save-block", [block, ["^ "]]]]
+        if refs:
+            me = ["~:block/uuid", "~u" + uuid_]
+            datoms = [["~:db/add", me, "~:block/refs", ref] for ref in refs]
+            ops.append(["~:transact", [datoms, ["^ "]]])
+        self._outliner(ops)
+
+    def _outliner(self, ops):
         server = worker(self)
         if not server:
             raise LogseqError(f"no worker is serving {self.cfg.graph}")
-        datoms = [["~:db/add", e, "~:" + a.lstrip(":"), v] for e, a, v in tx]
-        args = [server["repo"], [["~:transact", [datoms, ["^ "]]]], ["^ "]]
+        args = [server["repo"], ops, ["^ "]]
         body = json.dumps({"method": "thread-api/apply-outliner-ops", "argsTransit": json.dumps(args)})
         req = urllib.request.Request(server["base-url"] + "/v1/invoke", data=body.encode(), method="POST",
                                      headers={"Content-Type": "application/json", "Accept": "application/json"})
@@ -166,9 +186,9 @@ class Cli:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 result = json.loads(resp.read() or b"{}")
         except (urllib.error.URLError, json.JSONDecodeError) as e:
-            raise LogseqError(f"transact on {self.cfg.graph} failed: {e}")
+            raise LogseqError(f"outliner ops on {self.cfg.graph} failed: {e}")
         if not result.get("ok"):
-            raise LogseqError(f"transact on {self.cfg.graph} failed: {result}")
+            raise LogseqError(f"outliner ops on {self.cfg.graph} failed: {result}")
 
 
 def write_cli_config(cfg):
@@ -259,6 +279,7 @@ def session(cfg):
 
 
 WIKI = re.compile(r"\[\[([^\]]+)\]\]")
+BLOCK_REF = re.compile(r"\(\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)\)")
 DATE = re.compile(r"^\s*(?:\[\[)?(\d{4})-(\d{2})-(\d{2})(?:\]\])?\s*$")
 
 
@@ -329,6 +350,43 @@ class Graph:
             "[:find (max ?o) . :in $ ?s :where [?c :block/parent ?s] [?c :block/name] [?c :block/order ?o]]",
             [parent_id])
         self.cli.transact([[page_id, "block/parent", parent_id], [page_id, "block/order", order_after(last)]])
+
+    def find_page(self, name):
+        """The page a [[name]] link means: a journal for a date, `b` under `a`
+        for "a/b". A missing page is created, except under a namespace."""
+        m = DATE.match(name)
+        if m:
+            return self.journal(*m.groups())
+        *parents, leaf = name.lower().split("/")
+        if not parents:
+            return self.page(name)
+        found = self.cli.query(
+            "[:find [(pull ?p [:db/id {:block/parent [:block/name {:block/parent 8}]}]) ...] "
+            ":in $ ?n :where [?p :block/name ?n]]", [leaf]) or []
+        for entity in found:
+            chain, parent = [], entity.get("block/parent")
+            while parent:
+                chain.insert(0, parent.get("block/name", ""))
+                parent = parent.get("block/parent")
+            if chain[-len(parents):] == parents:
+                return entity["db/id"]
+        return None
+
+    def link(self, block_id, text):
+        """Point the block's refs at what `text` links to."""
+        pages, blocks = links(text)
+        uuids = []
+        for name in pages:
+            page_id = self.find_page(name)
+            if page_id is None:
+                print(f"logseq-db: no page {name!r} to link; the CLI cannot create one under a namespace",
+                      file=sys.stderr)
+                continue
+            uuids.append(self.cli.query("[:find ?u . :in $ ?e :where [?e :block/uuid ?u]]", [page_id]))
+        for u in blocks:
+            if self.cli.query(f'[:find ?e . :where [?e :block/uuid #uuid "{u}"]]'):
+                uuids.append(u)
+        self.cli.save_block(block_id, text, uuids)
 
     def tag(self, name):
         q = f"[:find [?id ...] :where [?c :block/name {edn(name.lower())}] [?c :block/tags :logseq.class/Tag] [?c :db/ident ?id]]"
@@ -409,6 +467,12 @@ def escape_number_tags(text):
 TASK_MARKER = re.compile(r"^(TODO|LATER|DOING|NOW|DONE|CANCELED|CANCELLED)\s+")
 TASK_STATUS = {"TODO": "todo", "LATER": "todo", "DOING": "doing", "NOW": "doing",
                "DONE": "done", "CANCELED": "canceled", "CANCELLED": "canceled"}
+
+
+def links(text):
+    """([[page]] names, ((block)) uuids) in `text`, outside code."""
+    plain = CODE.sub(" ", text)
+    return list(dict.fromkeys(WIKI.findall(plain))), list(dict.fromkeys(BLOCK_REF.findall(plain)))
 
 
 def needs_verbatim(content):
@@ -534,6 +598,8 @@ def write(cfg, page, properties=None, blocks=None, parent=None):
             if marker:
                 cli.run("upsert", "task", "--id", str(block_id),
                         "--status", TASK_STATUS[marker.group(1)])
+            if args and any(links(content)):
+                graph.link(block_id, content)
         return page_id, len(ids)
 
 

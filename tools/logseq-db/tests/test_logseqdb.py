@@ -64,6 +64,12 @@ class BlocksTest(unittest.TestCase):
         self.assertEqual(logseqdb.TASK_STATUS[m.group(1)], "done")
         self.assertIsNone(logseqdb.TASK_MARKER.match("TODOS are not tasks"))
 
+    def test_links(self):
+        u = "6aec60c8-8d0a-46a4-a039-3b24b0b14423"
+        text = f"see [[Session/a b]], #[[c]] and (({u})); [[Session/a b]] again, not `[[code]]`"
+        self.assertEqual(logseqdb.links(text), (["Session/a b", "c"], [u]))
+        self.assertEqual(logseqdb.links("PR \\#519"), ([], []))
+
 
 class OrderTest(unittest.TestCase):
     def test_after(self):
