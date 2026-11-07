@@ -213,6 +213,10 @@ def session(cfg):
     with open(os.path.join(STATE_DIR, "lock"), "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         cli = Cli(cfg)
+        if not cfg.desktop and not downloaded(cli):
+            with contextlib.suppress(LogseqError):
+                cli.run("server", "stop")
+            raise LogseqError(f"{cfg.graph} is not downloaded on this machine; run `task logseq:download`.")
         before = worker(cli)
         app_owned = bool(before and before.get("owner-source") == "electron")
         try:
@@ -501,11 +505,43 @@ def find_pages(cfg, date, tags):
 def available(cfg):
     """The CLI runs and the graph is on this machine."""
     try:
-        graphs = Cli(cfg).run("graph", "list", graph=False) or {}
+        if cfg.desktop:
+            return listed(Cli(cfg))
+        with session(cfg):
+            return True
     except (LogseqError, OSError, subprocess.SubprocessError):
         return False
+
+
+def listed(cli):
+    graphs = cli.run("graph", "list", graph=False) or {}
     names = graphs.get("graphs") or graphs.get("items") or []
-    return any((g if isinstance(g, str) else g.get("name") or g.get("graph")) == cfg.graph for g in names)
+    return any((g if isinstance(g, str) else g.get("name") or g.get("graph")) == cli.cfg.graph for g in names)
+
+
+# The CLI creates an empty graph for any graph name it is given, and a failed
+# `sync download` reports success and leaves one behind, so a listed graph may
+# hold nothing. A downloaded one carries the server's graph id and the user's
+# properties.
+DOWNLOADED_QUERY = (
+    '[:find ?v . :where [?k :db/ident :logseq.kv/graph-uuid] [?k :kv/value ?v]'
+    ' [?p :db/ident ?i] [(namespace ?i) ?ns] [(= ?ns "user.property")]]'
+)
+
+
+def downloaded(cli):
+    """The graph is listed and holds what the sync server has. Checked once,
+    then remembered in a marker file, since the query starts a worker."""
+    if not listed(cli):
+        return False
+    marker = os.path.join(STATE_DIR, f"downloaded-{cli.cfg.graph}")
+    if os.path.exists(marker):
+        return True
+    if not cli.query(DOWNLOADED_QUERY):
+        return False
+    os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+    open(marker, "w").close()
+    return True
 
 
 # --- CLI-only setup -----------------------------------------------------------
@@ -597,9 +633,38 @@ def login(cfg, use_browser=True, out=sys.stdout, inp=sys.stdin):
     return body.get("data") or {}
 
 
+def _remove_graph(cli):
+    with contextlib.suppress(LogseqError):
+        cli.run("server", "stop")
+    cli.run("graph", "remove")
+
+
 def download(cfg):
     """Fetch the graph from the sync server the first time."""
     cli = Cli(cfg)
-    password = cfg.e2ee_password()
-    args = ["sync", "download"] + (["--e2ee-password", password] if password else [])
-    return cli.run(*args, timeout_ms=1800000)
+    try:
+        if listed(cli):
+            if downloaded(cli):
+                raise LogseqError(f"{cfg.graph} is already downloaded.")
+            # `sync download` refuses to run over the empty graph left behind.
+            _remove_graph(cli)
+        password = cfg.e2ee_password()
+        args = ["sync", "download"] + (["--e2ee-password", password] if password else [])
+        failure = None
+        try:
+            cli.run(*args, timeout_ms=1800000)
+        except LogseqError as e:
+            failure = e
+        if not failure and downloaded(cli):
+            return
+        # A failed download creates the graph before it fails.
+        if listed(cli):
+            _remove_graph(cli)
+        if failure:
+            raise failure
+    finally:
+        with contextlib.suppress(LogseqError):
+            cli.run("server", "stop")
+    raise LogseqError(
+        f"sync download reported success, but {cfg.graph} came down empty and was removed. "
+        f"The worker log is under ~/logseq/graphs/Unlinked graphs/{cfg.graph}/; retry the download.")
