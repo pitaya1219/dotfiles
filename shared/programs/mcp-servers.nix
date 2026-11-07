@@ -34,17 +34,11 @@
     clients = [ "claude" ];
   };
 
-  # u/Ryu/logseq_query + logseq_write and u/Ryu/dufs_manage, each its own MCP
-  # connection carrying a token scoped to just that script's path -- shared
-  # across every profile here (unlike loki, which is rose-only; see
-  # profiles/rose.nix). Claude-only: Vibe reaches
-  # Logseq and Dufs through connectors registered per project in .vibe/config.toml
-  # instead, so generating an entry there would only duplicate them.
-  config.dotfiles.httpMcpServers.logseq = {
-    url = "\${WINDMILL_LOGSEQ_MCP_URL}";
-    clients = [ "claude" ];
-  };
-
+  # u/Ryu/dufs_manage, its own MCP connection carrying a token scoped to just
+  # that script's path -- shared across every profile here (unlike loki, which
+  # is rose-only; see profiles/rose.nix). Claude-only: Vibe reaches Dufs
+  # through a connector registered per project in .vibe/config.toml instead,
+  # so generating an entry there would only duplicate it.
   config.dotfiles.httpMcpServers.dufs = {
     url = "\${WINDMILL_DUFS_MCP_URL}";
     clients = [ "claude" ];
