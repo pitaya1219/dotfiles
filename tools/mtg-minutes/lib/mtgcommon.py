@@ -133,6 +133,29 @@ def page_tags(title):
     return ["1on1"] if ONE_ON_ONE.search(title) else []
 
 
+# チームの会議録は Logseq の team (と project) プロパティでチームのページに結ぶ。
+# ページ名の [[ ]] はリンクにならないので、チーム名は括弧なし・正式名に直す。
+# 「Hub Discussion」「Hub 定例」は Kraken 全体の会議で、電力Hub のものではない。
+TEAMS = [
+    ("電力Hub", re.compile(r"\[\[電力Hub\]\]|電力Hub")),
+    ("PFチーム", re.compile(r"\[\[(?:PFチーム|Platform Team|プラットフォームチーム)\]\]"
+                          r"|PFチーム|Platform ?(?:チーム|Team)|プラットフォームチーム")),
+]
+TEAM_PROJECTS = {"電力Hub": "KrakenPJ"}
+
+
+def team_title(title):
+    """タイトル中のチーム名を正式名に直し、(直したタイトル, チーム) を返す。"""
+    if "Hub Discussion" in title:
+        return title, None
+    for team, pattern in TEAMS:
+        if pattern.search(title):
+            fixed = pattern.sub(team, title)
+            # 括弧を外して英字と続いたら間を空ける(電力Hub Review会)
+            return re.sub(re.escape(team) + r"(?=[A-Za-z])", team + " ", fixed), team
+    return title, None
+
+
 def stamp():
     return dt.datetime.now().strftime("%Y%m%d_%H%M%S")
 

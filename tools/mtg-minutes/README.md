@@ -203,6 +203,12 @@ Logseq DB グラフへの書き込みは `logseq-db write`(`programs.logseq-db`)
 ページのプロパティ `type` / `date` / `source` は既存のプロパティに型どおり入り、`date` は
 その日の journal にリンクする。
 
+タイトルに 電力Hub / PFチーム(Platform Team などの表記ゆれを含む)があれば、`team` に
+そのチームのページを入れ、電力Hub なら `project` に KrakenPJ も入れる。ページ名の
+`[[ ]]` はリンクにならないので、チーム名は括弧を外して正式名に直す。判定を外すときや
+ほかのチームにするときは `--team <ページ名>` を渡す。Hub Discussion などの Kraken 全体の
+会議は電力Hub として扱わない。
+
 Nextcloud の接続情報は `nextcloud_url_cmd` / `nextcloud_user_cmd` / `nextcloud_password_cmd` に
 取得コマンドを書く。録音と文字起こし全文はここに置き、ページからリンクする。Nextcloud が
 未設定なら録音は添付せず、文字起こし全文はページに直接書く。
