@@ -196,7 +196,8 @@ MINUTES_PROMPT = """\
 - 決まったことを箇条書き。
 
 ## ToDo / ネクストアクション
-- [ ] 担当者(分かれば) / 内容 / 期限(分かれば)
+- 担当者(分かれば) / 内容 / 期限(分かれば)
+(チェックボックス `- [ ]` や TODO / DONE は付けない。ふつうの箇条書きにする)
 
 ## 補足・備考
 - 重要な発言や保留事項など。
@@ -277,9 +278,15 @@ def upload_to_nextcloud(cfg, path, name, label):
         return None
 
 
+# logseq-db write はこれらで始まるブロックをタスクにする。
+TASK_PREFIX = re.compile(r"^(?:\[[ xX]\]\s+)?(?:(?:TODO|DONE|DOING|LATER|NOW)\s+)?")
+
+
 def md_to_blocks(md):
     """Markdown を Logseq のブロックツリーに変換(logseq-write スキル規約準拠)。
-       ## 見出し → トップレベル / 配下の段落・箇条書きは子ブロック / - [ ] → TODO。
+       ## 見出し → トップレベル / 配下の段落・箇条書きは子ブロック。
+       チェックボックスや先頭の TODO / DONE は外す。会議の ToDo は他人の担当も
+       含むので、Logseq のタスクにすると自分のタスク一覧に混ざる。
        返り値: [{"content": str, "children": [...]}, ...]"""
     root, section, subsection = [], None, None
 
@@ -307,14 +314,10 @@ def md_to_blocks(md):
             continue
         m = re.match(r"^[-*]\s+(.*)$", s)               # 箇条書き
         if m:
-            item = m.group(1)
-            cb = re.match(r"^\[([ xX])\]\s+(.*)$", item)  # チェックボックス
-            if cb:
-                mark = "DONE" if cb.group(1).lower() == "x" else "TODO"
-                item = f"{mark} {cb.group(2)}"
+            item = TASK_PREFIX.sub("", m.group(1))
             container().append({"content": item, "children": []})
             continue
-        container().append({"content": s, "children": []})   # 段落
+        container().append({"content": TASK_PREFIX.sub("", s), "children": []})   # 段落
     return root
 
 
