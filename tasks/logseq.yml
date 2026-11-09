@@ -13,6 +13,6 @@ tasks:
       - logseq-db login {{.CLI_ARGS}}
 
   download:
-    desc: "Fetch the Logseq DB graph from the sync server for the first time"
+    desc: "Fetch the Logseq DB graph from the sync server (-- --replace fetches it again)"
     cmds:
-      - logseq-db download
+      - logseq-db download {{.CLI_ARGS}}

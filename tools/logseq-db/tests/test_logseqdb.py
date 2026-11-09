@@ -71,6 +71,40 @@ class BlocksTest(unittest.TestCase):
         self.assertEqual(logseqdb.links("PR \\#519"), ([], []))
 
 
+class FakeCli:
+    def __init__(self, statuses):
+        self.cfg = type("Cfg", (), {"graph": "g", "e2ee_password": lambda self: None})()
+        self.statuses = list(statuses)
+
+    def run(self, *args, **kwargs):
+        if args[:2] == ("sync", "status"):
+            return self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
+        return {}
+
+
+class SyncTest(unittest.TestCase):
+    def setUp(self):
+        self.grace, logseqdb.DIVERGED_GRACE = logseqdb.DIVERGED_GRACE, 0
+        self.sleep, logseqdb.time.sleep = logseqdb.time.sleep, lambda s: None
+
+    def tearDown(self):
+        logseqdb.DIVERGED_GRACE = self.grace
+        logseqdb.time.sleep = self.sleep
+
+    def status(self, local, remote, pending=0, tx=10):
+        return {"pending-local": pending, "local-tx": tx, "remote-tx": tx,
+                "local-checksum": local, "remote-checksum": remote}
+
+    def test_settles(self):
+        cli = FakeCli([self.status("a", "b", pending=1), self.status("a", "a")])
+        self.assertEqual(logseqdb.sync_and_wait(cli)["local-checksum"], "a")
+
+    def test_diverged(self):
+        cli = FakeCli([self.status("a", "b")])
+        with self.assertRaisesRegex(logseqdb.LogseqError, "diverged"):
+            logseqdb.sync_and_wait(cli, timeout=60)
+
+
 class OrderTest(unittest.TestCase):
     def test_after(self):
         self.assertEqual(logseqdb.order_after(None), "a0")

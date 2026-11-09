@@ -7,7 +7,7 @@ daily-report). See lib/logseqdb.py for how writes are synced.
   logseq-db query '<datascript>'   print the result as JSON
   logseq-db pages --date D --tag T...
   logseq-db login [--no-browser]   CLI-only machines: sign in
-  logseq-db download               CLI-only machines: fetch the graph
+  logseq-db download [--replace]   CLI-only machines: fetch the graph (again)
 """
 import argparse
 import json
@@ -30,7 +30,8 @@ def main(argv):
     pg.add_argument("--tag", action="append", required=True)
     lg = sub.add_parser("login")
     lg.add_argument("--no-browser", action="store_true")
-    sub.add_parser("download")
+    dl = sub.add_parser("download")
+    dl.add_argument("--replace", action="store_true", help="set aside the graph here and fetch it again")
     args = p.parse_args(argv)
 
     try:
@@ -57,7 +58,7 @@ def main(argv):
             data = logseqdb.login(cfg, use_browser=not args.no_browser)
             print(f"Signed in as {data.get('email') or data.get('sub') or '?'}")
         elif args.cmd == "download":
-            logseqdb.download(cfg)
+            logseqdb.download(cfg, replace=args.replace)
             print(f"Downloaded {cfg.graph}")
     except logseqdb.LogseqError as e:
         print(e, file=sys.stderr)

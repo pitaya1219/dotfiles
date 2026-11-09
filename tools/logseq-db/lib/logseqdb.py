@@ -247,12 +247,18 @@ def worker(cli):
     return None
 
 
+# How long a caught-up graph may keep a checksum that differs from the server's
+# before it counts as diverged rather than still settling.
+DIVERGED_GRACE = 30
+
+
 def sync_and_wait(cli, timeout=300, start=True):
     if start:
         password = cli.cfg.e2ee_password()
         args = ["sync", "start"] + (["--e2ee-password", password] if password else [])
         cli.run(*args)
     deadline = time.time() + timeout
+    diverged_since = None
     while True:
         try:
             st = cli.run("sync", "status") or {}
@@ -269,6 +275,19 @@ def sync_and_wait(cli, timeout=300, start=True):
                 and st.get("local-checksum") == st.get("remote-checksum"))
         if done:
             return st
+        # Caught up with nothing left to send, yet the checksums differ: the
+        # local copy has drifted from the server and waiting will not fix it.
+        caught_up = (st.get("pending-local") == 0 and st.get("local-tx") is not None
+                     and st.get("local-tx") == st.get("remote-tx"))
+        if not caught_up:
+            diverged_since = None
+        elif diverged_since is None:
+            diverged_since = time.time()
+        elif time.time() - diverged_since > DIVERGED_GRACE:
+            raise LogseqError(
+                f"{cli.cfg.graph} on this machine has diverged from the server "
+                f"(checksum {st.get('local-checksum')} here, {st.get('remote-checksum')} there). "
+                f"Nothing is waiting to be sent; fetch it again with `logseq-db download --replace`.")
         if time.time() > deadline:
             raise LogseqError(f"sync did not settle within {timeout}s: {st}")
         time.sleep(1)
@@ -815,15 +834,25 @@ def _remove_graph(cli):
     cli.run("graph", "remove")
 
 
-def download(cfg):
-    """Fetch the graph from the sync server the first time."""
+def download(cfg, replace=False):
+    """Fetch the graph from the sync server. `replace` sets aside a graph that
+    is already here (to "Unlinked graphs", where the CLI keeps removed ones)
+    and fetches it again, e.g. after it diverged from the server."""
     cli = Cli(cfg)
+    marker = os.path.join(STATE_DIR, f"downloaded-{cfg.graph}")
     try:
         if listed(cli):
-            if downloaded(cli):
-                raise LogseqError(f"{cfg.graph} is already downloaded.")
+            if not replace and downloaded(cli):
+                raise LogseqError(f"{cfg.graph} is already downloaded; `--replace` fetches it again.")
+            if replace:
+                pending = (cli.run("sync", "status") or {}).get("pending-local")
+                if pending:
+                    raise LogseqError(f"{cfg.graph} here has {pending} change(s) not yet sent; "
+                                      f"replacing it would lose them.")
             # `sync download` refuses to run over the empty graph left behind.
             _remove_graph(cli)
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(marker)
         password = cfg.e2ee_password()
         args = ["sync", "download"] + (["--e2ee-password", password] if password else [])
         failure = None
@@ -831,8 +860,18 @@ def download(cfg):
             cli.run(*args, timeout_ms=1800000)
         except LogseqError as e:
             failure = e
-        if not failure and downloaded(cli):
-            return
+        # The worker can still be indexing the fresh graph and time out the
+        # check, which then reads as a failed download; give it a while.
+        for _ in range(10):
+            try:
+                if downloaded(cli):
+                    return
+                break
+            except LogseqError:
+                time.sleep(30)
+        else:
+            raise LogseqError(f"could not confirm that {cfg.graph} came down; it is left in place. "
+                              f"Check it with `logseq-db status` before downloading again.")
         # A failed download creates the graph before it fails.
         if listed(cli):
             _remove_graph(cli)
