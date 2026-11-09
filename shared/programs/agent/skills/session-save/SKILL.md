@@ -111,6 +111,9 @@ Generate a summary **per topic in `TOPICS`** (one per page) using these sections
 9. **References** — Relevant commands, URLs, and code snippets
 
 Format: Use clear headings, bullet points, and code blocks where appropriate.
+Write Open Items and Next Session as plain `- ` bullets too. No `- [ ]` / `- [x]`
+checkboxes and no `TODO` / `DONE` markers anywhere in the summary: logseq-write
+turns those into Task blocks, which then show up among the user's own tasks.
 Tone: Technical but readable, focusing on "what" and "why" over "how". Exception:
 substantial design-rationale explanations (section 4 above) should be preserved in
 their explained depth, not trimmed to match this terse default.
