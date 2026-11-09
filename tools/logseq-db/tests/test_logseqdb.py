@@ -85,5 +85,23 @@ class OrderTest(unittest.TestCase):
             self.assertGreater(logseqdb.order_after(key), key)
 
 
+class UpdateTest(unittest.TestCase):
+    def test_properties_and_tags_go_in_separate_upserts(self):
+        calls = []
+
+        class FakeCli:
+            def run(self, *args):
+                calls.append(args)
+
+        logseqdb.update(FakeCli(), "page", 7, {":user.property/topic-x": [9]}, [":user.class/Guide-y"])
+        self.assertEqual(calls, [
+            ("upsert", "page", "--id", "7", "--update-properties", "{:user.property/topic-x [9]}"),
+            ("upsert", "page", "--id", "7", "--update-tags", "[:user.class/Guide-y]"),
+        ])
+
+    def test_nothing_to_set(self):
+        logseqdb.update(None, "block", 7, {}, [])
+
+
 if __name__ == "__main__":
     unittest.main()

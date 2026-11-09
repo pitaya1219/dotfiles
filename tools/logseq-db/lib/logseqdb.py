@@ -591,13 +591,7 @@ def write(cfg, page, properties=None, blocks=None, parent=None):
         if parent:
             graph.set_parent(page_id, parent)
         values, tags = graph.properties(properties or {})
-        args = []
-        if values:
-            args += ["--update-properties", edn(values)]
-        if tags:
-            args += ["--update-tags", edn(tags)]
-        if args:
-            cli.run("upsert", "page", "--id", str(page_id), *args)
+        update(cli, "page", page_id, values, tags)
 
         if not blocks:
             return page_id, 0
@@ -618,27 +612,33 @@ def write(cfg, page, properties=None, blocks=None, parent=None):
         if len(ids) != len(nodes):
             raise LogseqError(f"inserted {len(ids)} blocks, expected {len(nodes)}")
         for block_id, node in zip(ids, nodes):
-            args = []
             content = node.get("content") or ""
             marker = TASK_MARKER.match(content)
             if marker:
                 content = content[marker.end():]
-            if marker or needs_verbatim(node.get("content") or ""):
-                args += ["--content", content]
             values, tags = graph.properties(node.get("properties") or {})
-            if values:
-                args += ["--update-properties", edn(values)]
             tags += [graph.tag(t) for t in node.get("tags") or []]
-            if tags:
-                args += ["--update-tags", edn(tags)]
-            if args:
-                cli.run("upsert", "block", "--id", str(block_id), *args)
+            verbatim = bool(marker) or needs_verbatim(node.get("content") or "")
+            if verbatim:
+                cli.run("upsert", "block", "--id", str(block_id), "--content", content)
+            update(cli, "block", block_id, values, tags)
             if marker:
                 cli.run("upsert", "task", "--id", str(block_id),
                         "--status", TASK_STATUS[marker.group(1)])
-            if args and any(links(content)):
+            if (verbatim or values or tags) and any(links(content)):
                 graph.link(block_id, content)
         return page_id, len(ids)
+
+
+def update(cli, kind, entity_id, values, tags):
+    """Set a page's or block's properties and tags in separate upserts: given
+    both in one call, the CLI leaves the property values and the tags out of
+    :block/refs, so they are missing from the Linked References of the pages
+    they point to."""
+    if values:
+        cli.run("upsert", kind, "--id", str(entity_id), "--update-properties", edn(values))
+    if tags:
+        cli.run("upsert", kind, "--id", str(entity_id), "--update-tags", edn(tags))
 
 
 def query(cfg, q):
