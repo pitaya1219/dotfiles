@@ -247,13 +247,21 @@ def worker(cli):
     return None
 
 
-def sync_and_wait(cli, timeout=300):
-    password = cli.cfg.e2ee_password()
-    args = ["sync", "start"] + (["--e2ee-password", password] if password else [])
-    cli.run(*args)
+def sync_and_wait(cli, timeout=300, start=True):
+    if start:
+        password = cli.cfg.e2ee_password()
+        args = ["sync", "start"] + (["--e2ee-password", password] if password else [])
+        cli.run(*args)
     deadline = time.time() + timeout
     while True:
-        st = cli.run("sync", "status") or {}
+        try:
+            st = cli.run("sync", "status") or {}
+        except LogseqError as e:
+            # A worker catching up on many remote txs answers nothing until it
+            # is done, and the CLI reports that as a timeout.
+            if "timeout" not in str(e).lower() or time.time() > deadline:
+                raise
+            continue
         if st.get("last-error"):
             raise LogseqError(f"sync failed: {st['last-error']}")
         done = (st.get("pending-local") == 0
@@ -279,15 +287,21 @@ def session(cfg):
             raise LogseqError(f"{cfg.graph} is not downloaded on this machine; run `task logseq:download`.")
         before = worker(cli)
         app_owned = bool(before and before.get("owner-source") == "electron")
+        synced = not app_owned and not cfg.desktop
         try:
+            # Catch up before reading or writing: a machine that last synced
+            # days ago would otherwise work on a stale graph, e.g. create a tag
+            # the server already has under another uuid.
+            if synced:
+                sync_and_wait(cli)
             yield cli
         finally:
             if not app_owned:
                 after = worker(cli)
                 if after and after.get("owner-source") != "electron":
                     try:
-                        if not cfg.desktop:
-                            sync_and_wait(cli)
+                        if synced:
+                            sync_and_wait(cli, start=False)
                     finally:
                         cli.run("server", "stop")
 
@@ -354,7 +368,14 @@ class Graph:
         return self.cli.run("upsert", "page", "--page", f"{y}-{m}-{d}")["result"][0]
 
     def page(self, title):
-        return self.cli.run("upsert", "page", "--page", title)["result"][0]
+        """The page titled `title`, created if missing and brought back if it
+        is in the recycle bin, as writing [[title]] in the app does."""
+        try:
+            return self.cli.run("upsert", "page", "--page", title)["result"][0]
+        except LogseqError as e:
+            if "recycled" not in str(e):
+                raise
+            return self.cli.run("upsert", "page", "--page", title, "--restore")["result"][0]
 
     def set_parent(self, page_id, parent):
         """Put the page under `parent` (a namespace page such as Session), last
