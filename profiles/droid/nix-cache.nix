@@ -1,7 +1,8 @@
 { config, pkgs, lib, ... }:
 
 # droid is the only aarch64-linux machine here, so like r-shibuya it has no
-# shared cache that could serve it; see profiles/r-shibuya/nix-cache.nix.
+# shared cache that could serve it; see profiles/r-shibuya/nix-cache.nix. The
+# one exception is the Logseq CLI, which homelab builds for it (./logseq-cli.nix).
 #
 # Unlike r-shibuya there is no daemon -- this is a single-user install, so the
 # user's own nix.conf is what Nix reads, and the key and cache can live under

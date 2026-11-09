@@ -4,7 +4,7 @@
   mkHomeConfiguration = home-manager.lib.homeManagerConfiguration {
     pkgs = import nixpkgs {
       system = "aarch64-linux";
-      overlays = [ overlays.typescript-language-server-pnpm-hash overlays.mistral-vibe overlays.fix-neovim-lua-passthru overlays.logseq-view overlays.nix-claude-code overlays.herdr overlays.duckdb-prebuilt overlays.cloudflared-skip-tests ];
+      overlays = [ overlays.typescript-language-server-pnpm-hash overlays.mistral-vibe overlays.fix-neovim-lua-passthru overlays.logseq-view overlays.logseq-cli overlays.nix-claude-code overlays.herdr overlays.duckdb-prebuilt overlays.cloudflared-skip-tests ];
     };
     modules = extraModules ++ [
       ({ config, pkgs, lib, ... }: {
@@ -106,6 +106,7 @@
           ./droid/ssh/headscale.nix
           ./droid/tailscale.nix
           ./droid/nix-cache.nix
+          ./droid/logseq-cli.nix
           ((import ../lib/bash-extension.nix { inherit lib; }).forProfile "droid")
           ((import ../lib/neovim-overrides.nix { inherit lib; }).forProfile "droid")
           ((import ../lib/starship-extension.nix { inherit lib pkgs; }).forProfile "droid")
