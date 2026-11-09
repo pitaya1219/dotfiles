@@ -650,12 +650,12 @@ def write(cfg, page, properties=None, blocks=None, parent=None):
 
 
 def update(cli, kind, entity_id, values, tags):
-    """Set a page's or block's properties and tags in separate upserts: given
-    both in one call, the CLI leaves the property values and the tags out of
-    :block/refs, so they are missing from the Linked References of the pages
-    they point to."""
-    if values:
-        cli.run("upsert", kind, "--id", str(entity_id), "--update-properties", edn(values))
+    """Set a page's or block's properties and tags, one upsert each: given two
+    properties, or properties and tags, in one call, the CLI leaves all of
+    them out of :block/refs, so they are missing from the Linked References of
+    the pages they point to."""
+    for key, value in values.items():
+        cli.run("upsert", kind, "--id", str(entity_id), "--update-properties", edn({key: value}))
     if tags:
         cli.run("upsert", kind, "--id", str(entity_id), "--update-tags", edn(tags))
 

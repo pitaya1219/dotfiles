@@ -133,6 +133,19 @@ class UpdateTest(unittest.TestCase):
             ("upsert", "page", "--id", "7", "--update-tags", "[:user.class/Guide-y]"),
         ])
 
+    def test_one_property_per_upsert(self):
+        calls = []
+
+        class FakeCli:
+            def run(self, *args):
+                calls.append(args)
+
+        logseqdb.update(FakeCli(), "page", 7, {":user.property/team-x": [9], ":user.property/project-y": [8]}, [])
+        self.assertEqual(calls, [
+            ("upsert", "page", "--id", "7", "--update-properties", "{:user.property/team-x [9]}"),
+            ("upsert", "page", "--id", "7", "--update-properties", "{:user.property/project-y [8]}"),
+        ])
+
     def test_nothing_to_set(self):
         logseqdb.update(None, "block", 7, {}, [])
 
