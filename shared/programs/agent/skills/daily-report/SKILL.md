@@ -50,6 +50,8 @@ When both produce output, **prefer the Logseq data** for the session summary (it
 
 Fill in the skeleton at `assets/report-template.md`. Omit sections for sources that were not collected.
 
+Write every item as a plain `- ` bullet. No `- [ ]` / `- [x]` checkboxes and no `TODO` / `DONE` markers: logseq-write turns those into Task blocks, which then show up among the user's own tasks.
+
 ## Step 4: Save
 
 ### Local (`output.local`)

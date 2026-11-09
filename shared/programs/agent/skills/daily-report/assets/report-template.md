@@ -19,10 +19,10 @@
 
 ## Asana
 ### Updated
-- [ ] task (project › section)
+- task (project › section)
 
 ### Completed
-- [x] task
+- task (project)
 
 ### Commented
 - task name (project) — "comment preview…"
