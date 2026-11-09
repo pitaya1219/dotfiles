@@ -13,6 +13,7 @@ import datetime as dt
 import json
 import os
 import queue
+import re
 import signal
 import subprocess
 import sys
@@ -120,6 +121,16 @@ def die(msg, code=1):
 def hr():
     """区切り線。字幕スレッドと混ざらないよう _emit 経由で出す。"""
     _emit(sys.stderr, "\033[2m" + "─" * 60 + "\033[0m")
+
+
+# 1on1 の会議録は Logseq でタグ #1on1 を付けて探せるようにする。「Session 1」の
+# ような英単語の末尾は拾わない。
+ONE_ON_ONE = re.compile(r"(?<![a-z])on ?1(?!\d)", re.I)
+
+
+def page_tags(title):
+    """会議タイトルから、会議録ページに付けるタグを決める。"""
+    return ["1on1"] if ONE_ON_ONE.search(title) else []
 
 
 def stamp():

@@ -30,7 +30,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from mtgcommon import CONFIG_FILE, MODELS, SIDES, VAD_MODEL, die, info, warn  # noqa: E402
+from mtgcommon import CONFIG_FILE, MODELS, SIDES, VAD_MODEL, die, info, page_tags, warn  # noqa: E402
 import nextcloud  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -339,9 +339,13 @@ def write_to_logseq(cfg, page_name, minutes_md, transcript, meta,
     # 全文は長く、ページに埋めると重くなるので、置けたらリンクにする
     tree.append({"content": "## 文字起こし全文",
                  "children": [{"content": transcript_md or transcript}]})
+    properties = {"type": "meeting", "date": f"[[{meta['date']}]]", "source": meta["source"]}
+    tags = page_tags(page_name)
+    if tags:
+        properties["tags"] = " ".join(tags)
     spec = {
         "page": page_name,
-        "properties": {"type": "meeting", "date": f"[[{meta['date']}]]", "source": meta["source"]},
+        "properties": properties,
         "blocks": _clean_tree(tree),
     }
     try:
