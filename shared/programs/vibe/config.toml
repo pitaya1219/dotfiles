@@ -158,11 +158,15 @@ thinking = "max"
 auto_compact_threshold = 1000000
 supports_images = false
 
-# Catalog model pinned by active_model above; the alias-only entry restates
-# its thinking level so /model switches keep it.
+# Model pinned by active_model above. name is the API model id, so the pin
+# resolves from this file alone: without name and provider the entry is an
+# alias-only override, which Vibe drops when no catalog or experiment layer
+# defines the model, and the pin then falls back to the built-in default.
 [[models]]
-thinking = "high"
+name = "mistral-large-4-0"
+provider = "mistral"
 alias = "mistral-large-4-0-3"
+thinking = "high"
 
 [[mcp_servers]]
 name = "gitea"
