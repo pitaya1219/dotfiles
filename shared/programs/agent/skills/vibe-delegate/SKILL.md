@@ -75,11 +75,18 @@ Write a self-contained prompt to `/tmp/vibe_task.md`. It MUST state:
 
 ```bash
 cd "$CLONE"
-vibe -p "$(cat /tmp/vibe_task.md)" \
+env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID AI_AGENT=vibe \
+  vibe -p "$(cat /tmp/vibe_task.md)" \
   --workdir "$CLONE" --yolo --trust \
   --max-price "${MAX_PRICE:-20}" --max-turns "${MAX_TURNS:-200}" \
   --output text > /tmp/vibe_run.log 2>&1
 ```
+
+Vibe sets no agent marker of its own, so its shell inherits the orchestrator's
+`CLAUDECODE` / `CLAUDE_CODE_SESSION_ID` / `AI_AGENT`. `session-save`'s
+`detect-session.sh` trusts those first, and would save Vibe's session as a
+`claude-code-session` with the orchestrator's session id and transcript. The
+`env` prefix drops them and names Vibe instead.
 
 Run it in the background; on completion **do your own verification — do not rely on Vibe's summary:**
 
