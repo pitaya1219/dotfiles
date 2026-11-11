@@ -151,6 +151,11 @@
           };
         };
 
+        services.logseq-sync-checksum = {
+          enable = true;
+          homelabRoot = "/home/rose/homelab";
+        };
+
         services.identity-backup = {
           main = {
             enable = true;

@@ -151,6 +151,7 @@
           homelab.homeManagerModules.budget-book-backup
           homelab.homeManagerModules.gitea-backup
           homelab.homeManagerModules.logseq-sync-backup
+          homelab.homeManagerModules.logseq-sync-checksum
           homelab.homeManagerModules.identity-backup
           homelab.homeManagerModules.tuwunel-backup
           homelab.homeManagerModules.dufs-backup
