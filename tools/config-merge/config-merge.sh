@@ -18,21 +18,28 @@ generated=$2
 target=$3
 state=${4:-}
 
-new=$(yq -p "$format" -o json . "$generated")
-old='{}'
-[ -n "$state" ] && [ -f "$state" ] && old=$(yq -p "$format" -o json . "$state")
-cur='{}'
+# The documents go to jq as files, not --argjson: one argument is capped at
+# 128 KiB on Linux (MAX_ARG_STRLEN), and ~/.claude.json grows past that.
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+yq -p "$format" -o json . "$generated" > "$work/new.json"
+echo '{}' > "$work/old.json"
+[ -n "$state" ] && [ -f "$state" ] && yq -p "$format" -o json . "$state" > "$work/old.json"
+echo '{}' > "$work/cur.json"
 if [ -f "$target" ] && [ ! -L "$target" ]; then
-  cur=$(yq -p "$format" -o json . "$target")
+  yq -p "$format" -o json . "$target" > "$work/cur.json"
 fi
 
 merged=$(jq -n \
-  --argjson cur "$cur" --argjson old "$old" --argjson new "$new" '
+  --slurpfile cur "$work/cur.json" --slurpfile old "$work/old.json" \
+  --slurpfile new "$work/new.json" '
   def leaves: to_entries[] | .key as $k
     | if (.value | type) == "object"
       then (.value | leaves) as $p | [$k] + $p
       else [$k] end;
-  ([$new | leaves]) as $kept
+  $cur[0] as $cur | $old[0] as $old | $new[0] as $new
+  | ([$new | leaves]) as $kept
   | [$old | leaves | select(. as $p | $kept | index([$p]) | not)] as $gone
   | ($cur | delpaths($gone)) * $new')
 
