@@ -193,7 +193,7 @@ Field values:
 - `<branch-name>`: from `git branch --show-current` if in a git repo, else omit
 - `<objective>`: the topic's `objective` from `TOPICS` (one sentence). For a single-topic session, the session goal.
 - `<wip-or-completed>`: `wip` if the session still has unfinished work / Open Items to resume; `completed` only when everything is done. Default to `wip` when in doubt — the user looks up `status` to find sessions to resume.
-- `<model-name>`: the Claude/AI model in use (e.g. `claude-sonnet-4-6`)
+- `<model-name>`: the ID of the model in use, as the agent names it, one value only (e.g. `claude-sonnet-4-6`). On Vibe this is the `active_model` of `~/.vibe/config.toml` or the model picked with `/model` (e.g. `mistral-large-4-0-3`), not the tool's name (`vibe`, `mistral-vibe`). Leave out suffixes that are not part of the ID, such as a context size (`[1m]`) or a plan name (`(Vibe Pro)`).
 - `<pr-url>`: PR URL if one was created during the session, else omit
 - `<caller>`: the orchestrator that delegated this session, when it was run as a sub-agent (e.g. `claude` when delegated via the `vibe-delegate` skill). Omit the property entirely for normal, directly-run sessions.
 - `<RAW_TRANSCRIPT_REF>`: the value computed in "Attach Raw Transcript as a Logseq Asset" (e.g. `[session.jsonl.zst](../assets/session-<uuid>.jsonl.zst)`). Omit the property entirely when empty (asset was not attached).
