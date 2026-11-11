@@ -6,6 +6,7 @@ daily-report). See lib/logseqdb.py for how writes are synced.
   logseq-db write < spec.json      {"page", "parent"?, "properties"?, "blocks"?}
   logseq-db query '<datascript>'   print the result as JSON
   logseq-db pages --date D --tag T...
+  logseq-db choices P [--dry-run]  turn the text values of property P into choices
   logseq-db login [--no-browser]   CLI-only machines: sign in
   logseq-db download [--replace]   CLI-only machines: fetch the graph (again)
 """
@@ -28,6 +29,9 @@ def main(argv):
     pg = sub.add_parser("pages")
     pg.add_argument("--date", required=True)
     pg.add_argument("--tag", action="append", required=True)
+    ch = sub.add_parser("choices")
+    ch.add_argument("property")
+    ch.add_argument("--dry-run", action="store_true", help="only count the pages and blocks per value")
     lg = sub.add_parser("login")
     lg.add_argument("--no-browser", action="store_true")
     dl = sub.add_parser("download")
@@ -54,6 +58,8 @@ def main(argv):
             print(json.dumps(logseqdb.query(cfg, args.query), ensure_ascii=False))
         elif args.cmd == "pages":
             print(json.dumps(logseqdb.find_pages(cfg, args.date, args.tag), ensure_ascii=False))
+        elif args.cmd == "choices":
+            print(json.dumps(logseqdb.make_choices(cfg, args.property, args.dry_run), ensure_ascii=False))
         elif args.cmd == "login":
             data = logseqdb.login(cfg, use_browser=not args.no_browser)
             print(f"Signed in as {data.get('email') or data.get('sub') or '?'}")

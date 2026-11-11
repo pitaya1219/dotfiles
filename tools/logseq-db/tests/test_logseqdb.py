@@ -150,5 +150,48 @@ class UpdateTest(unittest.TestCase):
         logseqdb.update(None, "block", 7, {}, [])
 
 
+class ChoiceTest(unittest.TestCase):
+    class FakeCli:
+        """A graph with the text property `model`, whose choices are `choices`."""
+
+        def __init__(self, choices):
+            self.choices = dict(choices)
+            self.added = []
+
+        def run(self, *args, **kwargs):
+            if args[:2] == ("list", "property"):
+                return {"items": [{"db/ident": "user.property/model-x", "block/title": "model",
+                                   "logseq.property/type": "default"}]}
+            return {}
+
+        def query(self, q, inputs=None):
+            if "closed-value-property" in q:
+                return [[t, i] for t, i in self.choices.items()]
+            if "#uuid" in q:
+                return self.choices.get(self.added[-1])
+            return None
+
+        def add_choice(self, ident, title):
+            self.added.append(title)
+            self.choices[title] = 100 + len(self.added)
+            return "new-uuid"
+
+    def test_existing_choice(self):
+        cli = self.FakeCli({"claude-opus-5-5": 7})
+        values, _ = logseqdb.Graph(cli).properties({"model": "claude-opus-5-5"})
+        self.assertEqual(values, {":user.property/model-x": 7})
+        self.assertEqual(cli.added, [])
+
+    def test_new_value_becomes_a_choice(self):
+        cli = self.FakeCli({"claude-opus-5-5": 7})
+        values, _ = logseqdb.Graph(cli).properties({"model": "mistral-large-4-0-3"})
+        self.assertEqual(cli.added, ["mistral-large-4-0-3"])
+        self.assertEqual(values, {":user.property/model-x": 101})
+
+    def test_free_text_stays_text(self):
+        values, _ = logseqdb.Graph(self.FakeCli({})).properties({"model": "x"})
+        self.assertEqual(values, {":user.property/model-x": "x"})
+
+
 if __name__ == "__main__":
     unittest.main()

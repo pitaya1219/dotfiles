@@ -157,6 +157,22 @@ class Cli:
         be running, which any query ensures."""
         self._outliner([["~:transact", [self._datoms(tx), ["^ "]]]])
 
+    def add_choice(self, ident, title):
+        """Add `title` as a choice of the property `ident`, as "Add choice" in
+        the property's settings does. Returns the new choice's uuid."""
+        choice = str(uuid.uuid4())
+        self._outliner([["~:upsert-closed-value",
+                         ["~:" + ident, ["^ ", "~:value", title, "~:id", "~u" + choice]]]])
+        return choice
+
+    def make_choices(self, ident, value_uuids):
+        """Turn existing value blocks of the property `ident` into its choices."""
+        self._outliner([["~:add-existing-values-to-closed-values",
+                         ["~:" + ident, ["~u" + u for u in value_uuids]]]])
+
+    def delete_blocks(self, block_uuids):
+        self._outliner([["~:delete-blocks", [["~u" + u for u in block_uuids], ["^ "]]]])
+
     def save_block(self, block_id, title, ref_uuids):
         """Save the block's title with :block/refs to `ref_uuids` plus its
         tags, as the editor does. `upsert block --content` saves the title
@@ -379,6 +395,24 @@ class Graph:
         card = "many" if it.get("db/cardinality", "").endswith("many") else "one"
         return it["db/ident"], it.get("logseq.property/type", "default"), card
 
+    def choices(self, ident):
+        """{title: id} of the property's choices; empty for a free-text one.
+        Only text choices: a number property keeps its choices' values in
+        :logseq.property/value."""
+        rows = self.cli.query("[:find ?t ?c :in $ ?p :where [?pe :db/ident ?p] "
+                              "[?c :block/closed-value-property ?pe] [?c :block/title ?t]]", [":" + ident])
+        return dict(rows or [])
+
+    def choice(self, ident, title):
+        """The id of the property's choice `title`, added first when it is new."""
+        found = self.choices(ident).get(title)
+        if found is None:
+            added = self.cli.add_choice(ident, title)
+            found = self.cli.query(f'[:find ?e . :where [?e :block/uuid #uuid "{added}"]]')
+        if found is None:
+            raise LogseqError(f"could not add choice {title!r} to {ident}")
+        return found
+
     def journal(self, y, m, d):
         day = int(f"{y}{m}{d}")
         found = self.cli.query(f"[:find [?j ...] :where [?j :block/journal-day {day}]]")
@@ -488,6 +522,9 @@ class Graph:
                 # A name taken by a built-in property (status in a fresh
                 # graph) cannot be created as a user property from the CLI.
                 print(f"logseq-db: skipped property {name}: {e}", file=sys.stderr)
+                continue
+            if ptype in ("default", "url") and card == "one" and self.choices(ident):
+                values[":" + ident] = self.choice(ident, str(raw).strip())
                 continue
             values[":" + ident] = self.value(ptype, card, str(raw))
         return values, tags
@@ -663,6 +700,45 @@ def update(cli, kind, entity_id, values, tags):
 def query(cfg, q):
     with session(cfg) as cli:
         return cli.query(q)
+
+
+def make_choices(cfg, name, dry_run=False):
+    """Turn the text values of the property `name` into its choices, so it
+    shows them as chips and offers them to pick from. Per distinct text, one
+    value block becomes the choice, the other pages and blocks with that text
+    are pointed at it and their own value blocks are deleted. Returns
+    {text: pages and blocks with it}."""
+    with session(cfg) as cli:
+        graph = Graph(cli)
+        graph._load_props()
+        if name.lower() not in graph._props:
+            raise LogseqError(f"no property {name!r}")
+        ident, ptype, card = graph.property(name)
+        if ptype not in ("default", "url") or card != "one":
+            raise LogseqError(f"{name} is a {ptype} property with cardinality {card}; "
+                              "only a single text or url value can become a choice")
+        rows = cli.query(
+            "[:find ?o ?v ?u ?t :in $ ?p :where [?pe :db/ident ?p] [?o ?p ?v] [?v :block/uuid ?u] "
+            "[?v :block/title ?t] (not [?v :block/closed-value-property ?pe])]", [":" + ident]) or []
+        groups = {}
+        for owner, value, value_uuid, title in sorted(rows):
+            groups.setdefault(title, []).append((owner, value, value_uuid))
+        counts = {title: len(group) for title, group in groups.items()}
+        if dry_run or not groups:
+            return counts
+
+        existing = graph.choices(ident)
+        cli.make_choices(ident, [group[0][2] for title, group in groups.items() if title not in existing])
+        targets = {title: existing.get(title, group[0][1]) for title, group in groups.items()}
+        repoint = [[owner, ident, targets[title]]
+                   for title, group in groups.items() for owner, value, _ in group if value != targets[title]]
+        duplicates = [value_uuid
+                      for title, group in groups.items() for _, value, value_uuid in group if value != targets[title]]
+        for i in range(0, len(repoint), 200):
+            cli.transact(repoint[i:i + 200])
+        for i in range(0, len(duplicates), 200):
+            cli.delete_blocks(duplicates[i:i + 200])
+        return counts
 
 
 def find_pages(cfg, date, tags):
