@@ -2,13 +2,13 @@
 
 # Logseq DB: the Logseq 2.0 desktop patched to sign in against the homelab
 # Zitadel and sync to the self-hosted server (pitaya1219/homelab,
-# apps/knowledge/logseq). It runs beside the brew cask's Logseq 0.10.
+# apps/knowledge/logseq).
 #
 # Homelab CI publishes every build as logseq-desktop/<version>-<store hash> and
 # never replaces one; its desktop job prints the url and hash to put here.
 
 let
-  version = "2.0.2-b9yqa0nd";
+  version = "2.0.2-8a6n0m91";
 
   app = pkgs.stdenvNoCC.mkDerivation {
     pname = "logseq-db";
@@ -16,7 +16,7 @@ let
 
     src = pkgs.fetchurl {
       url = "https://git.pitaya.f5.si/api/packages/pitaya1219/generic/logseq-desktop/${version}/Logseq-DB-darwin-arm64.zip";
-      hash = "sha256-8H5oHxrGXfcgjFAodX10PumzPFxhs7Ee7TfxDrOSGZw=";
+      hash = "sha256-SFHg5NV9JvGqP5F1aghlRjEm6Km3u6eV41EP3Z6y4Wc=";
     };
 
     nativeBuildInputs = [ pkgs.unzip ];
