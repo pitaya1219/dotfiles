@@ -65,7 +65,6 @@
       "iterm2"
       "joplin"
       "karabiner-elements"
-      "logseq"
       "macfuse"
       "ngrok"
       "obs"
