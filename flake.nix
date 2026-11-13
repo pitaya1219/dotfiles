@@ -102,18 +102,6 @@
           });
         };
 
-        # nixpkgs pins a pnpmDeps hash for typescript-language-server that no
-        # longer matches what fetchPnpmDeps produces, so the fixed-output build
-        # fails. Drop once the hash in pkgs/by-name/ty/typescript-language-server
-        # is corrected upstream.
-        typescript-language-server-pnpm-hash = final: prev: {
-          typescript-language-server = prev.typescript-language-server.overrideAttrs (old: {
-            pnpmDeps = old.pnpmDeps.overrideAttrs (_: {
-              outputHash = "sha256-xR/EF60lVBsITKgH7wCM2wHM46PFQevD51KfCENSUH4=";
-            });
-          });
-        };
-
         # mistral-vibe overlay modifies neovim-unwrapped and drops the lua passthru
         # that neovim's wrapper.nix needs. Restore it with luajit (what nixpkgs
         # neovim is built against). Apply after mistral-vibe in the overlay list.
