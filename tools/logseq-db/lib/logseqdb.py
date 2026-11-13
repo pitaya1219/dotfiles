@@ -112,6 +112,8 @@ def edn(value):
         return str(value)
     if value is None:
         return "nil"
+    if isinstance(value, uuid.UUID):
+        return f'#uuid "{value}"'
     if isinstance(value, str):
         if value.startswith(":") and " " not in value:
             return value
@@ -121,6 +123,12 @@ def edn(value):
     if isinstance(value, dict):
         return "{" + " ".join(f"{edn(k)} {edn(v)}" for k, v in value.items()) + "}"
     raise TypeError(f"cannot encode {value!r} as EDN")
+
+
+def transit_str(text):
+    """A string as transit JSON reads it back: one starting with ~, ^ or `
+    would otherwise be taken for a tagged value."""
+    return "~" + text if text[:1] in ("~", "^", "`") else text
 
 
 class Cli:
@@ -170,6 +178,38 @@ class Cli:
         self._outliner([["~:add-existing-values-to-closed-values",
                          ["~:" + ident, ["~u" + u for u in value_uuids]]]])
 
+    def insert_blocks(self, target_id, rows):
+        """Append `rows` ((uuid, parent uuid or None, title) in preorder) as the
+        last children of `target_id` in one transaction. Returns their entity
+        ids in the same order.
+
+        Not `upsert block --blocks-file`, which fails two ways:
+        - Its Markdown parser reads `key:: value` as a property and `#word`
+          as a tag, and fails when either does not exist yet. Here a title
+          is stored as written, as `--content` does.
+        - When the target's last child is an empty block (the one the app
+          puts on a new journal page), the outliner reuses it for the first
+          block, under its uuid. The CLI then cannot find the uuid it
+          generated and reports "unable to resolve created ids" for an
+          insert that went through. replace-empty-target? false keeps every
+          uuid ours, and the empty block stays where it was."""
+        target = self.query("[:find ?u . :in $ ?e :where [?e :block/uuid ?u]]", [target_id])
+        blocks = []
+        for u, parent, title in rows:
+            block = ["^ ", "~:block/uuid", "~u" + u, "~:block/title", transit_str(title)]
+            if parent:
+                block += ["~:block/parent", ["~:block/uuid", "~u" + parent]]
+            blocks.append(block)
+        opts = ["^ ", "~:sibling?", False, "~:bottom?", True, "~:keep-uuid?", True,
+                "~:replace-empty-target?", False, "~:outliner-op", "~:insert-blocks"]
+        self._outliner([["~:insert-blocks", [blocks, "~u" + target, opts]]])
+        found = dict(self.query("[:find ?u ?e :in $ [?u ...] :where [?e :block/uuid ?u]]",
+                                [[uuid.UUID(u) for u, _, _ in rows]]) or [])
+        missing = [u for u, _, _ in rows if u not in found]
+        if missing:
+            raise LogseqError(f"inserted blocks not found: {missing}")
+        return [found[u] for u, _, _ in rows]
+
     def delete_blocks(self, block_uuids):
         self._outliner([["~:delete-blocks", [["~u" + u for u in block_uuids], ["^ "]]]])
 
@@ -182,7 +222,7 @@ class Cli:
         uuid_ = self.query("[:find ?u . :in $ ?e :where [?e :block/uuid ?u]]", [block_id])
         tags = self.query("[:find [?u ...] :in $ ?e :where [?e :block/tags ?t] [?t :block/uuid ?u]]", [block_id]) or []
         refs = [["~:block/uuid", "~u" + u] for u in dict.fromkeys(list(ref_uuids) + tags)]
-        block = ["^ ", "~:block/uuid", "~u" + uuid_, "~:block/title", title, "~:block/refs", refs]
+        block = ["^ ", "~:block/uuid", "~u" + uuid_, "~:block/title", transit_str(title), "~:block/refs", refs]
         ops = [["~:save-block", [block, ["^ "]]]]
         if refs:
             ops.append(["~:transact", [self._datoms([[block_id, "block/refs", r] for r in refs]), ["^ "]]])
@@ -533,12 +573,6 @@ class Graph:
 # --- Writing ----------------------------------------------------------------
 
 
-# The CLI's Markdown parser reads `key:: value` as a property of the block and
-# `#word` as a tag, and fails when either does not exist yet, so text that
-# merely mentions one (`tags::` in a sentence, `#519`) cannot go through
-# --blocks-file. Neither can a multi-line block. Such blocks are inserted as a
-# placeholder and their text set afterwards with --content, which takes any
-# text.
 # `#400` in text (a PR or issue number) reads as a tag once the block is
 # edited in the app and creates a page "400". `\#400` displays the same and
 # stays text. Code spans and fences are left as written.
@@ -569,27 +603,6 @@ def links(text):
     return list(dict.fromkeys(WIKI.findall(plain))), list(dict.fromkeys(BLOCK_REF.findall(plain)))
 
 
-def needs_verbatim(content):
-    return "::" in content or "\n" in content or "#" in content
-
-
-def blocks_markdown(blocks, token):
-    lines, verbatim = [], {}
-
-    def walk(nodes, depth):
-        for node in nodes:
-            content = node["content"]
-            if needs_verbatim(content):
-                key = f"{token}-{len(verbatim)}"
-                verbatim[key] = content
-                content = key
-            lines.append("\t" * depth + "- " + content)
-            walk(node.get("children") or [], depth + 1)
-
-    walk(blocks, 0)
-    return "\n".join(lines) + "\n", verbatim
-
-
 def escape_tree(blocks):
     return [dict(node, content=escape_number_tags(node.get("content") or ""),
                  children=escape_tree(node.get("children") or []))
@@ -600,6 +613,23 @@ def preorder(blocks):
     for node in blocks:
         yield node
         yield from preorder(node.get("children") or [])
+
+
+def insert_rows(blocks):
+    """(uuid, parent uuid or None, title) per block, in preorder. The title
+    drops a task marker, which becomes the block's status instead."""
+    rows = []
+
+    def walk(nodes, parent):
+        for node in nodes:
+            content = node.get("content") or ""
+            marker = TASK_MARKER.match(content)
+            row = (str(uuid.uuid4()), parent, content[marker.end():] if marker else content)
+            rows.append(row)
+            walk(node.get("children") or [], row[0])
+
+    walk(blocks, None)
+    return rows
 
 
 ORDER_DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -652,38 +682,36 @@ def write(cfg, page, properties=None, blocks=None, parent=None):
         if not blocks:
             return page_id, 0
 
-        token = f"@@logseq-db-{uuid.uuid4().hex}"
-        text, verbatim = blocks_markdown(blocks, token)
-        os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
-        path = os.path.join(STATE_DIR, f"blocks-{os.getpid()}.md")
-        with open(path, "w") as f:
-            f.write(text)
+        rows = insert_rows(blocks)
+        top = [u for u, parent, _ in rows if parent is None]
         try:
-            ids = cli.run("upsert", "block", "--target-id", str(page_id), "--pos", "last-child",
-                          "--blocks-file", path)["result"]
-        finally:
-            os.unlink(path)
-
-        nodes = list(preorder(blocks))
-        if len(ids) != len(nodes):
-            raise LogseqError(f"inserted {len(ids)} blocks, expected {len(nodes)}")
-        for block_id, node in zip(ids, nodes):
-            content = node.get("content") or ""
-            marker = TASK_MARKER.match(content)
-            if marker:
-                content = content[marker.end():]
-            values, tags = graph.properties(node.get("properties") or {})
-            tags += [graph.tag(t) for t in node.get("tags") or []]
-            verbatim = bool(marker) or needs_verbatim(node.get("content") or "")
-            if verbatim:
-                cli.run("upsert", "block", "--id", str(block_id), "--content", content)
-            update(cli, "block", block_id, values, tags)
-            if marker:
-                cli.run("upsert", "task", "--id", str(block_id),
-                        "--status", TASK_STATUS[marker.group(1)])
-            if (verbatim or values or tags) and any(links(content)):
-                graph.link(block_id, content)
+            ids = cli.insert_blocks(page_id, rows)
+            for block_id, node, (_, _, title) in zip(ids, preorder(blocks), rows):
+                marker = TASK_MARKER.match(node.get("content") or "")
+                values, tags = graph.properties(node.get("properties") or {})
+                tags += [graph.tag(t) for t in node.get("tags") or []]
+                update(cli, "block", block_id, values, tags)
+                if marker:
+                    cli.run("upsert", "task", "--id", str(block_id),
+                            "--status", TASK_STATUS[marker.group(1)])
+                if any(links(title)):
+                    graph.link(block_id, title)
+        except BaseException:
+            remove_inserted(cli, top)
+            raise
         return page_id, len(ids)
+
+
+def remove_inserted(cli, top_uuids):
+    """Delete the inserted trees whose roots are `top_uuids`, so a failed write
+    leaves no half-written blocks behind."""
+    try:
+        found = cli.query("[:find [?u ...] :in $ [?u ...] :where [_ :block/uuid ?u]]",
+                          [[uuid.UUID(u) for u in top_uuids]]) or []
+        if found:
+            cli.delete_blocks([str(u) for u in found])
+    except LogseqError as e:
+        print(f"logseq-db: could not remove the blocks of the failed write {top_uuids}: {e}", file=sys.stderr)
 
 
 def update(cli, kind, entity_id, values, tags):

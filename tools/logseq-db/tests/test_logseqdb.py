@@ -16,6 +16,19 @@ class EdnTest(unittest.TestCase):
     def test_colon_text_with_space_is_a_string(self):
         self.assertEqual(logseqdb.edn(":not a keyword"), '":not a keyword"')
 
+    def test_uuid(self):
+        u = "6aec60c8-8d0a-46a4-a039-3b24b0b14423"
+        self.assertEqual(logseqdb.edn([logseqdb.uuid.UUID(u)]), f'[#uuid "{u}"]')
+
+
+class TransitTest(unittest.TestCase):
+    def test_escapes_tag_characters(self):
+        self.assertEqual(logseqdb.transit_str("~ 契約 ~"), "~~ 契約 ~")
+        self.assertEqual(logseqdb.transit_str("^ x"), "~^ x")
+        self.assertEqual(logseqdb.transit_str("`#team-elec-hub` text"), "~`#team-elec-hub` text")
+        self.assertEqual(logseqdb.transit_str("plain ~"), "plain ~")
+        self.assertEqual(logseqdb.transit_str(""), "")
+
 
 class RefsTest(unittest.TestCase):
     def test_split(self):
@@ -44,20 +57,50 @@ class EscapeTest(unittest.TestCase):
 
 
 class BlocksTest(unittest.TestCase):
-    def test_markdown_and_verbatim(self):
-        blocks = [{"content": "**Overview**", "children": [
-            {"content": "plain"},
-            {"content": "mentions `tags:: x`"},
-            {"content": "PR #519"},
-            {"content": "two\nlines"},
-        ]}]
-        text, verbatim = logseqdb.blocks_markdown(blocks, "@@t")
-        self.assertEqual(text, "- **Overview**\n\t- plain\n\t- @@t-0\n\t- @@t-1\n\t- @@t-2\n")
-        self.assertEqual(list(verbatim.values()), ["mentions `tags:: x`", "PR #519", "two\nlines"])
+    def test_rows_keep_text_as_written(self):
+        texts = ["`#team-elec-hub` text", "#reception-distr-hub plain", "PR \\#486", "key:: value", "two\nlines"]
+        blocks = [{"content": "**Overview**", "children": [{"content": t} for t in texts]}]
+        rows = logseqdb.insert_rows(blocks)
+        self.assertEqual([title for _, _, title in rows], ["**Overview**"] + texts)
+        root = rows[0][0]
+        self.assertEqual([parent for _, parent, _ in rows], [None] + [root] * len(texts))
+
+    def test_rows_follow_preorder(self):
+        blocks = [{"content": "a", "children": [{"content": "b"}]}, {"content": "TODO c"}]
+        rows = logseqdb.insert_rows(blocks)
+        self.assertEqual([(p is None, t) for _, p, t in rows], [(True, "a"), (False, "b"), (True, "c")])
+        self.assertEqual(rows[1][1], rows[0][0])
+        self.assertEqual(len({u for u, _, _ in rows}), 3)
 
     def test_preorder_matches_insert_order(self):
         blocks = [{"content": "a", "children": [{"content": "b"}]}, {"content": "c"}]
         self.assertEqual([n["content"] for n in logseqdb.preorder(blocks)], ["a", "b", "c"])
+
+    def test_insert_keeps_uuids_and_titles(self):
+        page = "11111111-1111-1111-1111-111111111111"
+        rows = [("aaaaaaaa-0000-0000-0000-000000000001", None, "`#x` y"),
+                ("aaaaaaaa-0000-0000-0000-000000000002", "aaaaaaaa-0000-0000-0000-000000000001", "#z")]
+        cli, ops = InsertCli(page, {rows[0][0]: 5, rows[1][0]: 6}), []
+        cli._outliner = ops.extend
+        self.assertEqual(cli.insert_blocks(1, rows), [5, 6])
+        op, (blocks, target, opts) = ops[0]
+        self.assertEqual((op, target), ("~:insert-blocks", "~u" + page))
+        self.assertEqual(blocks[0], ["^ ", "~:block/uuid", "~u" + rows[0][0], "~:block/title", "~`#x` y"])
+        self.assertEqual(blocks[1][-2:], ["~:block/parent", ["~:block/uuid", "~u" + rows[0][0]]])
+        self.assertEqual(opts[opts.index("~:replace-empty-target?") + 1], False)
+
+    def test_insert_fails_when_a_block_is_missing(self):
+        rows = [("aaaaaaaa-0000-0000-0000-000000000001", None, "a")]
+        cli = InsertCli("11111111-1111-1111-1111-111111111111", {})
+        cli._outliner = lambda ops: None
+        with self.assertRaisesRegex(logseqdb.LogseqError, "not found"):
+            cli.insert_blocks(1, rows)
+
+    def test_remove_inserted_deletes_only_what_exists(self):
+        top = ["aaaaaaaa-0000-0000-0000-000000000001", "aaaaaaaa-0000-0000-0000-000000000002"]
+        cli = InsertCli("p", {top[0]: 5})
+        logseqdb.remove_inserted(cli, top)
+        self.assertEqual(cli.deleted, [[top[0]]])
 
     def test_task_marker(self):
         m = logseqdb.TASK_MARKER.match("DONE closed")
@@ -69,6 +112,25 @@ class BlocksTest(unittest.TestCase):
         text = f"see [[Session/a b]], #[[c]] and (({u})); [[Session/a b]] again, not `[[code]]`"
         self.assertEqual(logseqdb.links(text), (["Session/a b", "c"], [u]))
         self.assertEqual(logseqdb.links("PR \\#519"), ([], []))
+
+
+class InsertCli(logseqdb.Cli):
+    """A graph whose page has `page_uuid` and whose blocks are `existing`
+    ({uuid: entity id})."""
+
+    def __init__(self, page_uuid, existing):
+        self.page_uuid, self.existing, self.deleted = page_uuid, existing, []
+
+    def query(self, q, inputs=None):
+        if ":find ?u ." in q:
+            return self.page_uuid
+        wanted = [str(u) for u in inputs[0]]
+        if ":find ?u ?e" in q:
+            return [[u, self.existing[u]] for u in wanted if u in self.existing]
+        return [u for u in wanted if u in self.existing]
+
+    def delete_blocks(self, block_uuids):
+        self.deleted.append(block_uuids)
 
 
 class FakeCli:
