@@ -27,6 +27,22 @@ let
     overlays.nix-claude-code
     overlays.herdr
     overlays.fix-passage-platform-path
+
+    # Hydra does not cache opencode on aarch64-darwin (2.2.6 ended in "output
+    # size limit exceeded"), so its node_modules is fetched here, and bun
+    # rejects Netskope's re-signed certificates. It ignores NIX_SSL_CERT_FILE
+    # but reads NODE_EXTRA_CA_CERTS; nix.conf has sandbox = false, so the build
+    # can read the CA. It goes under env because the derivation sets
+    # __structuredAttrs, which keeps top-level attributes out of the builder's
+    # environment. The fixed output hash is unchanged. Drop once Hydra serves
+    # opencode again.
+    (final: prev: {
+      opencode = prev.opencode.overrideAttrs (old: {
+        node_modules = old.node_modules.overrideAttrs (nmOld: {
+          env = (nmOld.env or { }) // { NODE_EXTRA_CA_CERTS = netskopeCA; };
+        });
+      });
+    })
   ];
 
   # Shared home-manager modules used by both mkHomeConfiguration and mkDarwinConfiguration
