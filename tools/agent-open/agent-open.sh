@@ -590,12 +590,13 @@ open_new() {
     fi
     [ -n "$remote_cwd" ] ||
       die "focused pane is in $host's mirror, but its remote cwd could not be resolved — is the mirror daemon syncing?"
+    remote_cwd=$(pick_new_cwd "$remote_cwd" "$(remote_sessions_dir "$target")") || exit 0
     open_remote "$host" "$remote_cwd" "$agent" "$rws"
     return
   fi
 
   [ -n "$cwd" ] && [ -d "$cwd" ] || cwd="$PWD"
-  cwd=$(pick_new_cwd "$cwd") || exit 0
+  cwd=$(pick_new_cwd "$cwd" "$(local_sessions_dir)") || exit 0
   open_in_herdr "$cwd" "$(tab_label_for "$cwd")" "$agent" "$workspace"
 }
 
@@ -605,13 +606,17 @@ open_new() {
 # session's directory, whose boundary hook would then deny the new agent its
 # own cwd, so ask instead of following the pane silently. Hosts without the
 # workspace, and runs with no terminal for fzf, keep the pane's directory.
+# sessions is the workspace on the host the agent will run on, empty when that
+# host has none: a mirrored pane's agent opens over there, so it is that host's
+# workspace (and $HOME) that counts, while the picker still runs here, where
+# the popup's terminal is.
 pick_new_cwd() {
-  local cwd="$1" sessions="$HOME/agent-sessions" choice
-  if [ "${cwd%/}" = "$sessions" ]; then
+  local cwd="$1" sessions="$2" choice
+  if [ -z "$sessions" ] || [ ! -t 0 ]; then
     printf '%s' "$cwd"
     return 0
   fi
-  if [ ! -d "$sessions" ] || [ ! -t 0 ]; then
+  if [ "${cwd%/}" = "$sessions" ]; then
     printf '%s' "$cwd"
     return 0
   fi
@@ -620,6 +625,19 @@ pick_new_cwd() {
       --delimiter="$TAB" --with-nth=2) || return 1
   [ -n "$choice" ] || return 1
   printf '%s' "${choice%%"$TAB"*}"
+}
+
+local_sessions_dir() {
+  [ -d "$HOME/agent-sessions" ] && printf '%s' "$HOME/agent-sessions"
+  return 0
+}
+
+# Not an agent-open flag: an unknown first argument falls through to the
+# resume picker, so a host running an older agent-open would start fzf over
+# ssh instead of failing.
+remote_sessions_dir() {
+  # shellcheck disable=SC2016  # $HOME is the remote shell's to expand
+  remote_run_bin "$1" sh -c 'test -d "$HOME/agent-sessions" && printf %s "$HOME/agent-sessions"' 2>/dev/null || true
 }
 
 # The workspace of the pane the picker was opened from, so a local resume lands
