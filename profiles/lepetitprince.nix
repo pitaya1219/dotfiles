@@ -8,19 +8,7 @@
     };
     modules = extraModules ++ [
       ({ config, pkgs, lib, ... }: {
-        # koi's endpoint only. This host runs no model of its own, and it
-        # reaches ai.pitaya.f5.si over the mesh either way.
-        programs.hermes = {
-          enable = true;
-          default = "pitaya";
-          pitaya = {
-            enable = true;
-            model = "Gemma-4";
-            passagePrefix = "hermes/client/lepetitprince";
-          };
-        };
-
-        # koi's endpoint, the same one hermes is on above.
+        # koi's endpoint.
         programs.shellm = {
           enable = true;
           endpoint = "pitaya";
@@ -44,7 +32,6 @@
           ../shared/programs/claude-code.nix
           ../shared/programs/opencode.nix
           ../shared/programs/vibe.nix
-          ../shared/programs/hermes.nix
           ../shared/programs/shellm.nix
           ../shared/programs/direnv.nix
           ../shared/programs/git.nix

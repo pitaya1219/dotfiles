@@ -149,7 +149,6 @@
         ];
         r-shibuya = hermesModules;
         droid = hermesModules;
-        lepetitprince = hermesModules;
       };
 
       # Load all profiles automatically
