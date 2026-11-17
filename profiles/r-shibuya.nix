@@ -92,23 +92,14 @@ let
 
       programs.browse.enable = true;
 
-      # llama-server on this machine is the only endpoint here — no client
-      # exists for ai.pitaya.f5.si under this profile, and this one is a
-      # corporate laptop, so nothing leaves it.
-      programs.hermes = {
-        enable = true;
-        default = "local";
-        local = {
-          enable = true;
-          model = "gemma-4-e2b";
-        };
-      };
-
-      # The same llama-server hermes uses above, started by
-      # ./r-shibuya/llama.nix.
+      # The litert-lm serve on this machine is the only endpoint here — this
+      # is a corporate laptop, so nothing leaves it. It is started by
+      # ./r-shibuya/llama.nix; shellm below talks to it. Hermes is
+      # not on this profile: it refuses a model under 64,000 tokens of
+      # context, and the .litertlm build of Gemma 4 E4B stops at 32k.
       programs.shellm = {
         enable = true;
-        local.model = "gemma-4-e2b";
+        local.model = "gemma-4-e4b-gpu";
         reasoningEffort = "none";
         timeout = 30;
       };
@@ -145,7 +136,6 @@ let
         ../shared/programs/claude-code.nix
         ../shared/programs/opencode.nix
         ../shared/programs/vibe.nix
-        ../shared/programs/hermes.nix
         ../shared/programs/shellm.nix
         ../shared/programs/git.nix
         ../shared/programs/neovim.nix

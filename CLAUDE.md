@@ -65,7 +65,7 @@ This is a sophisticated multi-profile dotfiles configuration repository that use
 - **Platform**: aarch64-darwin (Apple Silicon)
 - **Home**: `/Users/r-shibuya`
 - **Packages**: jq (additional)
-- **Neovim**: llama.vim against the local llama-servers in `profiles/r-shibuya/llama.nix`
+- **Neovim**: llama.vim against the local model servers in `profiles/r-shibuya/llama.nix`
 
 ### droid Profile (Android native Linux Terminal)
 - **Platform**: aarch64-linux (ARM64)

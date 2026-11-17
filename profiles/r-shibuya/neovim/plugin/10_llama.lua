@@ -2,10 +2,10 @@
 -- loads, so this file has to be under plugin/ rather than after/plugin/ to be
 -- read at all -- enable_at_startup and the keymaps are only looked at there.
 --
--- It drives two local llama-servers, one at a time (profiles/r-shibuya/llama.nix):
+-- It drives two local model servers, one at a time (profiles/r-shibuya/llama.nix):
 --
---   gemma-4-e2b        on 11434  the instruction feature, and the login default
---   Qwen2.5-Coder-3B   on  8012  FIM ghost-text completion
+--   gemma-4-e4b-gpu    on 11434  litert-lm serve: the instruction feature, and the login default
+--   Qwen2.5-Coder-3B   on  8012  llama-server: FIM ghost-text completion
 --
 -- What changes with the loaded model. n_prefix and n_suffix are how many lines
 -- around the cursor or selection go into a request, and both features read
@@ -42,7 +42,7 @@ vim.g.llama_config = vim.tbl_extend("force", {
 
   -- The instruction feature wants a chat model, which is the one on 11434.
   endpoint_inst = "http://127.0.0.1:11434/v1/chat/completions",
-  model_inst = "gemma-4-e2b",
+  model_inst = "gemma-4-e4b-gpu",
 
   params_inst = fast_params,
 

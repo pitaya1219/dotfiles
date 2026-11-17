@@ -8,12 +8,12 @@ running() {
 
 case "${1:-}" in
   fim)
-    start_label=$FIM_LABEL   start_port=$FIM_PORT
-    stop_label=$CHAT_LABEL   stop_port=$CHAT_PORT
+    start_label=$FIM_LABEL   start_url=$FIM_READY_URL
+    stop_label=$CHAT_LABEL   stop_url=$CHAT_READY_URL
     ;;
   chat)
-    start_label=$CHAT_LABEL  start_port=$CHAT_PORT
-    stop_label=$FIM_LABEL    stop_port=$FIM_PORT
+    start_label=$CHAT_LABEL  start_url=$CHAT_READY_URL
+    stop_label=$FIM_LABEL    stop_url=$FIM_READY_URL
     ;;
   status)
     for label in "$CHAT_LABEL" "$FIM_LABEL"; do
@@ -34,7 +34,7 @@ launchctl bootout "$domain/$stop_label" 2>/dev/null || true
 # bootout returns before the weights are actually freed, and this machine has
 # no room to have both models resident at once, so wait for the port to go
 # quiet before asking for the other one.
-while curl -sf -o /dev/null --max-time 1 "http://127.0.0.1:$stop_port/health"; do
+while curl -sf -o /dev/null --max-time 1 "$stop_url"; do
   sleep 0.2
 done
 
@@ -43,7 +43,10 @@ launchctl kickstart "$domain/$start_label"
 
 # kickstart returns as soon as the process is spawned, which is several GB of
 # weights short of a server that can answer. Callers -- the neovim keymaps in
-# particular -- want the endpoint, not the process, so block until /health is
-# ok. A cold model takes tens of seconds; a first-ever run has to download it.
+# particular -- want the endpoint, not the process, so block until the ready
+# URL answers. A cold model takes tens of seconds; a first-ever run has to
+# download it. litert-lm serve loads its engine on the first request rather
+# than at startup, so for chat this only means "listening": the first
+# completion after a switch still pays the load.
 curl -sf -o /dev/null --retry 600 --retry-delay 1 --retry-all-errors \
-  --retry-connrefused "http://127.0.0.1:$start_port/health"
+  --retry-connrefused "$start_url"

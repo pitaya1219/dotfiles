@@ -196,7 +196,6 @@ two OpenAI-compatible endpoints per profile:
 
 | Profile | Endpoints | Default |
 |---------|-----------|---------|
-| r-shibuya | llama-server on `localhost:11434` | local |
 | droid | `localhost:11434`, `ai.pitaya.f5.si` | local |
 | lepetitprince | `ai.pitaya.f5.si` | pitaya |
 
@@ -241,7 +240,8 @@ in a session:
 
 | Profile | `endpoint` | Model |
 |---------|------------|-------|
-| r-shibuya, droid | `local` — llama-server on `localhost:11434` | `gemma-4-e2b` |
+| r-shibuya | `local` — litert-lm serve on `localhost:11434` | `gemma-4-e4b-gpu` |
+| droid | `local` — llama-server on `localhost:11434` | `gemma-4-e2b` |
 | lepetitprince, aviateur, rose | `pitaya` — `ai.pitaya.f5.si` | `Qwen3.5-0.8B-UD-Q4_K_XL` |
 
 The endpoint's origin, model and auth live under its own namespace in the

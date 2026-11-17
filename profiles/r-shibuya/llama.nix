@@ -1,17 +1,57 @@
 { config, pkgs, lib, ... }:
 
 let
-  # Two llama-servers because one model cannot do both jobs. Editor completion
+  # Two local servers because one model cannot do both jobs. Editor completion
   # goes through llama-server's /infill, which needs the GGUF to declare
-  # fim_pre / fim_suf / fim_mid token ids; gemma-4-E2B-it is a general chat
+  # fim_pre / fim_suf / fim_mid token ids; gemma-4-E4B-it is a general chat
   # model and carries none, so /infill answers 501 "Infill is not supported by
   # this model". Nor can this 16GB machine hold both at once, so llama-use
   # below unloads one agent before loading the other, and only the chat one
-  # comes up at login -- it is what hermes, shellm and llama.vim's instruction
+  # comes up at login -- it is what pi, shellm and llama.vim's instruction
   # feature talk to.
+  litert-lm = pkgs.callPackage ./litert-lm.nix { };
+
+  # The model id clients send and /v1/models reports: litert-lm serves its
+  # registry under the names models were imported as.
+  chatModel = "gemma-4-e4b-gpu";
+
+  litertConfig = pkgs.writeText "litert-lm-config.json" (builtins.toJSON {
+    models.${chatModel} = {
+      # Only with a -gpu file like the one below. The plain .litertlm runs on
+      # gpu too, but duplicates and drops tokens there ("TheThe", `herdr`
+      # sent as `dr`): E2B's botched 4 of 6 tool calls that cpu got right,
+      # its -gpu file 0. The -gpu files ship no drafter, so
+      # speculative_decoding has nothing to act on.
+      backend = "gpu";
+
+      # `litert-lm describe` reports 8192 for this file, but serve allocates
+      # and accepts whatever this says; 32k prompts were checked, and E4B
+      # still followed instructions there where E2B stopped past 16k. The KV cache
+      # is allocated for the whole window when the engine loads.
+      max_num_tokens = 32768;
+    };
+  });
+
+  # `serve` only answers for models already in ~/.litert-lm/models, so the
+  # first start pulls the weights before it listens -- like `-hf` below,
+  # nothing multi-GB passes through the Nix store. Until the download ends
+  # the port is closed; `tail -f` the log.
+  litert-serve = pkgs.writeShellApplication {
+    name = "litert-lm-serve";
+    runtimeInputs = [ litert-lm ];
+    text = ''
+      if [ ! -f "$HOME/.litert-lm/models/${chatModel}/model.litertlm" ]; then
+        litert-lm import \
+          --from-huggingface-repo litert-community/gemma-4-E4B-it-litert-lm \
+          gemma-4-E4B-it-gpu.litertlm ${chatModel}
+      fi
+      exec litert-lm serve --config ${litertConfig} "$@"
+    '';
+  };
+
   chat = {
-    label = "cpp.llama.server";
-    logName = "llama-server";
+    label = "dev.litert-lm.server";
+    logName = "litert-lm-server";
 
     # Ollama's port. Nothing here speaks the Ollama protocol, but koi already
     # serves its llama-server on 11434 (homelab's llama_model_server_port), so
@@ -20,31 +60,11 @@ let
     # — whichever binds first wins and the other exits.
     port = 11434;
 
-    args = [
-      # QAT over the plain quant of the same tier: gemma-4-E2B-it-qat-UD-Q4_K_XL
-      # is 2.62GB against gemma-4-E2B-it-UD-Q4_K_XL's 3.18GB, and
-      # quantization-aware training is what the 4-bit weights were trained for
-      # rather than rounded into — so it is the smaller file and the better one
-      # at once. Q2 is the only tier below it that saves anything worth having
-      # (2.19GB) and the drop is not worth 0.4GB.
-      "-hf" "unsloth/gemma-4-E2B-it-qat-GGUF:UD-Q4_K_XL"
+    # litert-lm serve has no /health.
+    readyPath = "/v1/models";
 
-      # The name /v1/models reports, and so the one programs.hermes.local.model
-      # has to match. Pinned because the default is the GGUF's own general.name,
-      # which changes with the quant.
-      "--alias" "gemma-4-e2b"
-
-      # Hermes refuses a model reporting under 64,000 tokens of context, so
-      # 65536 is the floor, not a preference. Gemma 4 E2B tops out at 131072,
-      # and its sliding_window of 512 keeps the KV cache for a window this size
-      # small.
-      "--ctx-size" "65536"
-
-      # unsloth ships chat-template fixes inside the GGUF, and their README is
-      # explicit that llama.cpp only picks them up under --jinja. Tool calling
-      # rides on the same template, which an agent needs.
-      "--jinja"
-    ];
+    program = [ "${litert-serve}/bin/litert-lm-serve" ];
+    args = [ ];
   };
 
   fim = {
@@ -53,6 +73,10 @@ let
 
     # llama.vim's own default endpoint, and what the preset below picks.
     port = 8012;
+
+    readyPath = "/health";
+
+    program = [ "${pkgs.llama-cpp}/bin/llama-server" "--n-gpu-layers" "999" ];
 
     args = [
       # llama.cpp's preset for editor completion. It pulls
@@ -72,18 +96,18 @@ let
 
   logDir = "${config.home.homeDirectory}/.local/share";
 
+  readyUrl = server: "http://127.0.0.1:${toString server.port}${server.readyPath}";
+
   # `-hf` pulls weights into LLAMA_CACHE on first start, so nothing here copies
   # multi-GB files through the Nix store or an activation script. A first run
   # therefore serves nothing until the download finishes; `tail -f` the log.
-  mkAgent = { label, logName, port, args, runAtLoad, keepAlive }: {
+  mkAgent = { label, logName, port, program, args, runAtLoad, keepAlive, ... }: {
     enable = true;
     config = {
       Label = label;
-      ProgramArguments = [
-        "${pkgs.llama-cpp}/bin/llama-server"
+      ProgramArguments = program ++ [
         "--host" "127.0.0.1"
         "--port" (toString port)
-        "--n-gpu-layers" "999"
       ] ++ args;
       EnvironmentVariables = {
         HOME = config.home.homeDirectory;
@@ -103,21 +127,21 @@ let
     # to rather than replaces.
     text = ''
       CHAT_LABEL="${chat.label}"
-      CHAT_PORT="${toString chat.port}"
+      CHAT_READY_URL="${readyUrl chat}"
       FIM_LABEL="${fim.label}"
-      FIM_PORT="${toString fim.port}"
-      export CHAT_LABEL CHAT_PORT FIM_LABEL FIM_PORT
+      FIM_READY_URL="${readyUrl fim}"
+      export CHAT_LABEL CHAT_READY_URL FIM_LABEL FIM_READY_URL
     '' + builtins.readFile ../../tools/llama-use/llama-use.sh;
     meta = {
-      description = "Load exactly one of the local llama-servers and wait for it to answer";
+      description = "Load exactly one of the local model servers and wait for it to answer";
       mainProgram = "llama-use";
     };
   };
 in
 {
-  home.packages = [ pkgs.llama-cpp llama-use ];
+  home.packages = [ pkgs.llama-cpp litert-lm llama-use ];
 
-  launchd.agents.llama-server = mkAgent (chat // {
+  launchd.agents.litert-lm-server = mkAgent (chat // {
     runAtLoad = true;
     keepAlive = true;
   });
