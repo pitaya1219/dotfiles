@@ -216,6 +216,29 @@ passage insert hermes/client/<profile>/secret
 first calls the endpoint — so a missing entry shows up as a failed turn, not a
 failed activation.
 
+### pi
+
+`programs.pi` (`shared/programs/pi.nix`) puts the pi coding agent on every
+profile, wired to the same endpoints as hermes and shellm:
+
+| Profile | Providers | Default |
+|---------|-----------|---------|
+| r-shibuya | `local` — litert-lm serve on `localhost:11434` | local |
+| droid | `local` — the phone's server through shellm's forward, `pitaya` | local |
+| lepetitprince, aviateur, rose | `pitaya` — `ai.pitaya.f5.si` | pitaya |
+
+Switch with `/model`. Unlike hermes, `pitaya` uses one OAuth client for pi
+on every profile. Create it in Zitadel once, then:
+
+```bash
+passage insert pi/oauth/client-id
+passage insert pi/oauth/client-secret
+```
+
+pi reads them on its first request to koi, not at activation, so a missing
+entry shows up as a failed turn. The minted bearer is cached under
+`~/.cache/pi/` until shortly before it expires.
+
 ### shellm
 
 `programs.shellm` (`shared/programs/shellm.nix`) owns the package and the

@@ -14,6 +14,12 @@
           endpoint = "pitaya";
         };
 
+        programs.pi = {
+          enable = true;
+          default = "pitaya";
+          pitaya.enable = true;
+        };
+
         programs.logseq-db = {
           enable = true;
           cliPackage = pkgs.logseq-cli;
@@ -27,6 +33,7 @@
           ../shared/programs/bash.nix
           ../shared/programs/bare.nix
           ../shared/programs/shellm.nix
+          ../shared/programs/pi.nix
           ../shared/programs/logseq-view.nix
           ../shared/programs/claude-code.nix
           ../shared/programs/opencode.nix

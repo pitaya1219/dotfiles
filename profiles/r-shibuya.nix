@@ -94,9 +94,43 @@ let
 
       # The litert-lm serve on this machine is the only endpoint here — this
       # is a corporate laptop, so nothing leaves it. It is started by
-      # ./r-shibuya/llama.nix; shellm below talks to it. Hermes is
+      # ./r-shibuya/llama.nix; pi and shellm below both talk to it. Hermes is
       # not on this profile: it refuses a model under 64,000 tokens of
       # context, and the .litertlm build of Gemma 4 E4B stops at 32k.
+      programs.pi = {
+        enable = true;
+        default = "local";
+        local = {
+          enable = true;
+          model = "gemma-4-e4b-gpu";
+          # max_num_tokens in ./r-shibuya/llama.nix.
+          contextWindow = 32768;
+          # Nothing about litert-lm serve can be auto-detected from a
+          # localhost URL. It reads max_completion_tokens and ignores
+          # max_tokens, and maps reasoning_effort onto Gemma's thinking.
+          extraProvider.compat = {
+            maxTokensField = "max_completion_tokens";
+            supportsDeveloperRole = false;
+            supportsReasoningEffort = true;
+            thinkingFormat = "openai";
+          };
+          extraModel = {
+            reasoning = true;
+            # serve's only effort that turns thinking off; an unmapped `off`
+            # sends nothing, and Gemma then reasons.
+            thinkingLevelMap.off = "none";
+            # Gemma's recommended sampling. serve takes sampling only from
+            # the request body -- config.json's temperature/top_p/top_k reach
+            # `litert-lm run` alone.
+            samplingParams = {
+              temperature = 1.0;
+              top_p = 0.95;
+              top_k = 64;
+            };
+          };
+        };
+      };
+
       programs.shellm = {
         enable = true;
         local.model = "gemma-4-e4b-gpu";
@@ -137,6 +171,7 @@ let
         ../shared/programs/opencode.nix
         ../shared/programs/vibe.nix
         ../shared/programs/shellm.nix
+        ../shared/programs/pi.nix
         ../shared/programs/git.nix
         ../shared/programs/neovim.nix
         ../shared/programs/herdr.nix

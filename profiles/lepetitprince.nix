@@ -14,6 +14,12 @@
           endpoint = "pitaya";
         };
 
+        programs.pi = {
+          enable = true;
+          default = "pitaya";
+          pitaya.enable = true;
+        };
+
         programs.logseq-db = {
           enable = true;
           cliPackage = pkgs.logseq-cli;
@@ -33,6 +39,7 @@
           ../shared/programs/opencode.nix
           ../shared/programs/vibe.nix
           ../shared/programs/shellm.nix
+          ../shared/programs/pi.nix
           ../shared/programs/direnv.nix
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix

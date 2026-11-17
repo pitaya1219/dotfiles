@@ -80,6 +80,28 @@
           };
         };
 
+        # The same two endpoints as hermes, default included. pi has no
+        # SOCKS support to hang hermes' `proxy` on, so local rides shellm's
+        # socat forward above instead.
+        programs.pi = {
+          enable = true;
+          default = "local";
+          local = {
+            enable = true;
+            baseUrl = "http://127.0.0.1:${toString config.programs.shellm.local.proxy.listenPort}/v1";
+            model = "gemma-4-e2b";
+            # At least this much: hermes, which refuses anything under 64,000,
+            # runs against the same server.
+            contextWindow = 65536;
+            extraProvider.compat.supportsReasoningEffort = true;
+            extraModel = {
+              reasoning = true;
+              thinkingLevelMap.off = "none";
+            };
+          };
+          pitaya.enable = true;
+        };
+
         imports = [
           ../shared/programs/bare.nix
           ../shared/programs/logseq-view.nix
@@ -90,6 +112,7 @@
           ../shared/programs/vibe.nix
           ../shared/programs/hermes.nix
           ../shared/programs/shellm.nix
+          ../shared/programs/pi.nix
           ../shared/programs/git.nix
           ../shared/programs/neovim.nix
           ../shared/programs/herdr.nix
