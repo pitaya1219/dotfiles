@@ -94,16 +94,16 @@ let
 
       # The litert-lm serve on this machine is the only endpoint here — this
       # is a corporate laptop, so nothing leaves it. It is started by
-      # ./r-shibuya/llama.nix; pi and shellm below both talk to it. Hermes is
-      # not on this profile: it refuses a model under 64,000 tokens of
-      # context, and the .litertlm build of Gemma 4 E4B stops at 32k.
+      # ./r-shibuya/local-llm.nix; pi and shellm below both talk to it.
+      # Hermes is not on this profile: it refuses a model under 64,000 tokens
+      # of context, and the .litertlm build of Gemma 4 E4B stops at 32k.
       programs.pi = {
         enable = true;
         default = "local";
         local = {
           enable = true;
           model = "gemma-4-e4b-gpu";
-          # max_num_tokens in ./r-shibuya/llama.nix.
+          # max_num_tokens in ./r-shibuya/local-llm.nix.
           contextWindow = 32768;
           # Nothing about litert-lm serve can be auto-detected from a
           # localhost URL. It reads max_completion_tokens and ignores
@@ -161,7 +161,7 @@ let
         ../shared/programs/bare.nix
         ../shared/programs/logseq-view.nix
         ./r-shibuya/logseq-desktop.nix
-        ./r-shibuya/llama.nix
+        ./r-shibuya/local-llm.nix
         ../shared/programs/mtg-minutes.nix
         ../shared/programs/browse.nix
         ../shared/programs/obs.nix

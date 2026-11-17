@@ -2,7 +2,7 @@
 -- loads, so this file has to be under plugin/ rather than after/plugin/ to be
 -- read at all -- enable_at_startup and the keymaps are only looked at there.
 --
--- It drives two local model servers, one at a time (profiles/r-shibuya/llama.nix):
+-- It drives two local model servers, one at a time (profiles/r-shibuya/local-llm.nix):
 --
 --   gemma-4-e4b-gpu    on 11434  litert-lm serve: the instruction feature, and the login default
 --   Qwen2.5-Coder-3B   on  8012  llama-server: FIM ghost-text completion
