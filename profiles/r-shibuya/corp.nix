@@ -49,4 +49,9 @@ in
       done
     fi
   '';
+
+  # litert-lm pulls its weights with Python's urllib, which verifies against
+  # OpenSSL's bundle rather than the keychain, and a launchd agent does not
+  # inherit the login shell's SSL_CERT_FILE.
+  launchd.agents.litert-lm-server.config.EnvironmentVariables.SSL_CERT_FILE = netskopeCA;
 }
