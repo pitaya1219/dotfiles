@@ -94,7 +94,8 @@ in
       RestartSec = "3s";
     };
     Install = {
-      WantedBy = [ "default.target" ];
+      # home-manager switch restarts a changed unit as stop + start, and Requires only propagates the stop, so the upstream must pull this unit back up.
+      WantedBy = [ "default.target" "tailscale-up.service" ];
     };
   };
 }
