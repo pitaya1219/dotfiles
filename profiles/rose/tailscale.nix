@@ -52,7 +52,8 @@ in
     };
     Service = {
       ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p %h/.local/share/tailscale %t/tailscale";
-      ExecStart = "${pkgs.tailscale}/bin/tailscaled --state=%h/.local/share/tailscale/tailscaled.state --socket=%t/tailscale/tailscaled.sock";
+      # homelab infra/roles/host_firewall only accepts unsolicited inbound UDP on 41641; change both together.
+      ExecStart = "${pkgs.tailscale}/bin/tailscaled --port=41641 --state=%h/.local/share/tailscale/tailscaled.state --socket=%t/tailscale/tailscaled.sock";
       Restart = "on-failure";
       RestartSec = "3s";
       AmbientCapabilities = "CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_MODULE";
