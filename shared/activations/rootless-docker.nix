@@ -11,8 +11,30 @@ let
     pkgs.gzip
     pkgs.coreutils
   ];
+
+  # Runs a command (default: a shell) as root of the rootless dockerd's user
+  # namespace, with the host's mounts and network. There, files owned by
+  # containers' uids are readable and writable without host groups mirroring
+  # those uids; files created there belong to this account on the host.
+  rootless-ns = pkgs.writeShellApplication {
+    name = "rootless-ns";
+    runtimeInputs = [ pkgs.util-linux pkgs.coreutils ];
+    text = ''
+      pid_file="''${XDG_RUNTIME_DIR:?}/dockerd-rootless/child_pid"
+      if [ ! -r "$pid_file" ]; then
+        echo "rootless-ns: $pid_file not found; is the rootless dockerd running?" >&2
+        exit 1
+      fi
+      if [ "$#" -eq 0 ]; then
+        set -- "''${SHELL:-bash}"
+      fi
+      exec nsenter -U --preserve-credentials -t "$(cat "$pid_file")" -- "$@"
+    '';
+  };
 in
 {
+  home.packages = [ rootless-ns ];
+
   home.activation.installRootlessDocker = lib.hm.dag.entryAfter ["writeBoundary"] ''
     export BIN="$HOME/.local/bin"
     export DOCKER_BIN="$HOME/.local/bin"
