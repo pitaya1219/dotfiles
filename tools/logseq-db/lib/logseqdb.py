@@ -563,8 +563,10 @@ class Graph:
                 # graph) cannot be created as a user property from the CLI.
                 print(f"logseq-db: skipped property {name}: {e}", file=sys.stderr)
                 continue
-            if ptype in ("default", "url") and card == "one" and self.choices(ident):
-                values[":" + ident] = self.choice(ident, str(raw).strip())
+            if ptype in ("default", "url") and self.choices(ident):
+                titles = [t.strip() for t in str(raw).split(",") if t.strip()] if card == "many" else [str(raw).strip()]
+                ids = [self.choice(ident, t) for t in titles]
+                values[":" + ident] = ids if card == "many" else ids[0]
                 continue
             values[":" + ident] = self.value(ptype, card, str(raw))
         return values, tags
@@ -595,6 +597,64 @@ def escape_number_tags(text):
 TASK_MARKER = re.compile(r"^(TODO|LATER|DOING|NOW|DONE|CANCELED|CANCELLED)\s+")
 TASK_STATUS = {"TODO": "todo", "LATER": "todo", "DOING": "doing", "NOW": "doing",
                "DONE": "done", "CANCELED": "canceled", "CANCELLED": "canceled"}
+
+
+# A block's status, priority and dates are the built-in properties of a Task.
+# They are not looked up as user properties (the user's own `Status` has the
+# same name); `upsert task` sets them.
+TASK_FIELDS = ("status", "priority", "deadline", "scheduled")
+PRIORITIES = ("low", "medium", "high", "urgent")
+# What `upsert task --status` takes (logseq-cli 2.0.2: backlog, canceled, doing,
+# done, in-review, todo). Waiting is one of this graph's own choices: the CLI
+# rejects it, so it is set as a property value afterwards.
+CLI_STATUS = {"backlog": "backlog", "todo": "todo", "later": "todo", "doing": "doing", "now": "doing",
+              "in progress": "doing", "in-progress": "doing", "in review": "in-review",
+              "in-review": "in-review", "done": "done", "canceled": "canceled", "cancelled": "canceled"}
+TASK_DATE = re.compile(r"^(?:\[\[)?(\d{4}-\d{2}-\d{2})(?:\]\])?$")
+
+
+def split_task_fields(props):
+    """(task fields, other properties) of a block's `properties`."""
+    task, rest = {}, {}
+    for key, raw in (props or {}).items():
+        if key.lower() in TASK_FIELDS:
+            task[key.lower()] = raw
+        else:
+            rest[key] = raw
+    return task, rest
+
+
+def parse_task(task, marker_status=None):
+    """The `upsert task` arguments for a block's task fields, and whether its
+    status is Waiting. An explicit status beats the TODO/DOING marker. Raises
+    LogseqError for a value the graph does not take, before anything is written."""
+    args, waiting = [], False
+    status = str(task.get("status") or "").strip()
+    if status:
+        key = status.lower()
+        if key in ("waiting", "wait"):
+            # Made a Task as Backlog first; Waiting replaces it.
+            args += ["--status", "backlog"]
+            waiting = True
+        elif key in CLI_STATUS:
+            args += ["--status", CLI_STATUS[key]]
+        else:
+            raise LogseqError(f"unknown status {status!r}; use backlog, todo, doing, waiting, in review, done or canceled")
+    elif marker_status:
+        args += ["--status", marker_status]
+    priority = str(task.get("priority") or "").strip()
+    if priority:
+        if priority.lower() not in PRIORITIES:
+            raise LogseqError(f"unknown priority {priority!r}; use low, medium, high or urgent")
+        args += ["--priority", priority.lower()]
+    for name in ("deadline", "scheduled"):
+        raw = str(task.get(name) or "").strip()
+        if raw:
+            m = TASK_DATE.match(raw)
+            if not m:
+                raise LogseqError(f"{name} {raw!r} is not a YYYY-MM-DD date")
+            args += [f"--{name}", m.group(1)]
+    return args, waiting
 
 
 def links(text):
@@ -669,8 +729,15 @@ def order_after(key):
 def write(cfg, page, properties=None, blocks=None, parent=None):
     """Upsert `page` (under the namespace page `parent`, if given), set its
     properties, append `blocks` (a tree of {content, children?, tags?,
-    properties?}). Returns (page id, block count)."""
+    properties?}). A block's `properties` hold user properties by name, and
+    the Task fields status, priority, deadline and scheduled. Returns (page id,
+    block count)."""
     blocks = escape_tree(blocks or [])
+    parsed = []
+    for node in preorder(blocks):
+        marker = TASK_MARKER.match(node.get("content") or "")
+        task, rest = split_task_fields(node.get("properties"))
+        parsed.append((parse_task(task, TASK_STATUS[marker.group(1)] if marker else None), rest))
     with session(cfg) as cli:
         graph = Graph(cli)
         page_id = graph.page(page)
@@ -686,14 +753,15 @@ def write(cfg, page, properties=None, blocks=None, parent=None):
         top = [u for u, parent, _ in rows if parent is None]
         try:
             ids = cli.insert_blocks(page_id, rows)
-            for block_id, node, (_, _, title) in zip(ids, preorder(blocks), rows):
-                marker = TASK_MARKER.match(node.get("content") or "")
-                values, tags = graph.properties(node.get("properties") or {})
+            for block_id, node, (_, _, title), ((task_args, waiting), rest) in zip(ids, preorder(blocks), rows, parsed):
+                values, tags = graph.properties(rest)
                 tags += [graph.tag(t) for t in node.get("tags") or []]
                 update(cli, "block", block_id, values, tags)
-                if marker:
-                    cli.run("upsert", "task", "--id", str(block_id),
-                            "--status", TASK_STATUS[marker.group(1)])
+                if task_args:
+                    cli.run("upsert", "task", "--id", str(block_id), *task_args)
+                if waiting:
+                    update(cli, "block", block_id,
+                           {":logseq.property/status": graph.choice("logseq.property/status", "Waiting")}, [])
                 if any(links(title)):
                     graph.link(block_id, title)
         except BaseException:

@@ -69,6 +69,12 @@ def _strip_empty_children(node):
     return node
 
 
+# `key:: value` on its own line, indented under a list item, sets a property of
+# that item. Event marker for _build_indented_tree.
+_PROPERTY = object()
+PROPERTY_LINE = re.compile(r"^(\s*)([A-Za-z][\w-]*)::\s*(.*\S)\s*$")
+
+
 def _build_indented_tree(events):
     """Assemble (depth, node) events into a block tree via stack-based
     indentation nesting: a node at depth D becomes a child of the nearest
@@ -82,7 +88,12 @@ def _build_indented_tree(events):
     """
     root = []
     stack = [(-1, root)]
+    last = None
     for depth, node in events:
+        if depth is _PROPERTY:
+            key, value = node
+            last.setdefault("properties", {})[key] = value
+            continue
         if depth is None:
             stack[-1][1].append(node)
             continue
@@ -90,6 +101,7 @@ def _build_indented_tree(events):
             stack.pop()
         stack[-1][1].append(node)
         stack.append((depth, node["children"]))
+        last = node
     for node in root:
         _strip_empty_children(node)
     return root
@@ -101,17 +113,27 @@ def convert_markdown(text):
     heading depth; list items (with [ ]/[x] -> TODO/DONE) nest by
     indentation, always deeper than the enclosing heading; plain paragraphs
     attach as a leaf under the current context; inline markdown passes
-    through unchanged.
+    through unchanged. A `key:: value` line indented under a list item is that
+    item's property (priority, area, context, deadline, ...), not a block.
     """
 
     def events():
+        # Indent of the list item whose properties may follow; None once any
+        # other kind of line has come, so a stray "key:: value" stays text.
+        item_indent = None
         for raw in text.split("\n"):
             line = raw.rstrip("\n")
             if not line.strip():
                 continue
 
+            prop = PROPERTY_LINE.match(line)
+            if prop and item_indent is not None and len(prop.group(1)) > item_indent:
+                yield _PROPERTY, (prop.group(2), prop.group(3))
+                continue
+
             h = re.match(r"^(#{1,6})\s+(.*)", line)
             if h:
+                item_indent = None
                 hashes, heading_text = h.groups()
                 if len(hashes) == 1:
                     continue  # H1 is the page/parent title, not content
@@ -130,10 +152,12 @@ def convert_markdown(text):
                     content = f"{mark} {checkbox.group(2)}"
                 else:
                     content = item_text
+                item_indent = len(indent)
                 yield 100 + len(indent), _new_node(content)
                 continue
 
             # Plain paragraph: leaf under whatever context is currently deepest.
+            item_indent = None
             yield None, {"content": line}
 
     return _build_indented_tree(events())

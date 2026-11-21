@@ -59,9 +59,45 @@ combined string.
 | inline `**bold**`, `[[link]]`, `` `code` `` | passed through unchanged |
 | `#400` (a number after `#`, outside code) | `\#400` — still shows `#400`, but stays text instead of becoming a page "400" |
 
-Tags and properties are metadata, never content: give them with `--tag` or
-`--prop tags=…` / `--prop key=value`, and do not write `#tag` or `key:: value`
-into the content to tag or describe a block.
+Tags and properties are metadata, never content. A **page's** tags and
+properties go in `--prop tags=…` / `--prop key=value`; a titled block's tag goes
+in `--tag`. A **list item's** own properties are written as `key:: value` lines
+under it (next section). Do not write `#tag` into the content to tag a block.
+
+### Block properties and tasks (`--format markdown`)
+
+A `key:: value` line indented under a list item sets a property of that item;
+it is not a block of its own. This is how a task gets its priority, area and
+the rest:
+
+```markdown
+- [ ] Re-run the benchmark three times
+  priority:: Medium
+  area:: personal
+  context:: @agent, @computer
+  deadline:: 2026-12-05
+  - background: what happened and why
+  - steps: what to do, in order
+```
+
+| Property | Takes | Notes |
+|---|---|---|
+| `status` | `backlog` `todo` `doing` `waiting` `in review` `done` `canceled` | Beats the `[ ]` / `[x]` marker. `waiting` is one of this graph's own choices; `logseq-cli` rejects it, so it is set as a property value after the task is made |
+| `priority` | `low` `medium` `high` `urgent` | Any block with a priority becomes a Task |
+| `deadline`, `scheduled` | `YYYY-MM-DD` | |
+| any other name | the user property of that name | Choice properties (`area`, `context`) take several values separated by commas; page properties (`project`, `depend-on`) take `[[page]]`; date properties take `[[YYYY-MM-DD]]` |
+
+- **Names are matched to the graph's user properties, case-insensitively, and a
+  name that does not exist is created as a new text property.** A typo therefore
+  adds a property to the graph. List the existing names first:
+
+  ```bash
+  logseq-db query '[:find ?n :where [?p :db/ident ?i] [(namespace ?i) ?ns] [(= ?ns "user.property")] [?p :block/title ?n]]'
+  ```
+- A bad status, priority or date fails **before anything is written**.
+- A `key:: value` line that is not indented under a list item (right after a
+  heading or a paragraph, or at the same indent) stays an ordinary line of text.
+- Native outline (`--format logseq`) has no property syntax; use markdown.
 
 ### Result
 

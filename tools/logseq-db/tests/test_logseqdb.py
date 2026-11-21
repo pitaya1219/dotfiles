@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 import logseqdb  # noqa: E402
@@ -253,6 +254,146 @@ class ChoiceTest(unittest.TestCase):
     def test_free_text_stays_text(self):
         values, _ = logseqdb.Graph(self.FakeCli({})).properties({"model": "x"})
         self.assertEqual(values, {":user.property/model-x": "x"})
+
+
+class TaskFieldsTest(unittest.TestCase):
+    def test_split_keeps_user_properties_apart(self):
+        task, rest = logseqdb.split_task_fields({"Priority": "High", "area": "work", "STATUS": "done"})
+        self.assertEqual(task, {"priority": "High", "status": "done"})
+        self.assertEqual(rest, {"area": "work"})
+
+    def test_priority_and_dates(self):
+        args, waiting = logseqdb.parse_task({"priority": "Medium", "deadline": "2026-12-01",
+                                             "scheduled": "[[2026-11-30]]"})
+        self.assertEqual(args, ["--priority", "medium", "--deadline", "2026-12-01", "--scheduled", "2026-11-30"])
+        self.assertFalse(waiting)
+
+    def test_marker_sets_the_status(self):
+        self.assertEqual(logseqdb.parse_task({}, "todo"), (["--status", "todo"], False))
+
+    def test_explicit_status_beats_the_marker(self):
+        self.assertEqual(logseqdb.parse_task({"status": "Backlog"}, "todo"), (["--status", "backlog"], False))
+
+    def test_status_spellings(self):
+        for given, wanted in [("In Review", "in-review"), ("in progress", "doing"), ("Cancelled", "canceled"),
+                              ("later", "todo")]:
+            self.assertEqual(logseqdb.parse_task({"status": given})[0], ["--status", wanted], given)
+
+    def test_waiting_is_made_a_task_then_replaced(self):
+        # logseq-cli rejects --status waiting, so it is made a Task as Backlog
+        # first and the Waiting choice is set afterwards.
+        for given in ("Waiting", "wait"):
+            self.assertEqual(logseqdb.parse_task({"status": given}), (["--status", "backlog"], True), given)
+
+    def test_blank_values_are_ignored(self):
+        self.assertEqual(logseqdb.parse_task({"priority": "  ", "status": ""}), ([], False))
+
+    def test_bad_values_fail_before_anything_is_written(self):
+        for task in ({"priority": "soon"}, {"status": "someday"}, {"deadline": "next week"},
+                     {"scheduled": "2026-13"}):
+            with self.assertRaises(logseqdb.LogseqError, msg=str(task)):
+                logseqdb.parse_task(task)
+
+
+class ManyChoiceTest(unittest.TestCase):
+    class FakeCli(ChoiceTest.FakeCli):
+        """`context` takes several values, each one of its choices."""
+
+        def run(self, *args, **kwargs):
+            if args[:2] == ("list", "property"):
+                return {"items": [{"db/ident": "user.property/context-x", "block/title": "context",
+                                   "logseq.property/type": "default", "db/cardinality": "db.cardinality/many"}]}
+            return {}
+
+    def test_several_choices_go_in_as_a_list(self):
+        cli = self.FakeCli({"@agent": 5, "@computer": 6})
+        values, _ = logseqdb.Graph(cli).properties({"context": "@agent, @computer"})
+        self.assertEqual(values, {":user.property/context-x": [5, 6]})
+
+    def test_one_choice_is_still_a_list(self):
+        values, _ = logseqdb.Graph(self.FakeCli({"@home": 9})).properties({"context": "@home"})
+        self.assertEqual(values, {":user.property/context-x": [9]})
+
+    def test_new_choice_is_added(self):
+        cli = self.FakeCli({"@agent": 5})
+        values, _ = logseqdb.Graph(cli).properties({"context": "@agent, @pair"})
+        self.assertEqual(cli.added, ["@pair"])
+        self.assertEqual(values, {":user.property/context-x": [5, 101]})
+
+
+class WriteTaskTest(unittest.TestCase):
+    """write() end to end against a recording graph: which CLI calls a block's
+    properties turn into, and that a bad value writes nothing."""
+
+    class RecordingCli:
+        def __init__(self):
+            self.calls, self.inserted = [], []
+
+        def run(self, *args, **kwargs):
+            self.calls.append(args)
+            if args[:2] == ("list", "property"):
+                return {"items": [{"db/ident": "user.property/context-x", "block/title": "context",
+                                   "logseq.property/type": "default", "db/cardinality": "db.cardinality/many"}]}
+            return {}
+
+        def query(self, q, inputs=None):
+            if "closed-value-property" in q:
+                if ":logseq.property/status" in str(inputs):
+                    return [["Waiting", 77], ["Todo", 78]]
+                return [["@agent", 5]]
+            return None
+
+        def insert_blocks(self, target_id, rows):
+            self.inserted = rows
+            return list(range(200, 200 + len(rows)))
+
+        def delete_blocks(self, uuids):
+            self.calls.append(("delete", uuids))
+
+    def run_write(self, blocks):
+        cli = self.RecordingCli()
+        session = mock.MagicMock()
+        session.__enter__.return_value = cli
+        session.__exit__.return_value = False  # a truthy value here would swallow errors
+        with mock.patch.object(logseqdb, "session", return_value=session), \
+                mock.patch.object(logseqdb.Graph, "page", return_value=1):
+            logseqdb.write(None, "2026-11-21", blocks=blocks)
+        return cli
+
+    def upserts(self, cli):
+        return [c for c in cli.calls if c[:2] == ("upsert", "task")]
+
+    def test_priority_context_and_marker_together(self):
+        cli = self.run_write([{"content": "TODO ship it",
+                               "properties": {"priority": "High", "context": "@agent", "deadline": "2026-12-01"}}])
+        self.assertEqual(self.upserts(cli), [("upsert", "task", "--id", "200", "--status", "todo",
+                                              "--priority", "high", "--deadline", "2026-12-01")])
+        props = [c for c in cli.calls if c[:2] == ("upsert", "block") and "--update-properties" in c]
+        self.assertEqual(props, [("upsert", "block", "--id", "200", "--update-properties",
+                                  "{:user.property/context-x [5]}")])
+
+    def test_priority_alone_makes_a_task(self):
+        cli = self.run_write([{"content": "plain block", "properties": {"priority": "low"}}])
+        self.assertEqual(self.upserts(cli), [("upsert", "task", "--id", "200", "--priority", "low")])
+
+    def test_waiting_sets_the_choice_after_the_task(self):
+        cli = self.run_write([{"content": "waiting on someone", "properties": {"status": "Waiting"}}])
+        self.assertEqual(self.upserts(cli), [("upsert", "task", "--id", "200", "--status", "backlog")])
+        last = [c for c in cli.calls if "--update-properties" in c][-1]
+        self.assertEqual(last, ("upsert", "block", "--id", "200", "--update-properties",
+                                "{:logseq.property/status 77}"))
+
+    def test_children_are_not_tasks_unless_asked(self):
+        cli = self.run_write([{"content": "TODO parent", "children": [{"content": "background: text"}]}])
+        self.assertEqual(self.upserts(cli), [("upsert", "task", "--id", "200", "--status", "todo")])
+
+    def test_a_bad_value_writes_nothing(self):
+        opened = mock.Mock(side_effect=AssertionError("the graph must not be opened"))
+        blocks = [{"content": "a"}, {"content": "b", "properties": {"priority": "soon"}}]
+        with mock.patch.object(logseqdb, "session", opened):
+            with self.assertRaises(logseqdb.LogseqError):
+                logseqdb.write(None, "p", blocks=blocks)
+        opened.assert_not_called()
 
 
 if __name__ == "__main__":
