@@ -99,6 +99,10 @@
             backupRemovedFile = true;
             verbose = true;
             encrypted = false;
+            # The data dir is owned by the container's uids; read it as root
+            # of the rootless Docker user namespace instead of through host
+            # groups mirroring those uids.
+            rootlessDockerUserns = true;
             onCalendar = "Fri *-*-* 22:00:00";
             onBootDelay = "6h";
           };
