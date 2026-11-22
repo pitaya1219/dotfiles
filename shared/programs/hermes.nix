@@ -23,7 +23,7 @@ let
   endpoints =
     lib.optionalAttrs cfg.local.enable {
       ${cfg.local.name} = {
-        inherit (cfg.local) model;
+        inherit (cfg.local) model reasoningEffort;
         provider = {
           base_url = cfg.local.baseUrl;
           api_mode = "chat_completions";
@@ -36,7 +36,7 @@ let
     }
     // lib.optionalAttrs cfg.pitaya.enable {
       ${cfg.pitaya.name} = {
-        inherit (cfg.pitaya) model;
+        inherit (cfg.pitaya) model reasoningEffort;
         provider = {
           base_url = cfg.pitaya.baseUrl;
           api_mode = "chat_completions";
@@ -50,6 +50,10 @@ let
     };
 
   defaultEndpoint = endpoints.${cfg.default} or null;
+
+  # Keyed by model id, so two endpoints serving the same model share one entry.
+  reasoningOverrides = lib.mapAttrs' (_: endpoint: lib.nameValuePair endpoint.model endpoint.reasoningEffort)
+    (lib.filterAttrs (_: endpoint: endpoint.reasoningEffort != null) endpoints);
 in
 {
   options.programs.hermes = {
@@ -157,6 +161,24 @@ in
         '';
       };
 
+      reasoningEffort = lib.mkOption {
+        type = lib.types.nullOr (lib.types.enum [ "none" "low" "medium" "high" ]);
+        default = null;
+        description = ''
+          Written to config.yaml's top-level `reasoning_overrides.<model>`,
+          overriding `agent.reasoning_effort` whenever this model is active.
+
+          Set this to "low" for Spark-X2.6-4B: its chat template takes only
+          "low" and "high" and answers 400 to the "medium" that hermes sends
+          by default. Inkling-2-Mini starts from effort 0.9 when none is sent,
+          and its "none" thinks longer than "low" does, so "low" is the floor
+          there too.
+
+          Leave it null for a preset that accepts whatever hermes sends, so
+          that nothing changes for it.
+        '';
+      };
+
       baseUrl = lib.mkOption {
         type = lib.types.str;
         default = "https://ai.pitaya.f5.si/v1";
@@ -224,8 +246,8 @@ in
           inherit (endpoint) model;
           provider = name;
         }) endpoints;
-      } // lib.optionalAttrs (cfg.local.enable && cfg.local.reasoningEffort != null) {
-        reasoning_overrides.${cfg.local.model} = cfg.local.reasoningEffort;
+      } // lib.optionalAttrs (reasoningOverrides != { }) {
+        reasoning_overrides = reasoningOverrides;
       };
     };
 
