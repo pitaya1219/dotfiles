@@ -76,6 +76,15 @@
             gitea-mcp-server
             mistral-vibe
             rclone
+            htop
+            jq
+            pixz
+            # inetutils also ships ping, hostname and traceroute, which would
+            # shadow the apt ones; its ping has no cap_net_raw and fails.
+            (runCommand "telnet" { } ''
+              mkdir -p $out/bin
+              ln -s ${inetutils}/bin/telnet $out/bin/telnet
+            '')
           ];
         };
       })
