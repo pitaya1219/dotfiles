@@ -7,7 +7,7 @@ let
 
   nixpkgsConfig = {
     allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [
-      "claude-code"
+      "claude"
       "specs.nvim"
     ];
     packageOverrides = pkgs: {
