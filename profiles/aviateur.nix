@@ -77,7 +77,6 @@
             mistral-vibe
             rclone
             htop
-            jq
             pixz
             # inetutils also ships ping, hostname and traceroute, which would
             # shadow the apt ones; its ping has no cap_net_raw and fails.

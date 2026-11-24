@@ -184,7 +184,6 @@
             android-tools
             cloudflared
             gitea-mcp-server
-            jq
             llama-cpp
             mistral-vibe
             rclone

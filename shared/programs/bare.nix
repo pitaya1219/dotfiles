@@ -10,6 +10,7 @@
     sqlite
     duckdb
     ripgrep
+    jq
     fzf
     age
     passage

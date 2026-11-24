@@ -197,7 +197,6 @@ let
           beamPackages.elixir
           elixir-ls
           gitea-mcp-server
-          jq
           mistral-vibe
           rclone
           tailscale

@@ -64,13 +64,13 @@ This is a sophisticated multi-profile dotfiles configuration repository that use
 ### r-shibuya Profile (macOS Development)
 - **Platform**: aarch64-darwin (Apple Silicon)
 - **Home**: `/Users/r-shibuya`
-- **Packages**: jq (additional)
+- **Packages**: none beyond the shared base
 - **Neovim**: llama.vim against the local model servers in `profiles/r-shibuya/local-llm.nix`
 
 ### droid Profile (Android native Linux Terminal)
 - **Platform**: aarch64-linux (ARM64)
 - **Home**: `/home/droid`
-- **Packages**: jq (additional)
+- **Packages**: none beyond the shared base
 - **Neovim**: Base configuration only
 
 ## Package Management
