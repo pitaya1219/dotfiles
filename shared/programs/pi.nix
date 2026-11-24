@@ -147,7 +147,7 @@ in
           `<prefix>/client-id` and `<prefix>/client-secret`.
 
           One client for pi on every profile, not one per machine: the
-          issuer's log tells pi apart from hermes and shellm, which is all it
+          issuer's log tells pi apart from shellm, which is all it
           needs to. Revoking it cuts every machine at once.
         '';
       };

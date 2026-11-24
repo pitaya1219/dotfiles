@@ -17,46 +17,15 @@
           locales = [ "en_US.UTF-8/UTF-8" ];
         };
 
-        # Both endpoints, switched with `/model local` and `/model pitaya`.
-        # Local is the default: this machine leaves the network often enough
-        # that the endpoint which keeps working offline is the better one to
-        # land on. Nothing here starts that server, deliberately — on this
-        # profile it comes from a separate app rather than from nix, so
-        # `local` answers only while that app is running.
-        #
-        # That app is the phone's own aidroid, not something inside this
-        # container — so `local` is the phone's Tailscale IP, not localhost.
-        # This container's kernel ships without the tun module (see
+        # The local server is the phone's own aidroid, not something inside
+        # this container, and nix does not start it — shellm's keybindings
+        # answer only while that app is running, and fall back to nothing
+        # rather than to koi. So `local` is the phone's Tailscale IP, not
+        # localhost. This container's kernel ships without the tun module (see
         # ./droid/tailscale.nix), so tailscaled here runs
         # --tun=userspace-networking and hands out the tailnet as a SOCKS5
-        # proxy on localhost:1055 instead of a real interface; `proxy` routes
-        # hermes through it.
-        programs.hermes = {
-          enable = true;
-          default = "local";
-          local = {
-            enable = true;
-            model = "gemma-4-e2b";
-            baseUrl = "http://100.64.0.1:11434/v1";
-            proxy = "socks5h://localhost:1055";
-            # Gemma 4 reasons by default; without this, some replies spend
-            # their whole budget on reasoning_content and surface as empty
-            # (see shared/programs/hermes.nix's local.reasoningEffort).
-            reasoningEffort = "none";
-          };
-          pitaya = {
-            enable = true;
-            model = "Gemma-4";
-            passagePrefix = "hermes/client/droid";
-          };
-        };
-
-        # The same local server hermes defaults to above, which nix does not
-        # start here — shellm's keybindings answer only while that app is
-        # running, and fall back to nothing rather than to koi. Same phone,
-        # same reachability problem as hermes' local endpoint above: routed
-        # through tailscaled's userspace SOCKS proxy via `local.proxy`, since
-        # shellm has no ALL_PROXY support of its own to hang a base URL off.
+        # proxy on localhost:1055 instead of a real interface; shellm has no
+        # ALL_PROXY support of its own, so `local.proxy` forwards through it.
         programs.shellm = {
           enable = true;
           local = {
@@ -80,9 +49,11 @@
           };
         };
 
-        # The same two endpoints as hermes, default included. pi has no
-        # SOCKS support to hang hermes' `proxy` on, so local rides shellm's
-        # socat forward above instead.
+        # Both endpoints, switched with `/model local` and `/model pitaya`.
+        # Local is the default: this machine leaves the network often enough
+        # that the endpoint which keeps working offline is the better one to
+        # land on. pi has no SOCKS support, so local rides shellm's socat
+        # forward above.
         programs.pi = {
           enable = true;
           default = "local";
@@ -90,8 +61,6 @@
             enable = true;
             baseUrl = "http://127.0.0.1:${toString config.programs.shellm.local.proxy.listenPort}/v1";
             model = "gemma-4-e2b";
-            # At least this much: hermes, which refuses anything under 64,000,
-            # runs against the same server.
             contextWindow = 65536;
             extraProvider.compat.supportsReasoningEffort = true;
             extraModel = {
@@ -110,7 +79,6 @@
           ../shared/programs/claude-code.nix
           ../shared/programs/opencode.nix
           ../shared/programs/vibe.nix
-          ../shared/programs/hermes.nix
           ../shared/programs/shellm.nix
           ../shared/programs/pi.nix
           ../shared/programs/git.nix

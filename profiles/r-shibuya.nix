@@ -95,8 +95,6 @@ let
       # The litert-lm serve on this machine is the only endpoint here — this
       # is a corporate laptop, so nothing leaves it. It is started by
       # ./r-shibuya/local-llm.nix; pi and shellm below both talk to it.
-      # Hermes is not on this profile: it refuses a model under 64,000 tokens
-      # of context, and the .litertlm build of Gemma 4 E4B stops at 32k.
       programs.pi = {
         enable = true;
         default = "local";

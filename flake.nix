@@ -39,14 +39,9 @@
       url = "github:herdrdev/herdr";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    hermes-agent = {
-      url = "github:NousResearch/hermes-agent";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.home-manager.follows = "home-manager";
-    };
   };
 
-  outputs = { self, nixpkgs, home-manager, nix-darwin, neovim-nightly-overlay, mistral-vibe, homelab, logseq-clients, logseq-view, nix-claude-code, herdr, hermes-agent }:
+  outputs = { self, nixpkgs, home-manager, nix-darwin, neovim-nightly-overlay, mistral-vibe, homelab, logseq-clients, logseq-view, nix-claude-code, herdr }:
     let
       profileLib = import ./lib/profiles.nix { inherit (nixpkgs) lib; };
 
@@ -126,12 +121,6 @@
 
       };
       
-      # hermes-agent ships its own home-manager module, and its default package
-      # is this flake's own build rather than one re-instantiated against our
-      # nixpkgs — so the module has to come from the input directly. There is
-      # nothing for an overlay to carry.
-      hermesModules = [ hermes-agent.homeManagerModules.default ];
-
       profileExtraModules = {
         rose = [
           homelab.homeManagerModules.dns-updater
@@ -147,8 +136,6 @@
           homelab.homeManagerModules.windmill-backup
           homelab.homeManagerModules.dtrack-scan
         ];
-        r-shibuya = hermesModules;
-        droid = hermesModules;
       };
 
       # Load all profiles automatically
