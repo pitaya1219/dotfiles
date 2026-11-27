@@ -1,16 +1,16 @@
 ---
 name: vibe-delegate
-description: Delegate a coding task (e.g. a Gitea issue) to Mistral Vibe via `vibe -p`, then independently verify the result and open a PR. Orchestrator-side skill. Invoked ONLY on explicit user request (e.g. `/vibe-delegate`); never auto-triggered by the agent.
+description: Delegate a coding task (e.g. a Gitea issue) to a headless Mistral Vibe worker confined to its own clone, then independently verify the result and open a PR. Orchestrator-side skill, usable from Claude or from Vibe. Invoked ONLY on explicit user request (e.g. `/vibe-delegate`); never auto-triggered by the agent.
 user-invocable: true
 autonomous: false
-version: 1.2.0
+version: 2.0.0
 ---
 
 # Vibe Delegate
 
-Delegate an implementation task to **Mistral Vibe** (`vibe -p` programmatic mode) as a worker, while *you* (the orchestrator) keep ownership of isolation, verification, and PR creation.
+Delegate an implementation task to a **headless Mistral Vibe worker** while *you* (the orchestrator) keep ownership of isolation, verification, and PR creation. The orchestrator can be Claude or Vibe itself; nothing below depends on which.
 
-This is the inverse of an enforcement rule: it is a **procedure you run**, so a skill is the right vehicle. The hard-won invariant is **step 4: never trust Vibe's self-report — verify independently.**
+The hard-won invariant is **step 5: never trust the worker's self-report — verify independently.**
 
 ## When to use
 
@@ -23,128 +23,111 @@ This is the inverse of an enforcement rule: it is a **procedure you run**, so a 
 vibe-delegate <issue#|task-description> [--repo <owner/name>] [--max-price 20] [--max-turns 200]
 ```
 
-- Default budget is generous because Mistral runs on a subscription (per-task cost is not the concern). Bound runaway with `--max-turns`, not a tight price. `--max-price` is only a safety stop.
+Mistral runs on a subscription, so the default budget is generous. Bound runaway with `--max-turns` and `--time-limit`; `--max-price` is only a safety stop.
 
-## Isolation model (important)
+## How the worker is confined
 
-Isolation is handled **by you**, not by Vibe: you clone the target repo into a dedicated sub-agent worktree and point Vibe at it. Vibe is invoked as a delegated **sub-agent** (the worker); you stay the orchestrator.
+Never call `vibe -p` yourself. Start the worker through the workspace launcher, `~/agent-sessions/.agent/bin/vibe_subagent.py`:
 
-- **The agent-sessions workspace matters — keep work there when you are inside it.** Place the worktree under `<agent-sessions>/vibe-subagents/session-<slug>`. **Exception:** if you are NOT inside `~/agent-sessions`, fall back to `~/vibe-subagents/session-<slug>`. (See step 2.)
-- **Do NOT propagate the agent-sessions `session-<id>` initialization ritual to Vibe** — that is specific to the agent-sessions workspace and is meaningless inside a project clone. Vibe gets **task-scoped rules only** (branch, clean commits, push-not-merge, verify). The dedicated worktree *is* the isolation.
+- The clone lives at `<your session dir>/vibe-subagents/<slug>/`. The launcher confines the worker to **exactly that directory** (plus `/tmp` and `~/.agent/sessions`) and fails closed: a bad setup, unparseable hook input or a write without a path is denied. Inside the clone, `.vibe/`, `.git/hooks` and `.git/config` are read-only for the worker.
+- Vibe reads project hooks and prompts only from `<workdir>/.vibe/`. A bare `vibe -p` in a clone therefore runs with **no boundary at all** and can die at startup on the workspace's system prompt. The launcher generates a git-excluded `.vibe/` with the `subagent-rules` prompt and the boundary hooks.
+- The worker's environment lacks the PR token (`GITEA_VIBE_BOT_TOKEN`) and the parent harness's markers. You open the PR, not the worker.
+- Success is read from `export.json`, not from the exit code.
+- A repository that tracks files under `.vibe/` (the agent-sessions repo itself) is refused.
+
+Check `test -f ~/agent-sessions/.agent/bin/vibe_subagent.py` first; if it is missing, the workspace checkout is older than the launcher and needs a `git pull` by the user.
 
 ## Steps
 
 ### 1. Resolve the task
 
-If given an issue number, fetch its body (Gitea MCP `issue_read` / `get`) and use it as the spec. Otherwise use the provided description.
+If given an issue number, fetch its body (Gitea MCP `issue_read`, or the REST API) and use it as the spec. Otherwise use the description.
 
-### 2. Fresh, isolated sub-agent worktree
+Before writing a spec that depends on the shape of an external response (an API, a config, a log format), look at a real one. A wrong assumption in the spec becomes a plausible, tested, wrong implementation.
 
-Pick the worktree base by location, then clone. Do NOT hardcode a Gitea host — take the repo's clone URL from the issue/context (or `git remote get-url origin` of an existing checkout).
+### 2. Fresh clone inside your session directory
 
-```bash
-REPO_URL="<clone url of the target repo>"   # whatever Gitea host the repo lives on
-SLUG="<short-task-slug>"                      # e.g. issue-21, lib-bin-split
-
-# agent-sessions is the primary workspace: keep work there when we're inside it.
-case "$PWD/" in
-  "$HOME/agent-sessions/"*) BASE="$HOME/agent-sessions/vibe-subagents" ;;   # keep inside the workspace
-  *)                        BASE="$HOME/vibe-subagents" ;;                   # exception: outside agent-sessions
-esac
-
-CLONE="$BASE/session-$SLUG"
-rm -rf "$CLONE"
-git clone "$REPO_URL" "$CLONE"
-# ensure clean main
-git -C "$CLONE" checkout main && git -C "$CLONE" reset --hard origin/main && git -C "$CLONE" clean -fd
-```
-
-### 3. Build the task prompt (embed project rules)
-
-Write a self-contained prompt to `/tmp/vibe_task.md`. It MUST state:
-
-- The clone path; "work entirely inside this directory; do NOT create session subdirectories."
-- Create a feature branch (`feat/...`, `fix/...`, `chore/...`).
-- **Commit messages: clean and professional. NEVER mention AI / Mistral / Vibe / Claude / Anthropic; NO `Co-Authored-By` line.**
-- **Do NOT open a PR, do NOT merge. Only push the branch.**
-- Run the project's standard verification suite (build, test, lint). Discover the appropriate commands from the project's CLAUDE.md or tooling conventions (e.g. `cargo test` for Rust, `npm test` for Node, `pytest` for Python). If `nix develop` is needed, prefix commands accordingly.
-- **On completion (after pushing), ALWAYS run the `session-save` skill** — this is mandatory, not optional. Pass `caller = claude` so the page gets a `called-by:: claude` property. If Logseq is unreachable (network/port error), `session-save` should fall back to writing a markdown file under `~/.agent/sessions/` rather than skipping silently.
-- Final report: branch name, exact test output line, lint result, files changed, any blocker. If a check fails and it cannot fix it, report verbatim and do NOT push broken code.
-
-### 4. Launch Vibe (background) + INDEPENDENTLY VERIFY
+Your session directory is the `session-<id>` directory announced at session start; do not derive it.
 
 ```bash
-cd "$CLONE"
-env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID AI_AGENT=vibe \
-  vibe -p "$(cat /tmp/vibe_task.md)" \
-  --workdir "$CLONE" --yolo --trust \
-  --max-price "${MAX_PRICE:-20}" --max-turns "${MAX_TURNS:-200}" \
-  --output text > /tmp/vibe_run.log 2>&1
+SESSION_DIR="$HOME/agent-sessions/session-<your id>"
+PARENT_ID="${SESSION_DIR##*/session-}"
+SLUG="<short-unique-slug>"                 # e.g. issue-21-a; a retry gets a new slug
+CLONE="$SESSION_DIR/vibe-subagents/$SLUG"
+
+mkdir -p "$SESSION_DIR/vibe-subagents"
+git clone "<clone url of the target repo>" "$CLONE"
+git -C "$CLONE" checkout main && git -C "$CLONE" reset --hard origin/main
 ```
 
-Vibe sets no agent marker of its own, so its shell inherits the orchestrator's
-`CLAUDECODE` / `CLAUDE_CODE_SESSION_ID` / `AI_AGENT`. `session-save`'s
-`detect-session.sh` trusts those first, and would save Vibe's session as a
-`claude-code-session` with the orchestrator's session id and transcript. The
-`env` prefix drops them and names Vibe instead.
+Take the clone URL from the issue/context or `git remote get-url origin` of an existing checkout; do not hardcode a host. Use a fresh slug instead of deleting an old clone: Claude's shell refuses `rm -rf` on directories inside the workspace.
 
-Run it in the background; on completion **do your own verification — do not rely on Vibe's summary:**
+### 3. Write the task prompt
+
+Write it to a file in your scratchpad or session directory with the editor tool, not a shell heredoc (the secret guard can reject a command that merely mentions a secrets file or `passage`, even in prose). The launcher's `subagent-rules` prompt already tells the worker to stay in the clone, use Conventional Commits without any AI mention, push but never open or merge a PR, and keep out of ADRs and config files. The task prompt only needs what is specific:
+
+- The clone path ("work entirely inside this directory") and the feature branch name (`feat/...`, `fix/...`).
+- Background, the files involved (absolute paths), the deliverable, how to choose when the spec is open, and what to leave alone.
+- The verification commands the project uses (read its `CLAUDE.md`/tooling), and "report the real output".
+- **On completion, ALWAYS run the `session-save` skill**, passing `caller = <claude or vibe: what you are>`. If Logseq is unreachable it falls back to a markdown file under `~/.agent/sessions/`.
+
+### 4. Launch and read the outcome
+
+```bash
+python3 ~/agent-sessions/.agent/bin/vibe_subagent.py \
+  --clone "$CLONE" --parent-session "$PARENT_ID" \
+  --prompt-file "$PROMPT" --output-dir "$OUT" \
+  --max-turns 200 --max-price 20 --time-limit 3600
+```
+
+It runs in the foreground until the worker stops and prints one line: `outcome=… stop_reason=… turns=… cost=…`. Exit 0 means `outcome=finished`, nothing else. If your harness can run commands in the background and notify you (Claude), do that; otherwise wait for it (the time limit bounds it). Use absolute paths in redirections: the boundary hook cannot resolve shell variables there.
+
+`--dry-run` shows what would be written and run without launching.
+
+### 5. Independently verify
 
 ```bash
 cd "$CLONE"
-grep -iE 'vibe_stop|price|limit' /tmp/vibe_run.log   # did it stop early (budget/turns)?
-git status --short                                   # uncommitted leftovers?
-git log --oneline -3 --pretty='%h %an %s'            # did it commit? author?
-git ls-remote --heads origin <branch>                # did it push?
-# YOU run the project's verification suite (adapt to the project's language/tooling)
-# e.g. for Rust: cargo test, cargo clippy --all-targets -- -D warnings, cargo fmt --all -- --check
-# e.g. for Node: npm test, npm run lint
-# e.g. for Python: pytest, ruff check .
+tail -30 "$OUT/vibe.log"                # what it says, and any startup error
+git status --short                      # uncommitted leftovers?
+git log --format='%h %an %s' main..HEAD # did it commit?
+git ls-remote --heads origin <branch>   # did it push?
+git diff --stat main...HEAD             # only the files the task names?
+# YOU run the project's verification suite; for security-sensitive code, read the diff.
 ```
 
-**Known failure modes (from PoC):**
-- Vibe's self-report is optimistic — it may claim success while leaving a broken file or uncommitted work.
-- A too-low `--max-price` stops it **mid-task before it commits/verifies**, leaving WIP and possibly an unverified config bug (e.g. a malformed `clippy.toml`).
-- If it stopped early or left broken/uncommitted work: either reset the clone and re-run with a higher budget, or finish/fix it yourself as the orchestrator (and say so in the report).
+**Known failure modes**
+- The self-report is optimistic: it may claim success with a broken or uncommitted tree.
+- `outcome=price_limit` (or another limit) stops it **mid-task**, typically with everything uncommitted. Inspect the clone, then either re-run with a higher budget on a new slug, or finish and fix it yourself, and say so in the PR.
+- It may touch files outside the task (an accepted ADR, a docs line). Revert those.
+- It implements the spec faithfully, including the spec's mistakes.
 
-### 5. Open the PR (orchestrator, after verification)
-
-Only after your own independent checks pass. Detect the platform from the remote URL and use the appropriate method:
+### 6. Open the PR (orchestrator, after verification)
 
 ```bash
 ORIGIN=$(git -C "$CLONE" remote get-url origin)
 BRANCH=$(git -C "$CLONE" rev-parse --abbrev-ref HEAD)
 ```
 
-**GitHub** (`github.com` in the remote URL) — use `gh` CLI (user's own auth, no separate token needed). Note: on GitHub, the PR will be under the user's own identity — the mistral-bot identity is not available on GitHub:
+**GitHub** (`github.com` in the URL): `gh pr create --head "$BRANCH" --base main --title … --body …` under the user's own identity.
+
+**Gitea** (any other host): the REST API with the Vibe bot token, so the PR is attributed to `mistral-bot`. Write the body to a file and load it with `jq --rawfile`:
 
 ```bash
-cd "$CLONE" && gh pr create --head "$BRANCH" --base main --title "<title>" --body "<body incl. Closes #<issue>>"
-```
-
-**Gitea** (any other host) — use the REST API with the Vibe bot token (`GITEA_VIBE_BOT_TOKEN`). The PR will be attributed to **mistral-bot**:
-
-```bash
-HOST=$(printf '%s' "$ORIGIN" | sed -E 's#^(https?://[^/]+).*#\1#')
-REPO_SLUG=$(printf '%s' "$ORIGIN" | sed -E 's#^https?://[^/]+/(.+)\.git$#\1#')   # <owner>/<repo>
-
-curl -fsS -X POST \
-  -H "Authorization: token ${GITEA_VIBE_BOT_TOKEN}" \
+curl -fsS -X POST -H "Authorization: token ${GITEA_VIBE_BOT_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "$(jq -n --arg t '<title>' --arg b '<body incl. Closes #<issue>>' \
-        --arg h "$BRANCH" '{head:$h, base:"main", title:$t, body:$b}')" \
-  "$HOST/api/v1/repos/$REPO_SLUG/pulls"
+  -d "$(jq -n --arg t "<title>" --rawfile b "$BODY" --arg h "$BRANCH" '{head:$h, base:"main", title:$t, body:$b}')" \
+  "<host>/api/v1/repos/<owner>/<repo>/pulls"
 ```
 
-**Push-not-merge** — never merge. Then post your independent-verification summary as a PR **comment** under your own (orchestrator) identity, so authorship and review stay cleanly separated.
+**Never merge.** Post your verification summary as a PR **comment** under your own identity, opening with "Orchestrator's verification" and separating what the worker did from what you changed. When you are Vibe too, the comment and the PR share an author, so that opening line is what tells a reviewer which is which.
 
-Alternative: let Vibe open the PR itself in step 3 (it has `create_pull_request` permission and authenticates as mistral-bot via `.vibe/gitea-mcp-wrapper.sh`). Simpler, but the PR is then opened on Vibe's *self-report* before your verification — so still verify and comment before any merge. Prefer the orchestrator-opens-after-verify flow above.
+### 7. Cleanup
 
-### 6. Cleanup
-
-Remove the clone (`rm -rf "$CLONE"`) once the PR is up, unless asked to keep it.
+Leave the clone. It sits inside your session directory and goes away with it when the session is deleted (`session-dir-deletion`); trying to `rm -rf` it can be refused as a dangerous removal.
 
 ## Notes
 
-- Skills are shared between Claude and Vibe (`~/.claude/skills` and `~/.vibe/skills` both point at `~/.agent/skills`). This skill is intended for the orchestrator; Vibe is the worker.
-- For tight, parallel, low-friction delegation with structured reporting, the Claude `Agent` tool (e.g. a Haiku subagent) is smoother. Use Vibe when you specifically want a different model / the mistral-bot identity / the separate system.
+- Skills are shared between Claude and Vibe (`~/.claude/skills` and `~/.vibe/skills` both resolve to the same files).
+- For tight, parallel, low-friction delegation with structured reporting, the Claude `Agent` tool is smoother. Use Vibe when you want a different model, the `mistral-bot` identity, or a separate system.
+- The worker inherits your other environment variables; only the PR token and the harness markers are removed.
